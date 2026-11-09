@@ -3,7 +3,7 @@ import { newRedisConnection } from './connection';
 
 export const QUEUE = { scheduler: 'fc-scheduler', generate: 'fc-generate', publish: 'fc-publish' } as const;
 
-export interface GenerateJobData { accountId: string; scheduleId?: string; productId?: string; format?: string; createdBy: string }
+export interface GenerateJobData { accountId: string; scheduleId?: string; productId?: string; format?: string; language?: 'ar' | 'en' | 'ml'; direction?: import('../creative/options').Direction; createdBy: string }
 export interface PublishJobData { publicationJobId: string }
 
 const queues = new Map<string, Queue>();

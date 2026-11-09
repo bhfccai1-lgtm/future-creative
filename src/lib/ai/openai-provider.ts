@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
-import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, type AiProvider, type BriefRequest } from './types';
-import { briefSystemPrompt, briefUserPrompt } from './prompts';
+import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion } from './types';
+import { briefSystemPrompt, briefUserPrompt, ideasSystemPrompt } from './prompts';
 
 function mapError(e: unknown): AiProviderError {
   if (e instanceof OpenAI.APIError) {
@@ -42,6 +42,21 @@ export class OpenAiProvider implements AiProvider {
     const brief = CreativeBriefSchema.safeParse(parsed);
     if (!brief.success) throw new AiProviderError('BAD_OUTPUT', `الموجز لا يطابق المخطط: ${brief.error.issues[0]?.message}`, true);
     return { brief: brief.data, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
+  async suggestIdeas(req: BriefRequest, model: string, count: number) {
+    let res;
+    try {
+      res = await this.client.chat.completions.create({
+        model, temperature: 1,
+        messages: [{ role: 'system', content: ideasSystemPrompt() }, { role: 'user', content: briefUserPrompt(req) + `\nReturn exactly ${count} ideas.` }],
+        response_format: { type: 'json_schema', json_schema: { name: 'idea_suggestions', strict: true, schema: IdeaSuggestionsJsonSchema as unknown as Record<string, unknown> } },
+      });
+    } catch (e) { throw mapError(e); }
+    let ideas: IdeaSuggestion[] = [];
+    try { ideas = (JSON.parse(res.choices[0]?.message?.content ?? '{}').ideas ?? []).slice(0, count); }
+    catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    return { ideas, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024' }) {

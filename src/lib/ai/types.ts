@@ -42,7 +42,17 @@ export interface BriefRequest {
   avoidIdeas: string[]; // recent ideas on this account (30 days)
   avoidHeadlines: string[];
   attempt: number;
+  /** Optional creative direction chosen by the user (English instructions). */
+  direction?: Record<string, string>;
+  /** Selected occasion key, if any (lets providers pick occasion-appropriate wording). */
+  occasionKey?: string;
 }
+
+export interface IdeaSuggestion { title: string; idea: string }
+export const IdeaSuggestionsJsonSchema = {
+  type: 'object', additionalProperties: false, required: ['ideas'],
+  properties: { ideas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'idea'], properties: { title: { type: 'string' }, idea: { type: 'string' } } } } },
+} as const;
 
 export interface TextUsage { inputTokens: number; outputTokens: number }
 export interface ImageResult { png: Buffer; model: string; revisedPrompt?: string }
@@ -51,6 +61,7 @@ export interface AiProvider {
   readonly name: string;
   readonly isDryRun: boolean;
   generateBrief(req: BriefRequest, model: string): Promise<{ brief: CreativeBriefOut; usage: TextUsage; model: string }>;
+  suggestIdeas(req: BriefRequest, model: string, count: number): Promise<{ ideas: IdeaSuggestion[]; usage: TextUsage; model: string }>;
   generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string }): Promise<ImageResult>;
 }
 

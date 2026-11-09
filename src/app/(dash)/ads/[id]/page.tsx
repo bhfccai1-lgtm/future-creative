@@ -6,6 +6,7 @@ import { StateBadge, FORMAT_AR, LANG_AR } from '@/components/state-badge';
 import { ActionButton } from '@/components/action-button';
 import { fmtLocal } from '@/lib/time';
 import type { QcReport } from '@/lib/qc';
+import { directionSummaryAr, type Direction } from '@/lib/creative/options';
 
 export default async function AdPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePageUser();
@@ -50,6 +51,9 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
                 <div><dt className="text-slate-500">الجمهور / المناسبة</dt><dd>{ad.brief.audience} / {ad.brief.occasion}</dd></div>
                 <div className="md:col-span-2"><dt className="text-slate-500">وصف المشهد (للنموذج)</dt><dd className="ltr text-xs">{ad.brief.sceneDescription}</dd></div>
                 <div className="md:col-span-2"><dt className="text-slate-500">النص المرافق</dt><dd className="whitespace-pre-wrap">{ad.caption}</dd></div>
+                {directionSummaryAr((ad.brief.rawJson as { direction?: Direction } | null)?.direction).map(([k, val]) => (
+                  <div key={k}><dt className="text-slate-500">{k}</dt><dd>{val}</dd></div>
+                ))}
                 <div><dt className="text-slate-500">المزوّد</dt><dd>{ad.brief.provider}</dd></div>
                 <div><dt className="text-slate-500">بصمة الشعار</dt><dd className="ltr text-xs">{ad.logoSha256?.slice(0, 24)}…</dd></div>
               </dl>

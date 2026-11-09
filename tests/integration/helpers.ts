@@ -65,6 +65,7 @@ export class FakeAiProvider implements AiProvider {
     const r = await this.inner.generateBrief(req);
     return { ...r, model: 'fake-text', usage: { inputTokens: 2000, outputTokens: 600 } };
   }
+  async suggestIdeas(req: BriefRequest, model: string, count: number) { return { ...(await this.inner.suggestIdeas(req, model, count)), model: 'fake-text' }; }
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string }) {
     this.sceneCalls++;
     const f = this.failScene.shift(); if (f) throw f;

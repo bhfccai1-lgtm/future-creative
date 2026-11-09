@@ -91,3 +91,26 @@ describe('Bahrain time helpers', () => {
     expect(localDateTime(new Date('2026-11-08T21:00:00Z'))).toBe('2026-11-09T00:00:00');
   });
 });
+
+describe('creative direction options', () => {
+  it('builds English AI instructions only for selected options and an Arabic summary', async () => {
+    const { directionForPrompt, directionSummaryAr } = await import('@/lib/creative/options');
+    const { briefUserPrompt } = await import('@/lib/ai/prompts');
+    expect(directionForPrompt(undefined)).toBeUndefined();
+    expect(directionForPrompt({})).toBeUndefined();
+    const d = directionForPrompt({ contentType: 'gift_idea', occasion: 'ramadan', market: 'bahrain_local', segment: 'families', idea: '  كوب على مائدة الإفطار  ' })!;
+    expect(d).toMatchObject({ contentType: expect.stringContaining('gift'), occasion: expect.stringContaining('Ramadan'), userIdea: 'كوب على مائدة الإفطار' });
+    const prompt = JSON.parse(briefUserPrompt({ language: 'ar', product: { slug: 'x', name: 'Mug', titleAr: 'كوب', titleEn: 'Mug', targetAudience: [], occasions: [], visualGuidelines: 'v', recommendedMessages: {} }, accountName: 'a', creativeStyle: 's', defaultCta: 'اطلب الآن', avoidIdeas: [], avoidHeadlines: [], attempt: 0, direction: d }));
+    expect(prompt.direction.userIdea).toBe('كوب على مائدة الإفطار');
+    expect(directionSummaryAr({ occasion: 'bahrain_national_day', segment: 'companies' }).map((x) => x[0])).toEqual(['الفئة المستهدفة', 'المناسبة']);
+  });
+  it('dry-run suggests 3 distinct, claim-free ideas in the requested language', async () => {
+    const { DryRunProvider } = await import('@/lib/ai/dry-run-provider');
+    const { findClaims } = await import('@/lib/qc/checks');
+    const { directionForPrompt } = await import('@/lib/creative/options');
+    const r = await new DryRunProvider().suggestIdeas({ language: 'ar', product: { slug: 'ceramic-mugs', name: 'Mug', titleAr: 'طباعة على أكواب السيراميك', titleEn: 'Mugs', targetAudience: [], occasions: [], visualGuidelines: 'v', recommendedMessages: {} }, accountName: 'a', creativeStyle: 's', defaultCta: 'اطلب الآن', avoidIdeas: [], avoidHeadlines: [], attempt: 0, direction: directionForPrompt({ occasion: 'eid_fitr', segment: 'families' }), occasionKey: 'eid_fitr' }, 'x', 3);
+    expect(r.ideas).toHaveLength(3);
+    expect(new Set(r.ideas.map((i) => i.idea)).size).toBe(3);
+    expect(r.ideas.every((i) => i.idea.includes('عيد الفطر') && findClaims(i.idea).length === 0)).toBe(true);
+  });
+});

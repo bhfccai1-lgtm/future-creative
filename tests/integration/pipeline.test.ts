@@ -148,3 +148,23 @@ describe('reel pipeline', () => {
     expect(r.qc?.checks.find((c) => c.id === 'video_valid')?.passed).toBe(true);
   }, 180_000);
 });
+
+describe('creative direction', () => {
+  it('content language overrides the account language; occasion + idea reach the brief', async () => {
+    const { accounts } = await seedBase();
+    expect(accounts[0].language).toBe('ar');
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', language: 'en', direction: { occasion: 'bahrain_national_day', segment: 'companies', contentType: 'business_branding', idea: 'Corporate gift box for National Day' } });
+    expect(r.advertisement.state).toBe('QUALITY_REVIEW');
+    expect(r.advertisement.language).toBe('en');
+    expect(r.qc?.checks.find((c) => c.id === 'language_match')?.passed).toBe(true);
+    const brief = await prisma.creativeBrief.findFirstOrThrow({ where: { id: r.advertisement.briefId! } });
+    expect(brief.language).toBe('en');
+    expect(brief.occasion).toBe('Bahrain National Day');
+    expect(brief.headline).toBe('Celebrating Bahrain National Day');
+    expect(brief.idea).toContain('Corporate gift box for National Day');
+    expect((brief.rawJson as { direction?: { segment?: string } }).direction?.segment).toBe('companies');
+    const manifest = r.advertisement.layerManifest as { layers: { id: string; text?: string }[] };
+    expect(manifest.layers.find((l) => l.id === 'cta')?.text).toBe('Order Now');
+    expect(manifest.layers.find((l) => l.id === 'contact:saar:label')?.text).toBe('Saar');
+  });
+});

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CONTENT_TYPES, MARKETS, OCCASIONS, SEGMENTS, optionValues } from './creative/options';
 
 export const AccountInput = z.object({
   name: z.string().min(2).max(100),
@@ -25,3 +26,11 @@ export const ProductInput = z.object({
   relevantAccountTags: z.array(z.string().max(40)).max(20).default([]),
   active: z.boolean().default(true),
 });
+
+export const DirectionSchema = z.object({
+  contentType: z.enum(optionValues(CONTENT_TYPES)).optional(),
+  market: z.enum(optionValues(MARKETS)).optional(),
+  segment: z.enum(optionValues(SEGMENTS)).optional(),
+  occasion: z.enum(optionValues(OCCASIONS)).optional(),
+  idea: z.string().max(500).optional(),
+}).optional();

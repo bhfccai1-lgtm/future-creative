@@ -22,8 +22,9 @@ import { storage } from '../storage';
 import { startOfDayInTz } from '../time';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
+import { directionForPrompt, type Direction } from '../creative/options';
 
-export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; createdBy: string; scheduleId?: string; actorId?: string | null }
+export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
 
 async function withAiJob<T>(adId: string, kind: string, provider: AiProvider, model: string, fn: (jobId: string) => Promise<T>): Promise<T> {
@@ -77,16 +78,16 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     : await selectProductForAccount(account);
   if (!product) throw new AppError('NO_PRODUCT', 'لا توجد منتجات نشطة مسموح بها لهذا الحساب.', 422);
 
-  const lang = account.language as Lang;
+  const lang = (p.language ?? account.language) as Lang; // content language may override the account default
   const format = p.format ?? account.publishFormat;
   const provider = await getAiProvider(s);
   // Up-front budget check for the WHOLE advertisement, so a partial (wasted) spend never happens near the cap.
   if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s));
 
   const ad = await prisma.advertisement.create({
-    data: { accountId: account.id, productId: product.id, format, language: account.language, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId },
+    data: { accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId },
   });
-  await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.start', targetType: 'advertisement', targetId: ad.id, details: { product: product.slug, format, provider: provider.name } });
+  await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.start', targetType: 'advertisement', targetId: ad.id, details: { product: product.slug, format, provider: provider.name, language: lang, direction: (p.direction ?? null) as Prisma.InputJsonValue } });
 
   try {
     // ── Steps 4–8: concept, audience, occasion, brief & copy (with 30-day idea de-duplication) ──
@@ -103,6 +104,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
           accountName: account.name, businessCategory: account.businessCategory, creativeStyle: s.ai.creativeStyle,
           defaultCta: ctaFor(business, lang), avoidIdeas, avoidHeadlines, attempt,
+          direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion,
         }, s.ai.textModel));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: out.model, kind: 'text', inputTokens: out.usage.inputTokens, outputTokens: out.usage.outputTokens, costUsd: estimateTextCost(s, out.usage.inputTokens, out.usage.outputTokens) });
         return out;
@@ -116,10 +118,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     const briefRow = await prisma.creativeBrief.create({
       data: {
-        accountId: account.id, productId: product.id, language: account.language, ideaKey: brief.ideaKey, idea: brief.idea, audience: brief.audience,
+        accountId: account.id, productId: product.id, language: lang, ideaKey: brief.ideaKey, idea: brief.idea, audience: brief.audience,
         occasion: brief.occasion, sceneDescription: brief.sceneDescription, headline: brief.headline, supportingCopy: brief.supportingCopy || null,
         cta: brief.cta || ctaFor(business, lang), caption: brief.caption, hashtags: brief.hashtags, styleNotes: brief.styleNotes,
-        rawJson: brief as unknown as Prisma.InputJsonValue, provider: provider.name,
+        rawJson: { ...brief, direction: p.direction ?? null } as unknown as Prisma.InputJsonValue, provider: provider.name,
       },
     });
 

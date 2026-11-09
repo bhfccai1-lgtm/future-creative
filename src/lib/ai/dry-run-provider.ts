@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { createHash } from 'node:crypto';
-import type { AiProvider, BriefRequest, CreativeBriefOut } from './types';
+import type { AiProvider, BriefRequest, CreativeBriefOut, IdeaSuggestion } from './types';
+import { CONTENT_TYPES, findOccasion, MARKETS, SEGMENTS } from '../creative/options';
 
 /**
  * Offline provider: no external API calls and no cost. Produces a deterministic but varied
@@ -35,7 +36,8 @@ export class DryRunProvider implements AiProvider {
     const lang = req.language;
     const title = lang === 'ar' ? p.titleAr : lang === 'ml' ? (p.titleMl ?? p.titleEn) : p.titleEn;
     // enumerate (angle × occasion) and pick the first combination not in the avoid list
-    const occs = p.occasions.length ? p.occasions : ['everyday'];
+    const chosenOcc = findOccasion(req.occasionKey);
+    const occs = chosenOcc && chosenOcc.value !== 'everyday' ? [chosenOcc.en] : p.occasions.length ? p.occasions : ['everyday'];
     const combos = ANGLES.flatMap((a) => occs.map((o) => ({ a, o, key: `${p.slug}-${a.key}-${o.replace(/\s+/g, '-')}` })));
     const offset = hashInt(req.accountName + p.slug) % combos.length;
     const avoid = new Set(req.avoidIdeas.map((x) => x.toLowerCase()));
@@ -46,16 +48,17 @@ export class DryRunProvider implements AiProvider {
     }
     const hl = HEADLINES[lang];
     const avoidH = new Set(req.avoidHeadlines);
-    let headline = hl[(hashInt(pick.key) + req.attempt) % hl.length];
+    const occHeadline = lang === 'ar' ? chosenOcc?.headlineAr : lang === 'en' ? chosenOcc?.headlineEn : undefined;
+    let headline = occHeadline && !avoidH.has(occHeadline) ? occHeadline : hl[(hashInt(pick.key) + req.attempt) % hl.length];
     for (let i = 0; i < hl.length && avoidH.has(headline); i++) headline = hl[(hashInt(pick.key) + i + 1) % hl.length];
     const msgs = p.recommendedMessages[lang] ?? p.recommendedMessages.en ?? [];
     const support = msgs.length ? msgs[hashInt(pick.key) % msgs.length] : title;
     const brief: CreativeBriefOut = {
-      idea: `${p.name}: ${pick.a.en} — ${pick.o}`,
+      idea: `${p.name}: ${pick.a.en} — ${pick.o}${req.direction?.userIdea ? ` — ${req.direction.userIdea}` : ''}`,
       ideaKey: pick.key,
       audience: p.targetAudience[hashInt(pick.key) % Math.max(1, p.targetAudience.length)] ?? 'general',
       occasion: pick.o,
-      sceneDescription: `${p.visualGuidelines} Angle: ${pick.a.en}. Occasion: ${pick.o}. No text, no logos.`,
+      sceneDescription: `${p.visualGuidelines} Angle: ${pick.a.en}. Occasion: ${pick.o}.${req.direction ? ' Direction: ' + Object.values(req.direction).join('; ') + '.' : ''} No text, no logos.`,
       headline,
       supportingCopy: support.slice(0, 100),
       cta: req.defaultCta,
@@ -64,6 +67,30 @@ export class DryRunProvider implements AiProvider {
       styleNotes: 'dry-run procedural preview',
     };
     return { brief, model: 'dry-run', usage: { inputTokens: 0, outputTokens: 0 } };
+  }
+
+  /** Offline idea suggestions assembled from the selected options (no API call, no cost). */
+  async suggestIdeas(req: BriefRequest, _model: string, count: number) {
+    const lang = req.language;
+    const t = (o?: { ar: string; en: string }) => (o ? (lang === 'ar' ? o.ar : o.en) : '');
+    const title = lang === 'ar' ? req.product.titleAr : lang === 'ml' ? (req.product.titleMl ?? req.product.titleEn) : req.product.titleEn;
+    const d = req.direction ?? {};
+    const pickBy = (list: { prompt: string; ar: string; en: string }[], prompt?: string) => list.find((o) => o.prompt === prompt);
+    const occ = findOccasion(req.occasionKey);
+    const seg = pickBy(SEGMENTS, d.targetSegment);
+    const mk = pickBy(MARKETS, d.marketAndAudience);
+    const types = d.contentType ? [pickBy(CONTENT_TYPES, d.contentType)!, ...CONTENT_TYPES] : CONTENT_TYPES;
+    const off = hashInt(req.product.slug + (req.occasionKey ?? '') + req.attempt) % CONTENT_TYPES.length;
+    const ideas: IdeaSuggestion[] = [];
+    for (let i = 0; ideas.length < count && i < types.length + CONTENT_TYPES.length; i++) {
+      const ct = i === 0 && d.contentType ? types[0] : CONTENT_TYPES[(off + i) % CONTENT_TYPES.length];
+      const parts = [t(ct), occ && occ.value !== 'everyday' ? t(occ) : '', seg ? t(seg) : '', mk ? t(mk) : ''].filter(Boolean);
+      const idea = lang === 'ar'
+        ? `${title}: ${parts.join(' — ')}. مشهد فاخر يبرز المنتج بوضوح مع إضاءة سينمائية.`
+        : `${title}: ${parts.join(' — ')}. A premium scene that clearly features the product with cinematic lighting.`;
+      if (!ideas.some((x) => x.idea === idea)) ideas.push({ title: `${t(ct)}`, idea });
+    }
+    return { ideas, model: 'dry-run', usage: { inputTokens: 0, outputTokens: 0 } };
   }
 
   async generateScene(_prompt: string, opts: { size: string; seedHint: string }) {
