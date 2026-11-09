@@ -48,6 +48,10 @@ describe('Metricool adapter (mocked HTTP — not proof of real publication)', ()
     const p = adapter(mk(200, {})).parseProfiles([{ id: 11, label: 'Saar', instagram: 'futurecreative', facebookPageId: null }]);
     expect(p).toEqual([expect.objectContaining({ brandId: '11', networks: [{ network: 'instagram', handle: 'futurecreative' }] })]);
   });
+  it('parses the nested networksData brand format returned by Metricool', () => {
+    const p = adapter(mk(200, {})).parseProfiles({ data: [{ id: 7680808, label: 'bhfcc.mugs', timezone: 'Asia/Bahrain', networksData: { instagramData: 'bhfcc.mugs' } }] });
+    expect(p).toEqual([expect.objectContaining({ brandId: '7680808', label: 'bhfcc.mugs', timezone: 'Asia/Bahrain', networks: [{ network: 'instagram', handle: 'bhfcc.mugs' }] })]);
+  });
 });
 
 describe('publication state machine', () => {

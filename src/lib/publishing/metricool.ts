@@ -64,15 +64,26 @@ export class MetricoolAdapter implements PublishingAdapter {
     const arr = Array.isArray(json) ? json : (json as { data?: unknown[] })?.data ?? [];
     return (arr as Record<string, unknown>[]).map((b) => {
       const networks: ProviderProfile['networks'] = [];
-      const has = (k: string) => b[k] !== undefined && b[k] !== null && b[k] !== '';
-      if (has('instagram')) networks.push({ network: 'instagram', handle: String(b.instagram) });
-      if (has('facebookPageId') || has('facebook')) networks.push({ network: 'facebook', id: String(b.facebookPageId ?? b.facebook) });
-      if (has('tiktok')) networks.push({ network: 'tiktok', handle: String(b.tiktok) });
-      if (has('threads')) networks.push({ network: 'threads', handle: String(b.threads) });
-      if (has('youtube')) networks.push({ network: 'youtube', id: String(b.youtube) });
-      if (has('pinterest')) networks.push({ network: 'pinterest', handle: String(b.pinterest) });
-      if (has('linkedinCompany') || has('linkedin')) networks.push({ network: 'linkedin', id: String(b.linkedinCompany ?? b.linkedin) });
-      if (has('twitter')) networks.push({ network: 'twitter', handle: String(b.twitter) });
+      // Metricool returns networks either as top-level fields ("instagram": "handle") or nested
+      // under networksData ("networksData": {"instagramData": "handle"}). Support both.
+      const nd = (b.networksData ?? {}) as Record<string, unknown>;
+      const val = (...keys: string[]) => {
+        for (const k of keys) {
+          for (const v of [b[k], nd[k], nd[`${k}Data`]]) {
+            if (v !== undefined && v !== null && v !== '' && v !== false) return typeof v === 'object' ? JSON.stringify(v) : String(v);
+          }
+        }
+        return null;
+      };
+      const add = (network: SocialPlatform, v: string | null, asId = false) => { if (v) networks.push(asId ? { network, id: v } : { network, handle: v }); };
+      add('instagram', val('instagram'));
+      add('facebook', val('facebookPageId', 'facebook'), true);
+      add('tiktok', val('tiktok'));
+      add('threads', val('threads'));
+      add('youtube', val('youtube'), true);
+      add('pinterest', val('pinterest'));
+      add('linkedin', val('linkedinCompany', 'linkedin'), true);
+      add('twitter', val('twitter'));
       return { brandId: String(b.id ?? b.blogId), label: String(b.label ?? b.title ?? b.id), timezone: b.timezone as string | undefined, networks, raw: { id: b.id, label: b.label } };
     });
   }
