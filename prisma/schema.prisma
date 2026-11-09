@@ -1,0 +1,543 @@
+// FUTURE CREATIVE AI PUBLISHING SYSTEM — PostgreSQL schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+enum Language {
+  ar
+  en
+  ml
+}
+
+enum SocialPlatform {
+  instagram
+  facebook
+  tiktok
+  threads
+  youtube
+  pinterest
+  linkedin
+  twitter
+}
+
+enum ConnectionStatus {
+  NOT_CONNECTED
+  PENDING_VERIFICATION
+  CONNECTED
+  EXPIRED
+  INSUFFICIENT_PERMISSIONS
+  ERROR
+  DISCONNECTED
+}
+
+enum MediaFormat {
+  IMAGE_STORY // 1080x1920 portrait still
+  IMAGE_FEED // 1080x1350
+  IMAGE_SQUARE // 1080x1080
+  REEL_VIDEO // 1080x1920 MP4
+}
+
+// Explicit publication / advertisement state machine (section 12)
+enum AdState {
+  DRAFT
+  GENERATING
+  GENERATED
+  QUALITY_REVIEW
+  APPROVED
+  QUEUED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  UNKNOWN
+  REJECTED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AiJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  BLOCKED_BUDGET
+}
+
+enum FingerprintKind {
+  FILE_SHA256
+  PHASH
+  HEADLINE
+  IDEA
+  PRODUCT_OCCASION
+}
+
+enum AttemptOutcome {
+  ACCEPTED // provider confirmed receipt (scheduled)
+  REJECTED // provider definitively rejected — safe to retry after fix
+  RATE_LIMITED // provider refused, not accepted — safe to retry later
+  UNCERTAIN // timeout / 5xx / network — MUST reconcile before any retry
+}
+
+enum NotificationLevel {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+// ───────────────────────── Identity & access ─────────────────────────
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // ADMIN | EDITOR | VIEWER
+  permissions String[]
+  users       User[]
+  createdAt   DateTime @default(now())
+
+  @@map("roles")
+}
+
+model User {
+  id             String     @id @default(cuid())
+  email          String     @unique
+  name           String
+  passwordHash   String
+  roleId         String
+  role           Role       @relation(fields: [roleId], references: [id])
+  active         Boolean    @default(true)
+  failedLogins   Int        @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  sessionVersion Int        @default(0) // bump to revoke all sessions
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  auditLogs      AuditLog[]
+  approvals      ApprovalRequest[] @relation("decider")
+
+  @@map("users")
+}
+
+// ───────────────────────── Business & brand ─────────────────────────
+model Business {
+  id          String          @id @default(cuid())
+  nameAr      String
+  nameEn      String
+  defaultCtaAr String         @default("اطلب الآن")
+  defaultCtaEn String         @default("Order Now")
+  defaultCtaMl String         @default("ഇപ്പോൾ ഓർഡർ ചെയ്യൂ")
+  timezone    String          @default("Asia/Bahrain")
+  currency    String          @default("BHD")
+  locations   Json // [{key:"saar", nameAr:"سار", nameEn:"Saar", nameMl:"..", phone:"33316319"}]
+  brandAssets BrandAsset[]
+  accounts    SocialAccount[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@map("businesses")
+}
+
+model BrandAsset {
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id])
+  kind        String // LOGO_PRIMARY | LOGO_LIGHT | ...
+  storageKey  String
+  sha256      String
+  width       Int
+  height      Int
+  hasAlpha    Boolean
+  mimeType    String
+  approved    Boolean   @default(false)
+  approvedAt  DateTime?
+  approvedBy  String?
+  active      Boolean   @default(false) // exactly one active approved LOGO_PRIMARY
+  uploadedBy  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([businessId, kind, active])
+  @@map("brand_assets")
+}
+
+// ───────────────────────── Social accounts ─────────────────────────
+model SocialAccount {
+  id                    String           @id @default(cuid())
+  businessId            String
+  business              Business         @relation(fields: [businessId], references: [id])
+  name                  String
+  platform              SocialPlatform
+  handle                String?
+  externalId            String? // provider brand/blog id or platform account id
+  language              Language         @default(ar)
+  businessCategory      String?
+  allowedProductIds     String[]
+  publishFormat         MediaFormat      @default(IMAGE_STORY)
+  publishIntervalMinutes Int             @default(60)
+  publishWindowStart    String           @default("09:00") // local HH:mm
+  publishWindowEnd      String           @default("22:00")
+  timezone              String           @default("Asia/Bahrain")
+  reelDurationSec       Int              @default(12)
+  autoPublishEnabled    Boolean          @default(false) // per-account switch
+  autonomousAuthorized  Boolean          @default(false) // admin explicitly authorised autonomous publishing
+  autonomousAuthorizedAt DateTime?
+  autonomousAuthorizedBy String?
+  nextPublishAt         DateTime?
+  lastPublishedAt       DateTime?
+  maxDailyAds           Int              @default(24)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  connection            SocialConnection?
+  advertisements        Advertisement[]
+  fingerprints          ContentFingerprint[]
+  schedules             PublicationSchedule[]
+  jobs                  PublicationJob[]
+
+  @@index([autoPublishEnabled, nextPublishAt])
+  @@map("social_accounts")
+}
+
+model SocialConnection {
+  id                 String           @id @default(cuid())
+  accountId          String           @unique
+  account            SocialAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  provider           String // "metricool" | "meta" | ...
+  providerBrandId    String? // Metricool blogId
+  providerNetwork    String? // network key used by provider (instagram, facebook, ...)
+  status             ConnectionStatus @default(NOT_CONNECTED)
+  encryptedToken     String? // AES-256-GCM, only for direct OAuth adapters
+  tokenExpiresAt     DateTime?
+  scopes             String[]
+  canPublish         Boolean          @default(false)
+  lastVerifiedAt     DateTime?
+  lastError          String?
+  providerSnapshot   Json? // raw (non-secret) provider confirmation
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@map("social_connections")
+}
+
+// ───────────────────────── Catalog ─────────────────────────
+model ProductCategory {
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  nameAr    String
+  nameEn    String
+  nameMl    String?
+  products  Product[]
+  createdAt DateTime  @default(now())
+
+  @@map("product_categories")
+}
+
+model Product {
+  id                String          @id @default(cuid())
+  slug              String          @unique
+  categoryId        String
+  category          ProductCategory @relation(fields: [categoryId], references: [id])
+  name              String
+  titleAr           String
+  titleEn           String
+  titleMl           String?
+  targetAudience    String[]
+  occasions         String[]
+  visualGuidelines  String
+  recommendedMessages Json // {ar:[...], en:[...], ml:[...]}
+  relevantAccountTags String[]
+  active            Boolean         @default(true)
+  performanceScore  Float           @default(0) // rolling, updated from verified results
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  briefs            CreativeBrief[]
+  advertisements    Advertisement[]
+
+  @@index([active])
+  @@map("products")
+}
+
+// ───────────────────────── Creative ─────────────────────────
+model CreativeBrief {
+  id            String   @id @default(cuid())
+  accountId     String
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  language      Language
+  ideaKey       String // normalised concept key
+  idea          String
+  audience      String
+  occasion      String
+  sceneDescription String
+  headline      String
+  supportingCopy String?
+  cta           String
+  caption       String
+  hashtags      String[]
+  styleNotes    String?
+  rawJson       Json
+  provider      String // openai | dry-run
+  createdAt     DateTime @default(now())
+  advertisements Advertisement[]
+
+  @@index([accountId, createdAt])
+  @@map("creative_briefs")
+}
+
+model DesignTemplate {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  format      MediaFormat
+  layout      Json // layer geometry
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("design_templates")
+}
+
+model Advertisement {
+  id             String         @id @default(cuid())
+  accountId      String
+  account        SocialAccount  @relation(fields: [accountId], references: [id])
+  productId      String
+  product        Product        @relation(fields: [productId], references: [id])
+  briefId        String?
+  brief          CreativeBrief? @relation(fields: [briefId], references: [id])
+  templateKey    String?
+  format         MediaFormat
+  language       Language
+  state          AdState        @default(DRAFT)
+  dryRun         Boolean        @default(false) // produced without real AI — never publishable
+  headline       String?
+  caption        String?
+  logoSha256     String?
+  qcReport       Json?
+  qcPassed       Boolean        @default(false)
+  layerManifest  Json? // what was rendered in which box (for QC & audit)
+  errorMessage   String?
+  scheduleId     String?        @unique
+  schedule       PublicationSchedule? @relation(fields: [scheduleId], references: [id])
+  createdBy      String? // userId or "scheduler"
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  media          MediaAsset[]
+  approvals      ApprovalRequest[]
+  jobs           PublicationJob[]
+  fingerprints   ContentFingerprint[]
+
+  @@index([accountId, createdAt])
+  @@index([state])
+  @@map("advertisements")
+}
+
+model MediaAsset {
+  id              String        @id @default(cuid())
+  advertisementId String?
+  advertisement   Advertisement? @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  role            String // SCENE | FINAL | VIDEO | THUMBNAIL | LAYER
+  storageKey      String        @unique
+  mimeType        String
+  width           Int?
+  height          Int?
+  durationSec     Float?
+  bytes           Int
+  sha256          String
+  phash           String?
+  meta            Json?
+  createdAt       DateTime      @default(now())
+
+  @@index([sha256])
+  @@map("media_assets")
+}
+
+model ContentFingerprint {
+  id              String          @id @default(cuid())
+  accountId       String
+  account         SocialAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  advertisementId String
+  advertisement   Advertisement   @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  kind            FingerprintKind
+  value           String
+  createdAt       DateTime        @default(now())
+
+  @@index([accountId, kind, createdAt])
+  @@index([kind, value])
+  @@map("content_fingerprints")
+}
+
+// ───────────────────────── Scheduling & publishing ─────────────────────────
+model PublicationSchedule {
+  id          String        @id @default(cuid())
+  accountId   String
+  account     SocialAccount @relation(fields: [accountId], references: [id])
+  slotAt      DateTime // publish time slot (UTC)
+  status      String        @default("PLANNED") // PLANNED | GENERATING | READY | DONE | SKIPPED | FAILED
+  reason      String?
+  advertisement Advertisement?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([accountId, slotAt]) // one slot per account per time — idempotent scheduler
+  @@index([slotAt, status])
+  @@map("publication_schedules")
+}
+
+model PublicationJob {
+  id              String         @id @default(cuid())
+  idempotencyKey  String         @unique
+  advertisementId String
+  advertisement   Advertisement  @relation(fields: [advertisementId], references: [id])
+  accountId       String
+  account         SocialAccount  @relation(fields: [accountId], references: [id])
+  provider        String
+  state           AdState        @default(QUEUED)
+  scheduledFor    DateTime
+  lockedBy        String?
+  lockedAt        DateTime?
+  attemptCount    Int            @default(0)
+  nextCheckAt     DateTime?
+  lastError       String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  attempts        PublicationAttempt[]
+  result          PublicationResult?
+
+  @@index([state, nextCheckAt])
+  @@map("publication_jobs")
+}
+
+model PublicationAttempt {
+  id             String         @id @default(cuid())
+  jobId          String
+  job            PublicationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  attemptNo      Int
+  outcome        AttemptOutcome?
+  httpStatus     Int?
+  requestSummary Json?
+  responseSummary Json?
+  error          String?
+  startedAt      DateTime       @default(now())
+  finishedAt     DateTime?
+
+  @@unique([jobId, attemptNo])
+  @@map("publication_attempts")
+}
+
+model PublicationResult {
+  id              String         @id @default(cuid())
+  jobId           String         @unique
+  job             PublicationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  providerPostId  String?
+  providerStatus  String?
+  publicUrl       String?
+  verifiedAt      DateTime? // only set when provider confirmed PUBLISHED
+  metrics         Json?
+  engagementScore Float?
+  rawResponse     Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("publication_results")
+}
+
+model ApprovalRequest {
+  id              String         @id @default(cuid())
+  advertisementId String
+  advertisement   Advertisement  @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
+  reason          String // MANUAL_MODE | ASSISTED_MODE | QC_FAILED
+  status          ApprovalStatus @default(PENDING)
+  decidedById     String?
+  decidedBy       User?          @relation("decider", fields: [decidedById], references: [id])
+  decidedAt       DateTime?
+  note            String?
+  createdAt       DateTime       @default(now())
+
+  @@index([status, createdAt])
+  @@map("approval_requests")
+}
+
+// ───────────────────────── AI accounting ─────────────────────────
+model AiGenerationJob {
+  id              String      @id @default(cuid())
+  advertisementId String?
+  kind            String // BRIEF | IMAGE | REVIEW
+  provider        String
+  model           String
+  status          AiJobStatus @default(PENDING)
+  attempts        Int         @default(0)
+  error           String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  usage           AiUsage[]
+
+  @@index([status])
+  @@map("ai_generation_jobs")
+}
+
+model AiUsage {
+  id           String           @id @default(cuid())
+  jobId        String?
+  job          AiGenerationJob? @relation(fields: [jobId], references: [id])
+  provider     String
+  model        String
+  kind         String // text | image
+  inputTokens  Int              @default(0)
+  outputTokens Int              @default(0)
+  images       Int              @default(0)
+  costUsd      Decimal          @db.Decimal(12, 6)
+  createdAt    DateTime         @default(now())
+
+  @@index([createdAt])
+  @@map("ai_usage")
+}
+
+// ───────────────────────── Ops ─────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  actorLabel String // user email | "scheduler" | "worker"
+  action     String
+  targetType String?
+  targetId   String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String            @id @default(cuid())
+  level     NotificationLevel
+  code      String
+  title     String
+  message   String
+  accountId String?
+  readAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  @@index([readAt, createdAt])
+  @@map("notifications")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  secret    Boolean  @default(false) // value holds {enc:"..."} — never returned to clients
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
