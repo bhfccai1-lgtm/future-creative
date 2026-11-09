@@ -1,8 +1,9 @@
 #!/bin/bash
 # ════════════════════════════════════════════════════════════════════════
 #  FUTURE CREATIVE AI PUBLISHING SYSTEM — automatic install (Hetzner Cloud config)
-#  Paste this whole file into "Cloud config" when creating an Ubuntu 24.04 server.
-#  Fill in the 4 values below first. Use only English letters, digits and "-" in them.
+#  Option A: paste into "Cloud config" when creating an Ubuntu 24.04 server.
+#  Option B (existing server, public repo):  wget <raw-url-of-this-file>  then  bash hetzner-cloud-init.sh
+#  Values left as placeholders are handled automatically (public clone, generated admin password).
 #  Progress log on the server: /var/log/fc-install.log
 # ════════════════════════════════════════════════════════════════════════
 GITHUB_TOKEN="PASTE_GITHUB_TOKEN_HERE"        # fine-grained token, read-only "Contents" for this repo
@@ -13,7 +14,7 @@ REPO="bhfccai1-lgtm/future-creative"
 # ════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
-exec > /var/log/fc-install.log 2>&1
+exec > >(tee -a /var/log/fc-install.log) 2>&1
 echo "=== start $(date -u)"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -29,10 +30,19 @@ ufw --force enable
 
 APP=/opt/future-creative
 if [ ! -d "$APP/.git" ]; then
-  git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" "$APP"
-  git -C "$APP" remote set-url origin "https://github.com/${REPO}.git"   # do not keep the token on disk
+  if [ "$GITHUB_TOKEN" = "PASTE_GITHUB_TOKEN_HERE" ] || [ -z "$GITHUB_TOKEN" ]; then
+    git clone "https://github.com/${REPO}.git" "$APP"                  # public repository
+  else
+    git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" "$APP"
+    git -C "$APP" remote set-url origin "https://github.com/${REPO}.git"   # do not keep the token on disk
+  fi
 fi
 cd "$APP"
+
+if [ "$ADMIN_PASSWORD" = "CHANGE-ME-Strong-2026" ] || [ -z "$ADMIN_PASSWORD" ]; then
+  ADMIN_PASSWORD="Fc-$(openssl rand -hex 6)-2026"
+fi
+[ "$ACME_EMAIL" = "you@example.com" ] && ACME_EMAIL=""
 
 IP=$(curl -4 -fsS https://api.ipify.org)
 DOMAIN="$(echo "$IP" | tr . -).sslip.io"
@@ -63,5 +73,11 @@ done
 # remove the admin password from .env once the account exists
 sed -i 's|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=|' .env
 
-echo "=== DONE $(date -u)  →  https://${DOMAIN}"
-echo "https://${DOMAIN}" > /root/SITE_URL.txt
+printf 'URL:      https://%s\nEmail:    %s\nPassword: %s\n' "$DOMAIN" "$ADMIN_EMAIL" "$ADMIN_PASSWORD" > /root/SITE-LOGIN.txt
+chmod 600 /root/SITE-LOGIN.txt
+echo
+echo "════════════════════════════════════════════"
+echo "  DONE  $(date -u)"
+cat /root/SITE-LOGIN.txt
+echo "  (saved in /root/SITE-LOGIN.txt)"
+echo "════════════════════════════════════════════"
