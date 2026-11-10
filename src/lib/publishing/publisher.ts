@@ -1,6 +1,5 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
-import { getSettings } from '../settings';
 import { audit, notify } from '../audit';
 import { getAdapter } from './registry';
 import type { PublishRequest } from './types';
@@ -11,6 +10,8 @@ import { getBusiness, locationsOf } from '../business';
 import type { QcReport } from '../qc';
 import { enq } from '../queue/queues';
 import type { SocialPlatform } from '@prisma/client';
+import { fitCaption } from './caption';
+import { getSettings } from '../settings';
 
 export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
 
@@ -25,6 +26,13 @@ async function fail(jobId: string, adId: string, reason: string, accountId: stri
 
 export function contactFooter(lang: string, locs: { nameAr: string; nameEn: string; nameMl?: string; phone: string }[]) {
   return '📞 ' + locs.map((l) => `${lang === 'ar' ? l.nameAr : lang === 'ml' ? l.nameMl ?? l.nameEn : l.nameEn} ${l.phone}`).join(' | ');
+}
+
+/** Text that fits every chosen network; optionally moves hashtags to the first comment (Instagram/Facebook only). */
+function captionFor(caption: string, contactLine: string, networks: SocialPlatform[], hashtagsInFirstComment: boolean) {
+  const commentOk = hashtagsInFirstComment && networks.every((n) => n === 'instagram' || n === 'facebook');
+  const fit = fitCaption(caption, contactLine, networks, { hashtagsSeparately: commentOk });
+  return { text: fit.text, firstComment: commentOk && fit.hashtags.length ? fit.hashtags.join(' ') : undefined };
 }
 
 /** Publishing networks: the account's own platform first, then any extra chosen channels. */
@@ -46,7 +54,7 @@ export function unavailableChannels(networks: SocialPlatform[], snapshot: unknow
 }
 
 export async function buildPublishRequest(jobId: string): Promise<PublishRequest> {
-  const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId }, include: { advertisement: { include: { media: true } }, account: { include: { connection: true } } } });
+  const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId }, include: { advertisement: { include: { media: true, product: true } }, account: { include: { connection: true } } } });
   const ad = job.advertisement;
   const isVideo = ad.format === 'REEL_VIDEO';
   const main = ad.media.find((m) => m.role === (isVideo ? 'VIDEO' : 'FINAL'));
@@ -54,15 +62,17 @@ export async function buildPublishRequest(jobId: string): Promise<PublishRequest
   const thumb = ad.media.find((m) => m.role === 'THUMBNAIL');
   const business = await getBusiness();
   const opts = (ad.options ?? {}) as { audio?: string | null; audioQuery?: string | null };
+  const networks = targetNetworks(job.account.platform, ad.channels);
   return {
     idempotencyKey: job.idempotencyKey,
     providerBrandId: job.account.connection!.providerBrandId!,
-    networks: targetNetworks(job.account.platform, ad.channels),
+    networks,
     instagramAudio: ad.format === 'REEL_VIDEO' && opts.audio === 'instagram' && opts.audioQuery ? opts.audioQuery : undefined,
     format: ad.format,
     publishAt: job.scheduledFor,
     timezone: job.account.timezone,
-    text: `${ad.caption ?? ''}\n\n${contactFooter(ad.language, locationsOf(business))}`.trim(),
+    ...captionFor(ad.caption ?? '', contactFooter(ad.language, locationsOf(business)), networks, (await getSettings()).metricool.hashtagsInFirstComment),
+    altText: [ad.headline, ad.product?.titleAr && ad.language === 'ar' ? ad.product.titleAr : ad.product?.titleEn, 'مطبعة إبداع المستقبل — Future Creative Printing'].filter(Boolean).join(' — '),
     mediaUrls: [signedMediaUrl(main.storageKey)],
     thumbnailUrl: thumb ? signedMediaUrl(thumb.storageKey) : undefined,
     title: ad.headline ?? undefined,

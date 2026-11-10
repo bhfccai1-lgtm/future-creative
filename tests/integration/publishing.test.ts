@@ -271,6 +271,9 @@ describe('publishing channels', () => {
     const job = await publishNow(ok.advertisement.id, admin);
     expect(await processPublishJob(job.id, 'w')).toBe('SCHEDULED');
     expect(adapter.submits[0].networks).toEqual(['instagram', 'facebook']);
+    expect(adapter.submits[0].text).toContain('33316319');
+    expect(adapter.submits[0].mediaUrls[0]).toMatch(/\/api\/m\/\d+\/[^/]+\/ads\/.+\.jpg$/);
+    expect(adapter.submits[0].altText).toBeTruthy();
     const bad = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'tester', direction: { channels: ['tiktok'] } });
     const job2 = await publishNow(bad.advertisement.id, admin);
     expect(await processPublishJob(job2.id, 'w')).toBe('FAILED');

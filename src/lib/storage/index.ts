@@ -61,8 +61,9 @@ export function setStorageForTests(s: Storage) { instance = s; }
 export function signedMediaUrl(key: string, ttlSeconds = 7 * 24 * 3600, now = Date.now()) {
   const exp = Math.floor(now / 1000) + ttlSeconds;
   const sig = hmac(`media:${key}:${exp}`);
-  const u = new URL('/api/public-media', env().PUBLIC_BASE_URL);
-  u.searchParams.set('k', key); u.searchParams.set('e', String(exp)); u.searchParams.set('s', sig);
+  // Path-style URL that ENDS with the real file name/extension (…/final.jpg, …/reel.mp4):
+  // publishing providers detect the media type from the URL and re-host it.
+  const u = new URL(`/api/m/${exp}/${sig}/${key.split('/').map(encodeURIComponent).join('/')}`, env().PUBLIC_BASE_URL);
   return u.toString();
 }
 

@@ -97,17 +97,19 @@ export class MetricoolAdapter implements PublishingAdapter {
   buildBody(req: PublishRequest) {
     const nets = [...new Set(req.networks.map((n) => NETWORK[n]))];
     const isVideo = req.format === 'REEL_VIDEO';
+    // Stories carry no caption: when EVERY target is a story, Metricool rejects/ignores text.
+    const storyOnly = req.format === 'IMAGE_STORY' && nets.every((n) => n === 'instagram' || n === 'facebook');
     const body: Record<string, unknown> = {
       publicationDate: { dateTime: localDateTime(req.publishAt, req.timezone), timezone: req.timezone },
-      text: req.text,
+      text: storyOnly ? '' : req.text,
       providers: nets.map((network) => ({ network })),
       media: req.mediaUrls,
       autoPublish: true,
       draft: false,
       shortener: false,
-      firstCommentText: '',
+      firstCommentText: storyOnly ? '' : (req.firstComment ?? ''),
       descendants: [],
-      mediaAltText: [],
+      mediaAltText: req.altText ? req.mediaUrls.map(() => req.altText!.slice(0, 1000)) : [],
       smartLinkData: { ids: [] },
     };
     const title = req.title ?? req.text.slice(0, 90);

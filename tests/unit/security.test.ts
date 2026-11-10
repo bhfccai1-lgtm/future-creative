@@ -48,7 +48,10 @@ describe('signed public media URLs', () => {
     const { signedMediaUrl, verifyMediaSignature } = await import('@/lib/storage');
     const now = Date.now();
     const u = new URL(signedMediaUrl('ads/a/b/final.jpg', 60, now));
-    const [k, e, s] = ['k', 'e', 's'].map((x) => u.searchParams.get(x)!);
+    expect(u.pathname.endsWith('/final.jpg')).toBe(true); // providers detect the type from the extension
+    const [, , , e, s, ...rest] = u.pathname.split('/');
+    const k = rest.map(decodeURIComponent).join('/');
+    expect(k).toBe('ads/a/b/final.jpg');
     expect(verifyMediaSignature(k, e, s, now)).toBe(true);
     expect(verifyMediaSignature('ads/other.jpg', e, s, now)).toBe(false);
     expect(verifyMediaSignature(k, e, s, now + 120_000)).toBe(false);

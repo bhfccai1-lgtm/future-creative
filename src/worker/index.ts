@@ -13,6 +13,8 @@ import { reconcileSweep } from '../lib/publishing/reconcile';
 import { recoverAfterRestart, applyRetention } from '../lib/ops/recovery';
 import { refreshPerformanceScores } from '../lib/creative/selector';
 import { runCampaignCycle } from '../lib/campaigns/cycle';
+import { verifyConnections } from '../lib/publishing/health';
+import { getAdapter } from '../lib/publishing/registry';
 import { prisma } from '../lib/db';
 import { notify } from '../lib/audit';
 import { env } from '../lib/env';
@@ -36,7 +38,11 @@ async function main() {
 
   const workers = [
     new Worker(QUEUE.scheduler, async (job: Job) => {
-      if (job.name === 'cycle') return runSchedulerCycle();
+      if (job.name === 'cycle') {
+        // hourly: re-verify every linked account with Metricool before planning (one API call)
+        const health = await getAdapter('metricool').then(verifyConnections).catch((e) => ({ error: (e as Error).message }));
+        return { health, cycle: await runSchedulerCycle() };
+      }
       if (job.name === 'reconcile') return reconcileSweep();
       if (job.name === 'campaigns') return runCampaignCycle();
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };

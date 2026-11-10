@@ -125,3 +125,20 @@ describe('one-click Metricool linking', () => {
     expect(await prisma.socialConnection.count()).toBe(2);
   });
 });
+
+describe('connection health check', () => {
+  it('stops publishing for accounts whose network vanished in Metricool, restores them when back', async () => {
+    const { verifyConnections } = await import('@/lib/publishing/health');
+    const { accounts } = await seedBase({ accounts: 2 });
+    const brands = (withSecond: boolean) => ({ listProfiles: async () => [
+      { brandId: '1000', label: 'a', networks: [{ network: 'instagram' as const }] },
+      { brandId: '1001', label: 'b', networks: withSecond ? [{ network: 'instagram' as const }] : [] },
+    ] }) as never;
+    expect(await verifyConnections(brands(false))).toEqual({ ok: 1, lost: 1, restored: 0 });
+    const c = await prisma.socialConnection.findUniqueOrThrow({ where: { accountId: accounts[1].id } });
+    expect(c).toMatchObject({ status: 'INSUFFICIENT_PERMISSIONS', canPublish: false });
+    expect(await prisma.notification.count({ where: { code: 'CONNECTION_LOST' } })).toBe(1);
+    expect(await verifyConnections(brands(true))).toEqual({ ok: 1, lost: 0, restored: 1 });
+    expect((await prisma.socialConnection.findUniqueOrThrow({ where: { accountId: accounts[1].id } })).canPublish).toBe(true);
+  });
+});

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { CSRF_COOKIE, SESSION_COOKIE, verifySession, cookieSecure } from './lib/auth/session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health', '/api/public-media', '/api/webhooks/'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health', '/api/public-media', '/api/m/', '/api/webhooks/'];
 
 /**
  * Edge middleware:

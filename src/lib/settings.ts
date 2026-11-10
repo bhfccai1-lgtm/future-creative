@@ -51,6 +51,8 @@ export const SettingsSchema = z.object({
     lastCheckOk: z.boolean().default(false),
     lastCheckMessage: z.string().nullable().default(null),
     requestsPerMinute: z.number().int().min(1).max(600).default(30),
+    /** Instagram/Facebook: put hashtags in the first comment instead of the caption. */
+    hashtagsInFirstComment: z.boolean().default(false),
   }).default({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;

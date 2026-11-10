@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
+type MSettings = { userId: string; baseUrl: string; requestsPerMinute: number; hashtagsInFirstComment?: boolean };
 type Profile = { brandId: string; label: string; timezone?: string; networks: { network: string; handle?: string; id?: string }[] };
 
-export function IntegrationsForm({ m, token }: { m: { userId: string; baseUrl: string; requestsPerMinute: number }; token: { configured: boolean; last4: string | null } }) {
+export function IntegrationsForm({ m, token }: { m: MSettings; token: { configured: boolean; last4: string | null } }) {
   const router = useRouter();
   const [v, setV] = useState(m);
   const [tok, setTok] = useState('');
@@ -24,6 +25,7 @@ export function IntegrationsForm({ m, token }: { m: { userId: string; baseUrl: s
         <div><label className="label">Metricool user ID</label><input className="input ltr" value={v.userId} onChange={(e) => setV({ ...v, userId: e.target.value })} /></div>
         <div><label className="label">Base URL</label><input className="input ltr" value={v.baseUrl} onChange={(e) => setV({ ...v, baseUrl: e.target.value })} /></div>
         <div><label className="label">حد الطلبات في الدقيقة</label><input type="number" min={1} className="input" value={v.requestsPerMinute} onChange={(e) => setV({ ...v, requestsPerMinute: Number(e.target.value) })} /></div>
+        <label className="flex items-center gap-2 text-sm md:col-span-2"><input type="checkbox" checked={!!v.hashtagsInFirstComment} onChange={(e) => setV({ ...v, hashtagsInFirstComment: e.target.checked })} /> وضع الهاشتاقات في أول تعليق بدل النص (إنستغرام وفيسبوك فقط) — نص أنظف</label>
         <div className="flex flex-wrap gap-2 md:col-span-2">
           <Button>حفظ</Button>
           <Button type="button" variant="outline" onClick={async () => { setMsg(null); try { const r = await apiCall<{ ok: boolean; message: string }>('/api/settings/integrations/verify', { method: 'POST' }); setMsg({ ok: r.ok, t: r.message }); router.refresh(); } catch (x) { setMsg({ ok: false, t: (x as Error).message }); } }}>اختبار الاتصال</Button>
@@ -34,6 +36,11 @@ export function IntegrationsForm({ m, token }: { m: { userId: string; baseUrl: s
             try { const r = await apiCall<{ result: { brand: string; account: string; action: string; reason?: string }[] }>('/api/accounts/link-metricool', { method: 'POST' }); setLinked(r.result); setMsg({ ok: true, t: `تم ربط ${r.result.filter((x) => x.action !== 'skipped').length} حساب ✓` }); router.refresh(); }
             catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
           }}>ربط كل الحسابات تلقائيًا</Button>
+          <Button type="button" variant="outline" onClick={async () => {
+            setMsg(null);
+            try { const r = await apiCall<{ ok: number; lost: number; restored: number }>('/api/accounts/verify-all', { method: 'POST' }); setMsg({ ok: r.lost === 0, t: `سليم: ${r.ok} · عاد: ${r.restored} · منقطع: ${r.lost}${r.lost ? ' — راجع «الأخطاء والتنبيهات»' : ''}` }); router.refresh(); }
+            catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
+          }}>فحص كل الحسابات الآن</Button>
         </div>
       </form>
       {msg && <p className={msg.ok ? 'text-sm text-emerald-700' : 'rounded bg-red-50 p-2 text-sm text-red-700'}>{msg.t}</p>}

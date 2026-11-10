@@ -17,11 +17,11 @@ export interface SlotRule {
 }
 
 /**
- * "Best time" = default local hours ranked by typical Gulf engagement for Instagram/TikTok
- * (lunch break, after-work evening, late evening). This is a general heuristic, not account data:
- * it can later be replaced by Metricool's best-time-to-post per network.
+ * "Best time" ranking from REAL Metricool best-time-to-post data for the brand's Instagram audience
+ * (bhfcc.mugs, Asia/Bahrain, Nov 2026): peak 10:00, then 11–12, then the 18:00 evening peak.
+ * Late evening (21–23) is among the weakest hours for this audience.
  */
-export const BEST_HOURS_RANKED = [20, 13, 21, 18, 12, 22, 10, 16, 9, 15, 19, 11];
+export const BEST_HOURS_RANKED = [10, 11, 12, 18, 9, 17, 16, 15, 13, 14, 19, 8];
 
 const dow = (d: Date) => Number(formatInTimeZone(d, TZ, 'i')) % 7; // ISO 1..7 (Mon..Sun) → 0=Sun
 const dayAllowed = (d: Date, days: number[]) => !days.length || days.includes(dow(d));
@@ -33,7 +33,12 @@ const addDays = (ymd: string, n: number) => formatInTimeZone(new Date(fromZonedT
 export function bestHoursFor(everyHours: number): number[] {
   if (everyHours >= 24) return [BEST_HOURS_RANKED[0]];
   const perDay = Math.max(1, Math.min(BEST_HOURS_RANKED.length, Math.floor(24 / Math.max(1, everyHours))));
-  return BEST_HOURS_RANKED.slice(0, perDay).sort((a, b) => a - b);
+  // pick the best-ranked hours while keeping them spread out (no 10:00, 11:00, 12:00 clusters)
+  const gap = Math.max(2, Math.floor((24 / perDay) * 0.5));
+  const picked: number[] = [];
+  for (const h of BEST_HOURS_RANKED) if (picked.length < perDay && picked.every((p) => Math.abs(p - h) >= gap)) picked.push(h);
+  for (const h of BEST_HOURS_RANKED) if (picked.length < perDay && !picked.includes(h)) picked.push(h);
+  return picked.sort((a, b) => a - b);
 }
 
 /** Next slot strictly after `after`, or null if the campaign is finished. */

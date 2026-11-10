@@ -14,6 +14,10 @@ export interface PublishRequest {
   aiGenerated: boolean;
   /** Instagram Reels only: search term / id for licensed Instagram audio (resolved by Metricool). */
   instagramAudio?: string;
+  /** Accessibility / SEO description of the media. */
+  altText?: string;
+  /** Optional first comment (e.g. hashtags kept out of the caption on Instagram/Facebook). */
+  firstComment?: string;
 }
 
 export type SubmitOutcome =

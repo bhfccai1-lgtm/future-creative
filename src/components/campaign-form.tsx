@@ -103,7 +103,7 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
                   <label className="flex items-center gap-2"><input type="radio" checked={v.timeMode === 'BEST'} onChange={() => set('timeMode')('BEST')} /> أفضل وقت للنشر تلقائيًا</label>
                   <label className="flex items-center gap-2"><input type="radio" checked={v.timeMode === 'FIXED'} onChange={() => set('timeMode')('FIXED')} /> أحدد وقت البداية بنفسي</label>
                 </div>
-                {v.timeMode === 'BEST' && <p className="mt-1 text-xs text-slate-500">ساعات الذروة المعتادة في الخليج: {bestHoursFor(v.everyHours).map((h) => `${h}:00`).join('، ')} (قاعدة عامة، وليست بيانات حساباتك).</p>}
+                {v.timeMode === 'BEST' && <p className="mt-1 text-xs text-slate-500">أفضل الساعات: {bestHoursFor(v.everyHours).map((h) => `${h}:00`).join('، ')} (حسب بيانات Metricool الفعلية لجمهورك على إنستغرام).</p>}
               </div>
             </div>
             <div>
