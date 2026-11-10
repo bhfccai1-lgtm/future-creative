@@ -53,7 +53,7 @@ export async function rejectAdvertisement(adId: string, user: { id: string; emai
 export async function autoApproveAndQueue(adId: string) {
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId }, include: { schedule: true } });
   const qc = ad.qcReport as unknown as QcReport | null;
-  if (!qc?.publishable || ad.dryRun) return null;
+  if (!qc?.publishable || qc.requiresHuman || ad.dryRun) return null; // AI-drawn text always needs a human
   if (!(await moveAd(adId, 'QUALITY_REVIEW', 'APPROVED'))) return null;
   await audit({ actorLabel: 'scheduler', action: 'ad.auto_approve', targetType: 'advertisement', targetId: adId });
   const when = ad.schedule?.slotAt ?? new Date();

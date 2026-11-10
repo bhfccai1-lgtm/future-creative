@@ -7,6 +7,7 @@ export const CreativeBriefSchema = z.object({
   occasion: z.string().min(2).max(120),
   sceneDescription: z.string().min(20).max(1500),
   headline: z.string().min(2).max(60),
+  badge: z.string().max(24).default(''),
   supportingCopy: z.string().max(110),
   cta: z.string().min(2).max(30),
   caption: z.string().min(10).max(1800),
@@ -18,15 +19,16 @@ export type CreativeBriefOut = z.infer<typeof CreativeBriefSchema>;
 /** JSON schema for OpenAI structured outputs (strict mode — all fields required). */
 export const CreativeBriefJsonSchema = {
   type: 'object', additionalProperties: false,
-  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes'],
+  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'badge', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes'],
   properties: {
     idea: { type: 'string', description: 'One-sentence advertising concept, in English' },
     ideaKey: { type: 'string', description: 'short kebab-case English key summarising the concept angle, e.g. "mug-morning-ritual-gift"' },
     audience: { type: 'string' },
     occasion: { type: 'string' },
-    sceneDescription: { type: 'string', description: 'English photographic scene description for the image model. Must NOT request any text, letters, numbers, logos or watermarks.' },
-    headline: { type: 'string', description: 'Headline in the target language, max 6 words' },
-    supportingCopy: { type: 'string', description: 'Optional one-line supporting copy in the target language, max 12 words, may be empty' },
+    sceneDescription: { type: 'string', description: 'English photo brief for the image model: ONE hero product, large and sharp in the centre, with a tasteful printed ILLUSTRATION on it that fits the occasion (no letters), 2-4 styled props, warm bright commercial lighting, bokeh background. Must NOT request text, letters, numbers, logos or watermarks.' },
+    headline: { type: 'string', description: 'Short kicker line above the badge in the target language, 2-4 words (e.g. "طباعة جميع أنواع", "Custom printed")' },
+    badge: { type: 'string', description: 'The hero keyword shown big inside a gold badge: the product name in 1-2 words in the target language (e.g. "الأكواب", "الملصقات", "Mugs")' },
+    supportingCopy: { type: 'string', description: 'One short line under the badge in the target language, 2-6 words (e.g. "بتصاميمك الخاصة")' },
     cta: { type: 'string', description: 'Call to action in the target language' },
     caption: { type: 'string', description: 'High-reach social caption in the target language: hook line, 2-4 short benefit lines, engagement prompt, CTA. No prices, discounts, delivery times, unverifiable superlatives or phone numbers. Hashtags go in the hashtags field, not here.' },
     hashtags: { type: 'array', items: { type: 'string' }, description: '8-12 hashtags, each starting with #: local reach + niche product + occasion + 1-2 English' },
@@ -61,6 +63,8 @@ export interface AiProvider {
   readonly name: string;
   readonly isDryRun: boolean;
   generateBrief(req: BriefRequest, model: string): Promise<{ brief: CreativeBriefOut; usage: TextUsage; model: string }>;
+  /** Optional vision transcription of text drawn in an image (used to review full-AI posters). */
+  readText?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
   suggestIdeas(req: BriefRequest, model: string, count: number): Promise<{ ideas: IdeaSuggestion[]; usage: TextUsage; model: string }>;
   generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string }): Promise<ImageResult>;
 }

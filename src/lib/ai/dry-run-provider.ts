@@ -60,6 +60,7 @@ export class DryRunProvider implements AiProvider {
       occasion: pick.o,
       sceneDescription: `${p.visualGuidelines} Angle: ${pick.a.en}. Occasion: ${pick.o}.${req.direction ? ' Direction: ' + Object.values(req.direction).join('; ') + '.' : ''} No text, no logos.`,
       headline,
+      badge: (lang === 'ar' ? p.titleAr : lang === 'ml' ? (p.titleMl ?? p.titleEn) : p.titleEn).split(/\s+/).slice(-2).join(' ').slice(0, 24),
       supportingCopy: support.slice(0, 100),
       cta: req.defaultCta,
       caption: `${title} — ${support}`,
@@ -106,9 +107,9 @@ export class DryRunProvider implements AiProvider {
       <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1730"/><stop offset="0.55" stop-color="#1a3266"/><stop offset="1" stop-color="#060d1e"/></linearGradient>
       <radialGradient id="s" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#d4af37" stop-opacity="0.55"/><stop offset="1" stop-color="#d4af37" stop-opacity="0"/></radialGradient></defs>
       <rect width="100%" height="100%" fill="url(#g)"/>${shapes}
-      <ellipse cx="${w / 2}" cy="${h * 0.52}" rx="${w * 0.42}" ry="${h * 0.2}" fill="url(#s)"/>
-      <rect x="${w * 0.3}" y="${h * 0.38}" width="${w * 0.4}" height="${h * 0.26}" rx="28" fill="#f5f1e6" stroke="#d4af37" stroke-width="8"/>
-      <rect x="${w * 0.34}" y="${h * 0.42}" width="${w * 0.32}" height="${h * 0.18}" rx="14" fill="hsl(${hue},50%,40%)"/>
+      <ellipse cx="${w * (0.3 + ((n >> 3) % 40) / 100)}" cy="${h * (0.4 + ((n >> 6) % 25) / 100)}" rx="${w * 0.42}" ry="${h * 0.2}" fill="url(#s)"/>
+      <rect x="${w * (0.12 + ((n >> 9) % 40) / 100)}" y="${h * (0.3 + ((n >> 12) % 30) / 100)}" width="${w * (0.25 + ((n >> 15) % 25) / 100)}" height="${h * (0.15 + ((n >> 18) % 20) / 100)}" rx="${10 + (n % 40)}" fill="#f5f1e6" stroke="#d4af37" stroke-width="8" transform="rotate(${(n % 31) - 15} ${w / 2} ${h / 2})"/>
+      <rect x="${w * (0.05 + ((n >> 21) % 50) / 100)}" y="${h * (0.55 + ((n >> 24) % 20) / 100)}" width="${w * 0.3}" height="${h * 0.12}" rx="14" fill="hsl(${(hue + 140) % 360},50%,40%)" opacity="0.85"/>
     </svg>`;
     return { png: await sharp(Buffer.from(svg)).png().toBuffer(), model: 'dry-run' };
   }

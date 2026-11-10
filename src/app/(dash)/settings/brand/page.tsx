@@ -2,7 +2,8 @@ import { prisma } from '@/lib/db';
 import { requirePageUser } from '@/lib/auth/server';
 import { getBusiness, locationsOf } from '@/lib/business';
 import { Card, PageHeader, Badge } from '@/components/ui';
-import { LogoUpload, BusinessForm } from '@/components/brand-forms';
+import { LogoUpload, BusinessForm, FeaturesForm } from '@/components/brand-forms';
+import { getSettings } from '@/lib/settings';
 import { ActionButton } from '@/components/action-button';
 import { fmtLocal } from '@/lib/time';
 
@@ -42,6 +43,7 @@ export default async function BrandPage() {
           ))}
         </div>
       </Card>
+      <Card title="مزايا المطبعة (أيقونات الملصق الذهبي)" className="mt-6"><FeaturesForm f={(await getSettings()).brandFeatures} /></Card>
       <Card title="بيانات الشركة والفروع" className="mt-6"><BusinessForm b={{ nameAr: b.nameAr, nameEn: b.nameEn, defaultCtaAr: b.defaultCtaAr, defaultCtaEn: b.defaultCtaEn, defaultCtaMl: b.defaultCtaMl, locations: locationsOf(b) }} /></Card>
     </>
   );

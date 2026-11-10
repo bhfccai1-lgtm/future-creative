@@ -106,6 +106,20 @@ export class OpenAiProvider implements AiProvider {
     return { ideas, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async readText(png: Buffer, model: string) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: 'Transcribe ALL visible text in this advertisement image exactly as written (any language), one item per line. Do not translate or correct spelling. If a word is malformed or illegible, write it as you see it and append [?].' },
+          { type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${png.toString('base64')}` } },
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('read-text'));
+    } catch (e) { throw mapError(e); }
+    return { text: res.choices[0]?.message?.content ?? '', model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024' }) {
     let res;
     try {

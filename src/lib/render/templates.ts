@@ -46,4 +46,11 @@ export const TEMPLATES: Template[] = [
 
 export const getTemplate = (key?: string | null) => TEMPLATES.find((t) => t.key === key) ?? TEMPLATES[0];
 
+/** Layout choices for the UI. 'gold-poster' is the premium default for vertical (1080×1920) formats. */
+export const LAYOUTS = [
+  { value: 'gold-poster', ar: 'ملصق ذهبي فاخر (موصى به)' },
+  { value: 'navy-gold-classic', ar: 'كلاسيكي بسيط' },
+  { value: 'gold-frame-lower', ar: 'إطار ذهبي' },
+] as const;
+
 export const px = (b: Box, W: number, H: number) => ({ x: Math.round(b.x * W), y: Math.round(b.y * H), w: Math.round(b.w * W), h: Math.round(b.h * H) });

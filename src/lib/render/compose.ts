@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import type { MediaFormat } from '@prisma/client';
 import { renderText, type RenderedText } from './text';
 import { FORMAT_SIZE, getTemplate, px } from './templates';
+import { AI_POSTER_KEY, POSTER_KEY, buildAiPosterBackground, buildPosterBackground, composeAiPoster, composePoster } from './poster';
 import type { Lang } from './fonts';
 
 export const COLORS = { navy: '#0b1730', navyMid: '#13265a', gold: '#d4af37', goldLight: '#ecd58c', white: '#ffffff' };
@@ -24,6 +25,9 @@ export interface ComposeInput {
   headline: string; supportingCopy?: string | null; cta: string;
   logo: Buffer; contacts: ContactLine[];
   theme?: ThemeKey;
+  /** Gold-poster layout only: product keyword in the gold badge + benefit badges. */
+  badge?: string | null;
+  features?: string[];
 }
 
 export interface PlacedLayer {
@@ -42,7 +46,7 @@ export interface ComposeResult {
 
 export interface LayerManifest {
   width: number; height: number; templateKey: string; lang: Lang;
-  layers: { id: string; text?: string; rect: { left: number; top: number; width: number; height: number }; box: { x: number; y: number; w: number; h: number }; fits: boolean; missing: string[]; fontSize?: number; color?: string }[];
+  layers: { id: string; text?: string; rect: { left: number; top: number; width: number; height: number }; box: { x: number; y: number; w: number; h: number }; fits: boolean; missing: string[]; fontSize?: number; color?: string; solid?: boolean }[];
 }
 
 const shadeSvg = (W: number, H: number, from: number, to: number, dir: 'down' | 'up', color: string = COLORS.navy) => {
@@ -72,6 +76,8 @@ async function clip(png: Buffer, w: number, h: number) {
  * The AI never draws text, numbers or the logo.
  */
 export async function composeAdvertisement(input: ComposeInput): Promise<ComposeResult> {
+  if (input.templateKey === AI_POSTER_KEY && FORMAT_SIZE[input.format].h === 1920) return composeAiPoster(input);
+  if (input.templateKey === POSTER_KEY && FORMAT_SIZE[input.format].h === 1920) return composePoster(input);
   const { w: W, h: H } = FORMAT_SIZE[input.format];
   const t = getTemplate(input.templateKey);
   const scale = W / 1080;
@@ -146,7 +152,9 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
  * Layer 1 + static decoration (shading, bottom panel, dividers, frame) for a scene.
  * Exported so pro reels can build extra scenes with exactly the same layout.
  */
-export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, templateKey: string | null | undefined, contactsCount: number, themeKey: ThemeKey = 'navy_gold'): Promise<Buffer> {
+export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, templateKey: string | null | undefined, contactsCount: number, themeKey: ThemeKey = 'navy_gold', featureCount = 4): Promise<Buffer> {
+  if (templateKey === AI_POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildAiPosterBackground(sceneBuf);
+  if (templateKey === POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildPosterBackground(sceneBuf, featureCount);
   const { w: W, h: H } = FORMAT_SIZE[format];
   const t = getTemplate(templateKey);
   const scale = W / 1080;

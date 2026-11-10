@@ -1,15 +1,19 @@
 'use client';
-import { AUDIO_TYPES, CHANNELS, DESIGN_STYLES, DESIGN_TYPES, REEL_DURATIONS, REEL_STYLES, proSceneCount } from '@/lib/creative/options';
+import { LAYOUTS } from '@/lib/render/templates';
+import { RENDER_MODES, AUDIO_TYPES, CHANNELS, DESIGN_STYLES, DESIGN_TYPES, REEL_DURATIONS, REEL_STYLES, proSceneCount } from '@/lib/creative/options';
 
 export interface DesignValues {
-  designType: string; designStyle: string; channels: string[];
+  renderMode: string; customPrompt: string; layout: string; designType: string; designStyle: string; channels: string[];
   reelStyle: string; reelDuration: string; audio: string; audioQuery: string;
 }
-export const EMPTY_DESIGN: DesignValues = { designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: 'none', audioQuery: '' };
+export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: 'none', audioQuery: '' };
 
 /** Adds the design/channel/reel options of a DesignValues object to a direction payload. */
 export function designDirection(v: DesignValues, format: string) {
   const d: Record<string, unknown> = {};
+  if (v.renderMode) d.renderMode = v.renderMode;
+  if (v.renderMode === 'ai_full' && v.customPrompt.trim()) d.customPrompt = v.customPrompt.trim();
+  if (v.layout) d.layout = v.layout;
   if (v.designType) d.designType = v.designType;
   if (v.designStyle) d.designStyle = v.designStyle;
   if (v.channels.length) d.channels = v.channels;
@@ -32,8 +36,32 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
   const dur = Number(v.reelDuration || 12);
   return (
     <>
-      <fieldset className="grid gap-4 md:grid-cols-3">
+      <fieldset className="space-y-3">
+        <legend className="mb-2 text-sm font-extrabold text-navy-800">طريقة التصميم</legend>
+        <div className="grid gap-3 md:grid-cols-2">
+          {RENDER_MODES.map((m) => (
+            <button type="button" key={m.value} onClick={() => set({ renderMode: m.value })}
+              className={`rounded-xl border-2 p-3 text-right text-sm ${v.renderMode === m.value ? 'border-gold-500 bg-gold-300/20' : 'border-slate-200'}`}>
+              <div className="font-extrabold">{m.ar}</div>
+              <div className="mt-1 text-xs text-slate-600">{m.value === 'ai_full'
+                ? 'يرسم الذكاء الاصطناعي الملصق كاملًا (العناوين، الشارة الذهبية، المزايا، الزخارف، المنتج). النظام يضيف الشعار الأصلي والأرقام وزر الطلب. يتطلب موافقتك دائمًا لأن النص المرسوم قد يحتوي أخطاء.'
+                : 'الذكاء الاصطناعي يصوّر المنتج فقط، والنظام يكتب كل النصوص بخط صحيح 100% ويفحصها آليًا. مناسب للنشر الذاتي.'}</div>
+            </button>
+          ))}
+        </div>
+        {v.renderMode === 'ai_full' && (
+          <div>
+            <label className="label">تعليماتك للتصميم (اختياري — مثل ما تكتبه في ChatGPT)</label>
+            <textarea rows={4} maxLength={3000} className="input" value={v.customPrompt} onChange={(e) => set({ customPrompt: e.target.value })}
+              placeholder="مثال: إعلان فاخر لطباعة الأكواب بمناسبة التخرج، كوب أبيض في المنتصف عليه رسم طالبة تخرج مع زهور، كتب وقبعة تخرج وشهادة بشريطة حمراء على طاولة خشبية، خلفية كحلية مع إضاءة ذهبية…" />
+            <p className="mt-1 text-xs text-slate-500">لا تطلب كتابة أرقام الهواتف أو الشعار — يضيفهما النظام بدقة. يمكنك الكتابة بالعربية أو الإنجليزية.</p>
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset className="grid gap-4 md:grid-cols-4">
         <legend className="mb-2 text-sm font-extrabold text-navy-800">التصميم</legend>
+        <Sel label="قالب التصميم (للطبقات الثابتة)" value={v.layout} onChange={(x) => set({ layout: x })} hint="الملصق الذهبي للصيغ العمودية فقط"><option value="">تلقائي (الملصق الذهبي للعمودي)</option>{LAYOUTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="نوع التصميم" value={v.designType} onChange={(x) => set({ designType: x })}><option value="">اختيار تلقائي</option>{DESIGN_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="أسلوب التصميم" value={v.designStyle} onChange={(x) => set({ designStyle: x })} hint="يغيّر ألوان القالب وأسلوب الصورة؛ الشعار يبقى كما هو"><option value="">هوية المطبعة (كحلي وذهبي)</option>{DESIGN_STYLES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <div>

@@ -58,3 +58,25 @@ export function BusinessForm({ b }: { b: { nameAr: string; nameEn: string; defau
     </form>
   );
 }
+
+export function FeaturesForm({ f }: { f: { ar: string[]; en: string[]; ml: string[] } }) {
+  const router = useRouter();
+  const [v, setV] = useState({ ar: f.ar.join('\n'), en: f.en.join('\n'), ml: f.ml.join('\n') });
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
+  const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 4);
+  return (
+    <form className="space-y-3" onSubmit={async (e) => {
+      e.preventDefault(); setMsg(null);
+      try { await apiCall('/api/brand/features', { method: 'PUT', body: { ar: lines(v.ar), en: lines(v.en), ml: lines(v.ml) } }); setMsg({ ok: true, t: 'تم الحفظ ✓' }); router.refresh(); }
+      catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
+    }}>
+      <p className="text-xs text-slate-500">تظهر حتى 4 مزايا بأيقونات ذهبية في تصميم «الملصق الذهبي» — سطر لكل ميزة. اكتب مزايا صحيحة يمكنكم الالتزام بها (لا أسعار ولا مدد تسليم).</p>
+      <div className="grid gap-3 md:grid-cols-3">
+        <div><label className="label">العربية</label><textarea rows={4} className="input" value={v.ar} onChange={(e) => setV({ ...v, ar: e.target.value })} /></div>
+        <div><label className="label">English</label><textarea rows={4} className="input ltr" value={v.en} onChange={(e) => setV({ ...v, en: e.target.value })} /></div>
+        <div><label className="label">Malayalam</label><textarea rows={4} className="input" value={v.ml} onChange={(e) => setV({ ...v, ml: e.target.value })} /></div>
+      </div>
+      <div className="flex items-center gap-3"><Button>حفظ المزايا</Button>{msg && <span className={msg.ok ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>{msg.t}</span>}</div>
+    </form>
+  );
+}

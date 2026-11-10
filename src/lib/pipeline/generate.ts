@@ -8,7 +8,7 @@ import { loadApprovedLogo } from '../brand/logo';
 import { productAllowed, selectProductForAccount } from '../creative/selector';
 import { getAiProvider } from '../ai';
 import { AiProviderError, type AiProvider, type CreativeBriefOut } from '../ai/types';
-import { scenePrompt } from '../ai/prompts';
+import { fullPosterPrompt, scenePrompt } from '../ai/prompts';
 import { assertBudget, estimateAdCost, estimateImageCost, estimateTextCost, recordUsage } from '../ai/cost';
 import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
@@ -87,7 +87,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const dtype = designTypeOf(d.designType);
   const creativeStyle = style?.prompt ?? s.ai.creativeStyle;
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
-  const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' ? proSceneCount(reelDuration) : 1;
+  const aiFull = d.renderMode === 'ai_full' && (format === 'IMAGE_STORY' || format === 'REEL_VIDEO');
+  const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Up-front budget check for the WHOLE advertisement (incl. extra pro-reel scenes), so a partial spend never happens near the cap.
   if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s) + (sceneCount - 1) * estimateImageCost(s, s.ai.imageQuality));
 
@@ -139,16 +140,26 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // ── Step 7: AI scene (no text, no logo) ──
     await assertBudget(s, estimateImageCost(s, s.ai.imageQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-      const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle), { model: s.ai.imageModel, quality: s.ai.imageQuality, size: '1024x1536', seedHint: `${ad.id}` }));
+      const prompt = aiFull
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt })
+        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle);
+      const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: s.ai.imageQuality, size: '1024x1536', seedHint: `${ad.id}` }));
       if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, s.ai.imageQuality) });
       return img;
     });
 
     // ── Step 9: deterministic layered composition ──
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
-    const templateKey = TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
+    // Premium gold poster by default for vertical formats; classic templates alternate for feed/square.
+    const vertical = format === 'IMAGE_STORY' || format === 'REEL_VIDEO';
+    const templateKey = aiFull ? 'ai-poster'
+      : d.layout && (vertical || d.layout !== 'gold-poster') ? d.layout
+      : vertical ? 'gold-poster'
+      : TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
+    const features = s.brandFeatures[lang] ?? [];
     const composed = await composeAdvertisement({
       scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: style?.theme,
+      badge: brief.badge, features,
     });
 
     // ── Pro reel: extra AI scenes (each a different shot of the SAME product), same layout + theme ──
@@ -166,7 +177,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         return img;
       }));
     }
-    const extraBackgrounds = await Promise.all(extraScenes.map((x) => buildBackground(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme)));
+    const extraBackgrounds = await Promise.all(extraScenes.map((x) => buildBackground(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme, features.length)));
     const jpeg = await toJpeg(composed.png);
 
     // ── Step 11: format (real video for Reels) ──
@@ -186,7 +197,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     };
     await put('SCENE', 'scene.png', scene.png, 'image/png', { width: 1024, height: 1536, meta: { model: scene.model, revisedPrompt: scene.revisedPrompt ?? null } });
     for (let i = 0; i < extraScenes.length; i++) await put('SCENE', `scene-${i + 2}.png`, extraScenes[i].png, 'image/png', { width: 1024, height: 1536, meta: { model: extraScenes[i].model, shot: i + 2 } });
-    const finalHash = await phash(jpeg);
+    // Perceptual fingerprint of the AI scene (the part that varies) — the template frame is identical across ads by design.
+    const finalHash = await phash(scene.png);
     await put('FINAL', 'final.jpg', jpeg, 'image/jpeg', { width: composed.width, height: composed.height, phash: finalHash });
     if (video) {
       await put('VIDEO', 'reel.mp4', video.mp4, 'video/mp4', { width: video.probe.width, height: video.probe.height, durationSec: video.probe.durationSec, meta: video.probe as unknown as Prisma.InputJsonValue });
@@ -196,15 +208,31 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'GENERATED', briefId: briefRow.id, headline: brief.headline, caption: buildCaption(brief), logoSha256: logo.sha256, templateKey: composed.templateKey, layerManifest: composed.manifest as unknown as Prisma.InputJsonValue } });
 
+    // ── Full-AI poster: machine-read the text the image model drew (advisory; a human must still approve) ──
+    let aiText: { expected: string[]; transcript: string | null } | null = null;
+    if (aiFull) {
+      const expected = [brief.headline, brief.badge, brief.supportingCopy ?? ''].filter((x) => x.trim());
+      let transcript: string | null = null;
+      if (provider.readText && !provider.isDryRun) {
+        try {
+          await assertBudget(s, estimateTextCost(s, 1500, 200));
+          const rt = await provider.readText(jpeg, s.ai.textModel);
+          transcript = rt.text || null;
+          await recordUsage({ provider: provider.name, model: rt.model, kind: 'text', inputTokens: rt.usage.inputTokens, outputTokens: rt.usage.outputTokens, costUsd: estimateTextCost(s, rt.usage.inputTokens, rt.usage.outputTokens) });
+        } catch { transcript = null; }
+      }
+      aiText = { expected, transcript };
+    }
+
     // ── Step 10: automated quality control ──
     const dups = await findDuplicates(account.id, { sha256: primarySha, phash: finalHash, headline: brief.headline }, s.duplicateWindowDays, ad.id);
     const qc = await runQualityChecks({
-      lang, format, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, caption: brief.caption,
+      lang, format, headline: brief.headline, badge: brief.badge, supportingCopy: brief.supportingCopy, cta, caption: brief.caption,
       manifest: composed.manifest, background: composed.background, finalImage: jpeg, logoPng: composed.layers.find((l) => l.id === 'logo')!.png,
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
       productAllowed: productAllowed(account, product.id), duplicates: dups, dryRun: provider.isDryRun,
-      video: video?.probe ?? null, videoError,
+      video: video?.probe ?? null, videoError, aiText,
     });
 
     await storeFingerprints(account.id, ad.id, [
@@ -224,7 +252,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Step 12: routing by publishing mode ──
     const autonomous = s.publishingMode === 'AUTONOMOUS' && !!s.autonomousAuthorizedAt && account.autonomousAuthorized && account.autoPublishEnabled && (p.createdBy === 'scheduler' || p.createdBy.startsWith('campaign:'));
-    if (qc.publishable && autonomous) {
+    if (qc.publishable && !qc.requiresHuman && autonomous) {
       const job = await autoApproveAndQueue(updated.id);
       updated = await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } });
       return { advertisement: updated, qc, queued: !!job };

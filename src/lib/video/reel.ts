@@ -97,8 +97,10 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     const last = n - 1;
     push(byId('logo'), 0.3);
     push(byId('headline'), 0.8, 90);
+    push(byId('badge'), 1.2, 60);
     push(byId('support'), n > 1 ? sceneStart(Math.min(1, last)) + 0.6 : 1.8, 40);
     push(byId('cta'), n > 1 ? sceneStart(last) + 0.5 : 2.6, 30);
+    c.layers.filter((l) => l.id.startsWith('benefit:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(Math.min(1, last)) + 1.0 : 2.2) + i * 0.15, 30));
     c.layers.filter((l) => l.id.startsWith('contact:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(last) + 0.9 : 3.0) + i * 0.15));
 
     let idx = n;

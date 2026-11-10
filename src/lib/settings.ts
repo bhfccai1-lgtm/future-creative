@@ -15,6 +15,12 @@ export const SettingsSchema = z.object({
   killSwitchReason: z.string().nullable().default(null),
   duplicateWindowDays: z.number().int().min(1).max(365).default(30),
   scheduleLeadMinutes: z.number().int().min(5).max(240).default(20),
+  /** Benefit badges shown on the gold poster design (admin-approved wording — keep them verifiable). */
+  brandFeatures: z.object({
+    ar: z.array(z.string().max(24)).max(4).default(['تصاميم مخصصة', 'جودة طباعة عالية', 'مناسبات خاصة', 'هدايا الشركات']),
+    en: z.array(z.string().max(24)).max(4).default(['Custom designs', 'Premium print', 'Special occasions', 'Corporate gifts']),
+    ml: z.array(z.string().max(32)).max(4).default(['കസ്റ്റം ഡിസൈനുകൾ', 'മികച്ച പ്രിന്റ്', 'പ്രത്യേക അവസരങ്ങൾ', 'കോർപ്പറേറ്റ് ഗിഫ്റ്റുകൾ']),
+  }).default({}),
   ai: z.object({
     dryRun: z.boolean().default(true),
     textModel: z.string().default('gpt-4.1-mini'),

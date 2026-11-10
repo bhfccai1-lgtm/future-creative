@@ -57,7 +57,7 @@ export class FakeAiProvider implements AiProvider {
   readonly name = 'fake-ai';
   readonly isDryRun = false;
   inner = new DryRunProvider();
-  briefCalls = 0; sceneCalls = 0;
+  briefCalls = 0; sceneCalls = 0; lastScenePrompt = ''; readTextResult: string | null = null;
   failBrief: AiProviderError[] = []; failScene: AiProviderError[] = [];
   async generateBrief(req: BriefRequest) {
     this.briefCalls++;
@@ -65,9 +65,10 @@ export class FakeAiProvider implements AiProvider {
     const r = await this.inner.generateBrief(req);
     return { ...r, model: 'fake-text', usage: { inputTokens: 2000, outputTokens: 600 } };
   }
+  async readText() { return { text: this.readTextResult ?? '', usage: { inputTokens: 300, outputTokens: 40 }, model: 'fake-vision' }; }
   async suggestIdeas(req: BriefRequest, model: string, count: number) { return { ...(await this.inner.suggestIdeas(req, model, count)), model: 'fake-text' }; }
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string }) {
-    this.sceneCalls++;
+    this.sceneCalls++; this.lastScenePrompt = prompt;
     const f = this.failScene.shift(); if (f) throw f;
     return { ...(await this.inner.generateScene(prompt, opts)), model: 'fake-image' };
   }

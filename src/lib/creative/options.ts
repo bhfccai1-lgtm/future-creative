@@ -102,6 +102,11 @@ export const AUDIO_TYPES = [
 ] as const;
 export type AudioType = (typeof AUDIO_TYPES)[number]['value'];
 
+export const RENDER_MODES = [
+  { value: 'ai_full', ar: 'تصميم كامل بالذكاء الاصطناعي (مثل ChatGPT)' },
+  { value: 'layered', ar: 'قالب بطبقات ثابتة (نص مضمون 100%)' },
+] as const;
+
 export const LANGUAGES = [
   { value: 'ar', ar: 'العربية', en: 'Arabic' },
   { value: 'en', ar: 'الإنجليزية', en: 'English' },
@@ -110,7 +115,9 @@ export const LANGUAGES = [
 
 export interface Direction {
   contentType?: string; market?: string; segment?: string; occasion?: string; idea?: string;
-  designType?: string; designStyle?: string;
+  designType?: string; designStyle?: string; layout?: 'gold-poster' | 'navy-gold-classic' | 'gold-frame-lower';
+  /** layered = deterministic text layers (100% verified); ai_full = the image model designs the whole poster like ChatGPT. */
+  renderMode?: 'layered' | 'ai_full'; customPrompt?: string;
   channels?: Channel[];
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
 }

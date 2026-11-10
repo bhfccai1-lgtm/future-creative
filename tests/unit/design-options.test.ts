@@ -80,3 +80,40 @@ describe('publishing channels', () => {
     expect(unavailableChannels(['youtube'], { networks: [{ network: 'youtube' }] }, 'IMAGE_STORY')).toEqual(['youtube: يتطلب فيديو (Reel)']);
   });
 });
+
+describe('gold poster layout', () => {
+  it('renders badge, benefits, CTA and both branches as separate layers; passes layout + contrast in ar/en/ml', async () => {
+    const [sc, lg] = await Promise.all([scene('poster'), logo()]);
+    const cases = [
+      { lang: 'ar' as const, h: 'طباعة جميع أنواع', b: 'الأكواب', s: 'بتصاميمك الخاصة', cta: 'اطلب الآن', f: ['تصاميم مخصصة', 'جودة طباعة عالية', 'مناسبات خاصة', 'هدايا الشركات'], c: contacts },
+      { lang: 'en' as const, h: 'Custom printed', b: 'Mugs', s: 'With your own design', cta: 'Order Now', f: ['Custom designs', 'Premium print', 'Special occasions'], c: [{ key: 'saar', label: 'Saar', phone: '33316319' }, { key: 'salmabad', label: 'Salmabad', phone: '34315316' }] },
+      { lang: 'ml' as const, h: 'കസ്റ്റം പ്രിന്റിംഗ്', b: 'മഗ്ഗുകൾ', s: 'നിങ്ങളുടെ ഡിസൈനിൽ', cta: 'ഇപ്പോൾ ഓർഡർ ചെയ്യൂ', f: ['കസ്റ്റം ഡിസൈനുകൾ', 'മികച്ച പ്രിന്റ്'], c: [{ key: 'saar', label: 'സാർ', phone: '33316319' }, { key: 'salmabad', label: 'സൽമാബാദ്', phone: '34315316' }] },
+    ];
+    for (const k of cases) {
+      const r = await composeAdvertisement({ scene: sc, format: 'IMAGE_STORY', lang: k.lang, templateKey: 'gold-poster', headline: k.h, badge: k.b, supportingCopy: k.s, cta: k.cta, logo: lg, contacts: k.c, features: k.f });
+      const ids = r.manifest.layers.map((l) => l.id);
+      expect(ids).toEqual(expect.arrayContaining(['logo', 'headline', 'badge', 'support', 'cta', 'contact:saar:phone', 'contact:salmabad:phone']));
+      expect(ids.filter((i) => i.startsWith('benefit:'))).toHaveLength(k.f.length);
+      expect(r.manifest.layers.find((l) => l.id === 'contact:saar:phone')?.text).toBe('33316319');
+      expect(checkLayout(r.manifest).filter((x) => !x.passed).map((x) => `${x.id} ${x.detail}`), k.lang).toEqual([]);
+      expect((await checkContrast(r.background, r.manifest)).passed, k.lang).toBe(true);
+    }
+  }, 120_000);
+});
+
+describe('full-AI poster composition', () => {
+  it('keeps the AI design uncropped and adds the ORIGINAL logo, CTA and verified phones in ar/en/ml', async () => {
+    const { checkLogoPixels } = await import('@/lib/qc/checks');
+    const { toJpeg } = await import('@/lib/render/compose');
+    const [poster, lg] = await Promise.all([scene('ai-full'), logo()]);
+    for (const [lang, cta, c] of [['ar', 'اطلب الآن', contacts], ['en', 'Order Now', [{ key: 'saar', label: 'Saar', phone: '33316319' }, { key: 'salmabad', label: 'Salmabad', phone: '34315316' }]], ['ml', 'ഇപ്പോൾ ഓർഡർ ചെയ്യൂ', [{ key: 'saar', label: 'സാർ', phone: '33316319' }, { key: 'salmabad', label: 'സൽമാബാദ്', phone: '34315316' }]]] as const) {
+      const r = await composeAdvertisement({ scene: poster, format: 'IMAGE_STORY', lang, templateKey: 'ai-poster', headline: 'x', cta, logo: lg, contacts: [...c] });
+      expect([r.width, r.height, r.templateKey]).toEqual([1080, 1920, 'ai-poster']);
+      expect(r.manifest.layers.find((l) => l.id === 'contact:salmabad:phone')?.text).toBe('34315316');
+      expect(checkLayout(r.manifest).filter((x) => !x.passed).map((x) => `${x.id} ${x.detail}`), lang).toEqual([]);
+      const jpeg = await toJpeg(r.png);
+      const logoLayer = r.layers.find((l) => l.id === 'logo')!;
+      expect((await checkLogoPixels(jpeg, r.background, logoLayer.png, r.manifest.layers.find((l) => l.id === 'logo')!.rect)).passed).toBe(true);
+    }
+  }, 120_000);
+});

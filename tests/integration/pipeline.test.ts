@@ -117,6 +117,8 @@ describe('duplicate prevention', () => {
     expect(new Set(briefs.map((b) => b.ideaKey)).size).toBe(4); // same product, genuinely different concepts
     expect(new Set(briefs.map((b) => b.headline)).size).toBe(4);
     expect(ads.every((a) => a.state === 'QUALITY_REVIEW')).toBe(true);
+    // gold-poster template is identical across ads: different scenes must NOT be flagged as visual duplicates
+    expect(ads.every((a) => a.templateKey === 'gold-poster' && a.qcPassed)).toBe(true);
   });
 
   it('detects exact-file and perceptual duplicates; history is per account', async () => {
@@ -184,4 +186,34 @@ describe('design options & pro reels in the pipeline', () => {
     expect(video.durationSec).toBeCloseTo(10, 0);
     expect(r.qc?.checks.find((c) => c.id === 'contrast')?.passed).toBe(true);
   }, 240_000);
+});
+
+describe('full-AI poster mode (ChatGPT-like)', () => {
+  it('image model designs the whole poster from the brief + custom prompt; system adds logo, CTA and verified phones; always needs a human', async () => {
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, publishingMode: 'AUTONOMOUS', autonomousAuthorizedAt: new Date().toISOString(), ai: { ...s.ai, dryRun: false } }) });
+    await prisma.socialAccount.update({ where: { id: accounts[0].id }, data: { autoPublishEnabled: true, autonomousAuthorized: true } });
+    const ai = new FakeAiProvider(); setAiProviderOverride(ai);
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler', direction: { renderMode: 'ai_full', customPrompt: 'Graduation mug on a wooden table with flowers' } });
+    expect(r.advertisement.templateKey).toBe('ai-poster');
+    expect(ai.lastScenePrompt).toContain('Graduation mug on a wooden table with flowers');
+    expect(ai.lastScenePrompt).toContain(r.advertisement.headline!);
+    expect(ai.lastScenePrompt).toMatch(/Do NOT draw any order button, phone numbers/);
+    const manifest = r.advertisement.layerManifest as { layers: { id: string; text?: string }[] };
+    expect(manifest.layers.map((l) => l.id)).toEqual(expect.arrayContaining(['logo', 'cta', 'contact:saar:phone', 'contact:salmabad:phone']));
+    expect(r.qc?.passed).toBe(true);
+    expect(r.qc?.requiresHuman).toBe(true);
+    expect(r.qc?.checks.find((c) => c.id === 'ai_text_review')).toMatchObject({ severity: 'WARNING', passed: false });
+    // autonomous mode must NOT auto-publish AI-drawn text
+    expect(r.queued).toBe(false);
+    expect(r.advertisement.state).toBe('QUALITY_REVIEW');
+  });
+  it('vision transcription that matches the intended copy passes the advisory text review', async () => {
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+    const ai = new FakeAiProvider(); setAiProviderOverride(ai);
+    ai.readTextResult = '__ALL__';
+    const orig = ai.inner.generateBrief.bind(ai.inner);
+    ai.inner.generateBrief = async (req) => { const out = await orig(req); ai.readTextResult = [out.brief.headline, out.brief.badge, out.brief.supportingCopy].join('\n'); return out; };
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', direction: { renderMode: 'ai_full' } });
+    expect(r.qc?.checks.find((c) => c.id === 'ai_text_review')?.passed).toBe(true);
+  });
 });

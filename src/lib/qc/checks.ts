@@ -94,7 +94,7 @@ export const contrastRatio = (a: [number, number, number], b: [number, number, n
 export async function checkContrast(background: Buffer, m: LayerManifest): Promise<QcCheck> {
   const low: string[] = [];
   for (const l of m.layers) {
-    if (!l.color || l.id === 'cta') continue; // CTA sits on its own solid pill (navy on gold ≈ 8:1)
+    if (!l.color || l.id === 'cta' || l.solid) continue; // text on its own solid pill (e.g. navy on gold ≈ 8:1)
     const r = l.rect;
     if (r.width < 2 || r.height < 2) continue;
     // NB: sharp's stats() reads the *input* image, so the region must be materialised first.
