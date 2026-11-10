@@ -316,6 +316,8 @@ model Advertisement {
   language       Language
   state          AdState        @default(DRAFT)
   dryRun         Boolean        @default(false) // produced without real AI — never publishable
+  channels       SocialPlatform[] // publishing networks (empty = the account's own platform)
+  options        Json? // design type/style, reel style/duration, audio …
   headline       String?
   caption        String?
   logoSha256     String?

@@ -13,7 +13,7 @@ import { assertBudget, estimateAdCost, estimateImageCost, estimateTextCost, reco
 import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
-import { composeAdvertisement, toJpeg } from '../render/compose';
+import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
 import { TEMPLATES } from '../render/templates';
 import { renderReel } from '../video/reel';
 import { runQualityChecks, type QcReport } from '../qc';
@@ -22,7 +22,7 @@ import { storage } from '../storage';
 import { startOfDayInTz } from '../time';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
-import { directionForPrompt, type Direction } from '../creative/options';
+import { designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 
 export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
@@ -81,11 +81,22 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const lang = (p.language ?? account.language) as Lang; // content language may override the account default
   const format = p.format ?? account.publishFormat;
   const provider = await getAiProvider(s);
-  // Up-front budget check for the WHOLE advertisement, so a partial (wasted) spend never happens near the cap.
-  if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s));
+  // Design options chosen by the user
+  const d = p.direction ?? {};
+  const style = styleOf(d.designStyle);
+  const dtype = designTypeOf(d.designType);
+  const creativeStyle = style?.prompt ?? s.ai.creativeStyle;
+  const reelDuration = d.reelDuration ?? account.reelDurationSec;
+  const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' ? proSceneCount(reelDuration) : 1;
+  // Up-front budget check for the WHOLE advertisement (incl. extra pro-reel scenes), so a partial spend never happens near the cap.
+  if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s) + (sceneCount - 1) * estimateImageCost(s, s.ai.imageQuality));
 
   const ad = await prisma.advertisement.create({
-    data: { accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId },
+    data: {
+      accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId,
+      channels: d.channels ?? [],
+      options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? 'none') : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null },
+    },
   });
   await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.start', targetType: 'advertisement', targetId: ad.id, details: { product: product.slug, format, provider: provider.name, language: lang, direction: (p.direction ?? null) as Prisma.InputJsonValue } });
 
@@ -102,7 +113,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       const r = await withAiJob(ad.id, 'BRIEF', provider, s.ai.textModel, async (jobId) => {
         const out = await retrying(s.ai.maxRetries, () => provider.generateBrief({
           language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
-          accountName: account.name, businessCategory: account.businessCategory, creativeStyle: s.ai.creativeStyle,
+          accountName: account.name, businessCategory: account.businessCategory, creativeStyle,
           defaultCta: ctaFor(business, lang), avoidIdeas, avoidHeadlines, attempt,
           direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion,
         }, s.ai.textModel));
@@ -128,7 +139,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // ── Step 7: AI scene (no text, no logo) ──
     await assertBudget(s, estimateImageCost(s, s.ai.imageQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-      const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription, s.ai.creativeStyle), { model: s.ai.imageModel, quality: s.ai.imageQuality, size: '1024x1536', seedHint: `${ad.id}` }));
+      const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle), { model: s.ai.imageModel, quality: s.ai.imageQuality, size: '1024x1536', seedHint: `${ad.id}` }));
       if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, s.ai.imageQuality) });
       return img;
     });
@@ -137,15 +148,32 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
     const templateKey = TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
     const composed = await composeAdvertisement({
-      scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang),
+      scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: style?.theme,
     });
+
+    // ── Pro reel: extra AI scenes (each a different shot of the SAME product), same layout + theme ──
+    const SHOTS = [
+      'Second shot of the same product: close-up detail from a different angle, shallow depth of field.',
+      'Third shot of the same product: being used naturally in a lifestyle setting.',
+      'Fourth shot of the same product: wide establishing shot in its real environment.',
+    ];
+    const extraScenes: { png: Buffer; model: string }[] = [];
+    for (let i = 1; i < sceneCount; i++) {
+      await assertBudget(s, estimateImageCost(s, s.ai.imageQuality));
+      extraScenes.push(await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(`${brief!.sceneDescription} ${SHOTS[(i - 1) % SHOTS.length]}`, creativeStyle), { model: s.ai.imageModel, quality: s.ai.imageQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
+        if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, s.ai.imageQuality) });
+        return img;
+      }));
+    }
+    const extraBackgrounds = await Promise.all(extraScenes.map((x) => buildBackground(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme)));
     const jpeg = await toJpeg(composed.png);
 
     // ── Step 11: format (real video for Reels) ──
     let video: Awaited<ReturnType<typeof renderReel>> | null = null;
     let videoError: string | null = null;
     if (format === 'REEL_VIDEO') {
-      try { video = await renderReel(composed, account.reelDurationSec); }
+      try { video = await renderReel(composed, reelDuration, { extraBackgrounds, audio: d.audio ?? 'none' }); }
       catch (e) { videoError = (e as Error).message; }
     }
 
@@ -157,6 +185,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       return prisma.mediaAsset.create({ data: { advertisementId: ad.id, role, storageKey: key, mimeType: mime, bytes: buf.length, sha256: sha256(buf), ...extra } as Prisma.MediaAssetUncheckedCreateInput });
     };
     await put('SCENE', 'scene.png', scene.png, 'image/png', { width: 1024, height: 1536, meta: { model: scene.model, revisedPrompt: scene.revisedPrompt ?? null } });
+    for (let i = 0; i < extraScenes.length; i++) await put('SCENE', `scene-${i + 2}.png`, extraScenes[i].png, 'image/png', { width: 1024, height: 1536, meta: { model: extraScenes[i].model, shot: i + 2 } });
     const finalHash = await phash(jpeg);
     await put('FINAL', 'final.jpg', jpeg, 'image/jpeg', { width: composed.width, height: composed.height, phash: finalHash });
     if (video) {

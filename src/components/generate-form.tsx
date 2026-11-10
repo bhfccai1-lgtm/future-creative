@@ -5,6 +5,7 @@ import { Sparkles } from 'lucide-react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 import { CONTENT_TYPES, LANGUAGES, MARKETS, OCCASIONS, SEGMENTS } from '@/lib/creative/options';
+import { DesignFields, designDirection, EMPTY_DESIGN, type DesignValues } from './design-fields';
 
 type Opt = { id: string; label: string };
 type Idea = { title: string; idea: string };
@@ -32,10 +33,12 @@ export function GenerateForm({ accounts, products }: { accounts: Opt[]; products
   const [busy, setBusy] = useState(false);
   const [ideas, setIdeas] = useState<Idea[] | null>(null);
   const [ideasBusy, setIdeasBusy] = useState(false);
+  const [design, setDesign] = useState<DesignValues>(EMPTY_DESIGN);
 
   const direction = () => {
-    const d: Record<string, string> = {};
+    const d: Record<string, unknown> = {};
     for (const k of ['contentType', 'market', 'segment', 'occasion', 'idea'] as const) if (v[k].trim()) d[k] = v[k].trim();
+    Object.assign(d, designDirection(design, v.format));
     return Object.keys(d).length ? d : undefined;
   };
   const common = () => ({ accountId: v.accountId, productId: v.productId || undefined, language: v.language || undefined, direction: direction() });
@@ -76,6 +79,8 @@ export function GenerateForm({ accounts, products }: { accounts: Opt[]; products
         <Select name="segment" label="الفئة المستهدفة" value={v.segment} onChange={set('segment')}><option value="">اختيار تلقائي</option>{SEGMENTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Select>
         <Select name="occasion" label="نوع المناسبة" value={v.occasion} onChange={set('occasion')}><option value="">اختيار تلقائي</option>{OCCASIONS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Select>
       </fieldset>
+
+      <DesignFields v={design} set={(patch) => setDesign((x) => ({ ...x, ...patch }))} format={v.format} />
 
       <fieldset className="space-y-2">
         <legend className="mb-2 text-sm font-extrabold text-navy-800">٣. فكرة الإعلان</legend>

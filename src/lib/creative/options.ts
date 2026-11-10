@@ -55,6 +55,53 @@ export const OCCASIONS: (Opt & { headlineAr?: string; headlineEn?: string })[] =
   { value: 'diwali', ar: 'مهرجان ديوالي', en: 'Diwali', prompt: 'Diwali festival of lights — diyas and warm glowing light', headlineEn: 'Happy Diwali' },
 ];
 
+/** Scene composition — drives the AI image prompt. */
+export const DESIGN_TYPES: Opt[] = [
+  { value: 'hero_product', ar: 'لقطة منتج فاخرة (Hero)', en: 'Premium hero shot', prompt: 'premium studio hero shot of the product, centred, dramatic lighting, clean background' },
+  { value: 'lifestyle', ar: 'أسلوب حياة (المنتج مع أشخاص)', en: 'Lifestyle', prompt: 'lifestyle photo with people naturally using the product, hands and context visible, faces not the focus' },
+  { value: 'flat_lay', ar: 'تصوير علوي مرتب (Flat lay)', en: 'Flat lay', prompt: 'top-down flat lay arrangement with complementary props, neat composition' },
+  { value: 'in_context', ar: 'المنتج في بيئته الحقيقية', en: 'In context', prompt: 'the product in its real environment (shop, office, event venue or home) as a realistic mockup' },
+  { value: 'minimal_space', ar: 'تصميم بسيط بمساحة واسعة للنص', en: 'Minimal with space', prompt: 'minimal composition, product small-to-medium and off-centre, large calm negative space' },
+  { value: 'macro_detail', ar: 'لقطة قريبة للتفاصيل والجودة', en: 'Macro detail', prompt: 'macro close-up showing print texture, edges, finish and material quality' },
+];
+
+/** Visual style — drives the image prompt AND the layout colour theme. */
+export const DESIGN_STYLES: (Opt & { theme: 'navy_gold' | 'black_gold' | 'white_minimal' | 'emerald_gold' | 'festive_red' })[] = [
+  { value: 'luxury_navy_gold', ar: 'فاخر كحلي وذهبي (هوية المطبعة)', en: 'Luxury navy & gold', theme: 'navy_gold', prompt: 'premium commercial photography, cinematic lighting, deep navy and elegant gold accents' },
+  { value: 'black_gold', ar: 'أسود فاخر مع ذهبي', en: 'Black & gold luxury', theme: 'black_gold', prompt: 'dark moody luxury photography, black surfaces, warm gold rim light, high contrast' },
+  { value: 'white_minimal', ar: 'أبيض بسيط وعصري', en: 'Clean white minimal', theme: 'white_minimal', prompt: 'bright airy minimal photography, white and soft grey tones, soft daylight, modern Scandinavian feel' },
+  { value: 'emerald_gold', ar: 'زمردي وذهبي راقٍ', en: 'Emerald & gold', theme: 'emerald_gold', prompt: 'elegant photography with deep emerald green and gold accents, rich textures' },
+  { value: 'festive', ar: 'احتفالي ومبهج', en: 'Festive', theme: 'festive_red', prompt: 'festive celebratory photography, warm glowing lights, joyful mood, tasteful red accents' },
+  { value: 'vibrant', ar: 'ألوان زاهية وحيوية', en: 'Vibrant colourful', theme: 'navy_gold', prompt: 'vibrant colourful energetic photography, saturated complementary colours, playful props' },
+];
+
+export const CHANNELS = [
+  { value: 'instagram', ar: 'إنستغرام', video: false },
+  { value: 'facebook', ar: 'فيسبوك', video: false },
+  { value: 'tiktok', ar: 'تيك توك', video: false },
+  { value: 'threads', ar: 'ثريدز', video: false },
+  { value: 'youtube', ar: 'يوتيوب شورتس (فيديو فقط)', video: true },
+  { value: 'linkedin', ar: 'لينكدإن', video: false },
+  { value: 'twitter', ar: 'X (تويتر)', video: false },
+] as const;
+export type Channel = (typeof CHANNELS)[number]['value'];
+
+export const REEL_STYLES = [
+  { value: 'standard', ar: 'عادي — مشهد واحد بحركة كاميرا', scenes: 1 },
+  { value: 'pro', ar: 'احترافي — عدة مشاهد بانتقالات سينمائية', scenes: 0 }, // 0 = depends on duration
+] as const;
+export const REEL_DURATIONS = [7, 10, 15, 20, 30] as const;
+/** Pro reels: number of AI scenes for a duration (each costs one image generation). */
+export const proSceneCount = (sec: number) => (sec <= 10 ? 2 : sec <= 20 ? 3 : 4);
+
+export const AUDIO_TYPES = [
+  { value: 'none', ar: 'بدون صوت (صامت)' },
+  { value: 'ambient', ar: 'موسيقى هادئة (مولدة — خالية من الحقوق)' },
+  { value: 'upbeat', ar: 'إيقاع حماسي (مولد — خالٍ من الحقوق)' },
+  { value: 'instagram', ar: 'صوت من مكتبة إنستغرام (عبر Metricool)' },
+] as const;
+export type AudioType = (typeof AUDIO_TYPES)[number]['value'];
+
 export const LANGUAGES = [
   { value: 'ar', ar: 'العربية', en: 'Arabic' },
   { value: 'en', ar: 'الإنجليزية', en: 'English' },
@@ -63,6 +110,9 @@ export const LANGUAGES = [
 
 export interface Direction {
   contentType?: string; market?: string; segment?: string; occasion?: string; idea?: string;
+  designType?: string; designStyle?: string;
+  channels?: Channel[];
+  reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
 }
 
 const find = (list: Opt[], v?: string) => (v ? list.find((o) => o.value === v) : undefined);
@@ -76,6 +126,8 @@ export function directionForPrompt(d?: Direction) {
   const mk = find(MARKETS, d.market); if (mk) out.marketAndAudience = mk.prompt;
   const sg = find(SEGMENTS, d.segment); if (sg) out.targetSegment = sg.prompt;
   const oc = findOccasion(d.occasion); if (oc) out.occasion = oc.prompt;
+  const dt = find(DESIGN_TYPES, d.designType); if (dt) out.designType = dt.prompt;
+  const ds = find(DESIGN_STYLES, d.designStyle); if (ds) out.visualStyle = ds.prompt;
   if (d.idea?.trim()) out.userIdea = d.idea.trim().slice(0, 500);
   return Object.keys(out).length ? out : undefined;
 }
@@ -88,8 +140,16 @@ export function directionSummaryAr(d?: Direction) {
     ['الجمهور والسوق', find(MARKETS, d.market)?.ar],
     ['الفئة المستهدفة', find(SEGMENTS, d.segment)?.ar],
     ['المناسبة', findOccasion(d.occasion)?.ar],
+    ['نوع التصميم', find(DESIGN_TYPES, d.designType)?.ar],
+    ['أسلوب التصميم', find(DESIGN_STYLES, d.designStyle)?.ar],
+    ['قنوات النشر', d.channels?.length ? d.channels.map((c) => CHANNELS.find((x) => x.value === c)?.ar ?? c).join('، ') : undefined],
+    ['الريلز', d.reelStyle ? `${REEL_STYLES.find((x) => x.value === d.reelStyle)?.ar}${d.reelDuration ? ` · ${d.reelDuration} ث` : ''}` : d.reelDuration ? `${d.reelDuration} ث` : undefined],
+    ['الصوت', d.audio ? `${AUDIO_TYPES.find((x) => x.value === d.audio)?.ar}${d.audioQuery ? ` — ${d.audioQuery}` : ''}` : undefined],
     ['فكرة المستخدم', d.idea?.trim() || undefined],
   ].filter((x): x is [string, string] => !!x[1]);
 }
 
 export const optionValues = (list: { value: string }[]) => list.map((o) => o.value) as [string, ...string[]];
+
+export const styleOf = (v?: string) => DESIGN_STYLES.find((o) => o.value === v);
+export const designTypeOf = (v?: string) => DESIGN_TYPES.find((o) => o.value === v);

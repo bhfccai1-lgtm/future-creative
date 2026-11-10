@@ -7,7 +7,7 @@ import type { PublishRequest } from '@/lib/publishing/types';
 import type { Product } from '@prisma/client';
 
 const req: PublishRequest = {
-  idempotencyKey: 'k', providerBrandId: '123', network: 'instagram', format: 'REEL_VIDEO', publishAt: new Date('2026-11-09T07:00:00Z'), timezone: 'Asia/Bahrain',
+  idempotencyKey: 'k', providerBrandId: '123', networks: ['instagram'], format: 'REEL_VIDEO', publishAt: new Date('2026-11-09T07:00:00Z'), timezone: 'Asia/Bahrain',
   text: 'نص', mediaUrls: ['https://x/api/public-media?k=ads/a/reel.mp4&e=1&s=2'], thumbnailUrl: 'https://x/t.jpg', aiGenerated: true,
 };
 const mk = (status: number, json: unknown, headers: Record<string, string> = {}) => (async () => new Response(JSON.stringify(json), { status, headers })) as unknown as typeof fetch;

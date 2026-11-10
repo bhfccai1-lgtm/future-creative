@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CONTENT_TYPES, MARKETS, OCCASIONS, SEGMENTS, optionValues } from './creative/options';
+import { CONTENT_TYPES, DESIGN_STYLES, DESIGN_TYPES, MARKETS, OCCASIONS, SEGMENTS, optionValues } from './creative/options';
 
 export const AccountInput = z.object({
   name: z.string().min(2).max(100),
@@ -33,6 +33,13 @@ export const DirectionSchema = z.object({
   segment: z.enum(optionValues(SEGMENTS)).optional(),
   occasion: z.enum(optionValues(OCCASIONS)).optional(),
   idea: z.string().max(500).optional(),
+  designType: z.enum(optionValues(DESIGN_TYPES)).optional(),
+  designStyle: z.enum(optionValues(DESIGN_STYLES)).optional(),
+  channels: z.array(z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'linkedin', 'twitter'])).max(7).optional(),
+  reelStyle: z.enum(['standard', 'pro']).optional(),
+  reelDuration: z.number().int().min(6).max(60).optional(),
+  audio: z.enum(['none', 'ambient', 'upbeat', 'instagram']).optional(),
+  audioQuery: z.string().max(120).optional(),
 }).optional();
 
 export const CampaignInput = z.object({

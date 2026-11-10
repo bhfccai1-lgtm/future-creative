@@ -95,12 +95,12 @@ export class MetricoolAdapter implements PublishingAdapter {
   }
 
   buildBody(req: PublishRequest) {
-    const net = NETWORK[req.network];
+    const nets = [...new Set(req.networks.map((n) => NETWORK[n]))];
     const isVideo = req.format === 'REEL_VIDEO';
     const body: Record<string, unknown> = {
       publicationDate: { dateTime: localDateTime(req.publishAt, req.timezone), timezone: req.timezone },
       text: req.text,
-      providers: [{ network: net }],
+      providers: nets.map((network) => ({ network })),
       media: req.mediaUrls,
       autoPublish: true,
       draft: false,
@@ -110,15 +110,23 @@ export class MetricoolAdapter implements PublishingAdapter {
       mediaAltText: [],
       smartLinkData: { ids: [] },
     };
-    if (net === 'instagram') body.instagramData = { type: isVideo ? 'REEL' : req.format === 'IMAGE_STORY' ? 'STORY' : 'POST', showReelOnFeed: true, isAiGenerated: req.aiGenerated };
-    if (net === 'facebook') body.facebookData = { type: isVideo ? 'REEL' : req.format === 'IMAGE_STORY' ? 'STORY' : 'POST' };
-    if (net === 'tiktok') body.tiktokData = { privacyOption: 'PUBLIC_TO_EVERYONE', isAigc: req.aiGenerated && isVideo, commercialContentOwnBrand: true };
-    if (net === 'youtube') body.youtubeData = { title: req.title ?? req.text.slice(0, 90), type: 'short', privacy: 'public', madeForKids: false, isAiGeneratedContent: req.aiGenerated };
-    if (net === 'pinterest') body.pinterestData = { pinTitle: req.title ?? req.text.slice(0, 90), isAiGenerated: req.aiGenerated };
-    if (net === 'linkedin') body.linkedinData = { type: 'post' };
-    if (net === 'threads') body.threadsData = {};
-    if (net === 'twitter') body.twitterData = { tags: [] };
-    if (isVideo && req.thumbnailUrl && ['instagram', 'tiktok', 'youtube', 'linkedin', 'facebook'].includes(net)) body.videoThumbnailUrl = req.thumbnailUrl;
+    const title = req.title ?? req.text.slice(0, 90);
+    for (const net of nets) {
+      if (net === 'instagram') {
+        const ig: Record<string, unknown> = { type: isVideo ? 'REEL' : req.format === 'IMAGE_STORY' ? 'STORY' : 'POST', showReelOnFeed: true, isAiGenerated: req.aiGenerated };
+        if (isVideo && req.instagramAudio) ig.audioConfiguration = { audioId: req.instagramAudio };
+        body.instagramData = ig;
+      }
+      if (net === 'facebook') body.facebookData = { type: isVideo ? 'REEL' : req.format === 'IMAGE_STORY' ? 'STORY' : 'POST' };
+      if (net === 'tiktok') body.tiktokData = { privacyOption: 'PUBLIC_TO_EVERYONE', isAigc: req.aiGenerated && isVideo, commercialContentOwnBrand: true, title: title.slice(0, 90) };
+      if (net === 'youtube') body.youtubeData = { title, type: 'short', privacy: 'public', madeForKids: false, isAiGeneratedContent: req.aiGenerated };
+      if (net === 'pinterest') body.pinterestData = { pinTitle: title, isAiGenerated: req.aiGenerated };
+      if (net === 'linkedin') body.linkedinData = { type: 'post' };
+      if (net === 'threads') body.threadsData = {};
+      if (net === 'twitter') body.twitterData = { tags: [] };
+    }
+    const thumbNets = ['instagram', 'tiktok', 'youtube', 'linkedin', 'facebook'];
+    if (isVideo && req.thumbnailUrl && nets.some((n) => thumbNets.includes(n))) body.videoThumbnailUrl = req.thumbnailUrl;
     return body;
   }
 

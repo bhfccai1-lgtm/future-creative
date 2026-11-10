@@ -6,6 +6,7 @@ import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 import { CONTENT_TYPES, LANGUAGES, MARKETS, OCCASIONS, SEGMENTS } from '@/lib/creative/options';
 import { bestHoursFor, previewSlots } from '@/lib/campaigns/slots';
+import { DesignFields, designDirection, EMPTY_DESIGN, type DesignValues } from './design-fields';
 
 type Opt = { id: string; label: string };
 const TZ = 'Asia/Bahrain';
@@ -30,6 +31,7 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
   const set = <K extends keyof typeof v>(k: K) => (val: (typeof v)[K]) => setV((x) => ({ ...x, [k]: val }));
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [design, setDesign] = useState<DesignValues>(EMPTY_DESIGN);
 
   const startAt = useMemo(() => { try { return fromZonedTime(v.start.length === 10 ? `${v.start}T00:00` : v.start, TZ); } catch { return null; } }, [v.start]);
   const endAt = useMemo(() => { try { return v.end ? fromZonedTime(`${v.end}T23:59`, TZ) : null; } catch { return null; } }, [v.end]);
@@ -42,8 +44,9 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
   return (
     <form className="space-y-6" onSubmit={async (e) => {
       e.preventDefault(); setMsg(null); setBusy(true);
-      const direction: Record<string, string> = {};
+      const direction: Record<string, unknown> = {};
       for (const k of ['contentType', 'market', 'segment', 'occasion', 'idea'] as const) if (v[k].trim()) direction[k] = v[k].trim();
+      Object.assign(direction, designDirection(design, v.format));
       try {
         await apiCall('/api/campaigns', { body: {
           name: v.name, accountIds: v.accountIds, productId: v.productId || null, format: v.format || null, language: v.language || null,
@@ -68,6 +71,8 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
         <Sel label="نوع المناسبة" value={v.occasion} onChange={set('occasion')}><option value="">تلقائي</option>{OCCASIONS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <div className="md:col-span-3"><label className="label">الفكرة العامة (اختياري)</label><input className="input" maxLength={500} value={v.idea} onChange={(e) => set('idea')(e.target.value)} placeholder="يبتكر الذكاء الاصطناعي تصميمًا جديدًا بزاوية مختلفة في كل مرة حول هذه الفكرة" /></div>
       </fieldset>
+
+      <DesignFields v={design} set={(patch) => setDesign((x) => ({ ...x, ...patch }))} format={v.format} />
 
       {/* 2 — where */}
       <fieldset>

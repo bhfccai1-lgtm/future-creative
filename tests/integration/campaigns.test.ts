@@ -15,7 +15,7 @@ async function mkCampaign(accountIds: string[], over: Record<string, unknown> = 
   const startAt = new Date(Date.now() + 60 * 60_000);
   const data = { name: 'Test', accountIds, scheduleType: 'RECURRING', everyHours: 6, daysOfWeek: [] as number[], timeMode: 'FIXED', startAt, createdBy: 't', direction: { occasion: 'eid_fitr' }, ...over };
   const first = nextSlot({ scheduleType: data.scheduleType as 'ONCE' | 'RECURRING', everyHours: data.everyHours as number, daysOfWeek: data.daysOfWeek, timeMode: data.timeMode as 'FIXED', startAt: data.startAt as Date, runs: 0 }, new Date());
-  return prisma.campaign.create({ data: { ...(data as never), nextRunAt: first } });
+  return prisma.campaign.create({ data: { ...(data as object), nextRunAt: first } as never });
 }
 
 describe('recurring campaigns', () => {

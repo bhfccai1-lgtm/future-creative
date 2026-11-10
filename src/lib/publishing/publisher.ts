@@ -10,6 +10,7 @@ import { rateLimit } from '../security/rate-limit';
 import { getBusiness, locationsOf } from '../business';
 import type { QcReport } from '../qc';
 import { enq } from '../queue/queues';
+import type { SocialPlatform } from '@prisma/client';
 
 export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
 
@@ -26,6 +27,24 @@ export function contactFooter(lang: string, locs: { nameAr: string; nameEn: stri
   return '📞 ' + locs.map((l) => `${lang === 'ar' ? l.nameAr : lang === 'ml' ? l.nameMl ?? l.nameEn : l.nameEn} ${l.phone}`).join(' | ');
 }
 
+/** Publishing networks: the account's own platform first, then any extra chosen channels. */
+export function targetNetworks(own: SocialPlatform, chosen: SocialPlatform[] | null | undefined): SocialPlatform[] {
+  if (!chosen?.length) return [own];
+  const unique = [...new Set(chosen)];
+  return unique.includes(own) ? [own, ...unique.filter((n) => n !== own)] : unique;
+}
+
+/** Channels the provider brand actually has linked (from the verified connection snapshot). */
+export function unavailableChannels(networks: SocialPlatform[], snapshot: unknown, format: string): string[] {
+  const linked = ((snapshot as { networks?: { network: string }[] } | null)?.networks ?? []).map((n) => n.network);
+  const out: string[] = [];
+  for (const n of networks) {
+    if (linked.length && !linked.includes(n)) out.push(`${n}: غير مرتبط بالعلامة في Metricool`);
+    if (n === 'youtube' && format !== 'REEL_VIDEO') out.push('youtube: يتطلب فيديو (Reel)');
+  }
+  return out;
+}
+
 export async function buildPublishRequest(jobId: string): Promise<PublishRequest> {
   const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId }, include: { advertisement: { include: { media: true } }, account: { include: { connection: true } } } });
   const ad = job.advertisement;
@@ -34,10 +53,12 @@ export async function buildPublishRequest(jobId: string): Promise<PublishRequest
   if (!main) throw new Error('Final media asset missing');
   const thumb = ad.media.find((m) => m.role === 'THUMBNAIL');
   const business = await getBusiness();
+  const opts = (ad.options ?? {}) as { audio?: string | null; audioQuery?: string | null };
   return {
     idempotencyKey: job.idempotencyKey,
     providerBrandId: job.account.connection!.providerBrandId!,
-    network: job.account.platform,
+    networks: targetNetworks(job.account.platform, ad.channels),
+    instagramAudio: ad.format === 'REEL_VIDEO' && opts.audio === 'instagram' && opts.audioQuery ? opts.audioQuery : undefined,
     format: ad.format,
     publishAt: job.scheduledFor,
     timezone: job.account.timezone,
@@ -86,6 +107,8 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
     await prisma.socialConnection.update({ where: { id: conn.id }, data: { status: 'EXPIRED', canPublish: false } });
     await fail(job.id, ad.id, 'انتهت صلاحية رمز الوصول للحساب.', job.accountId); return 'FAILED';
   }
+  const bad = unavailableChannels(targetNetworks(job.account.platform, ad.channels), conn.providerSnapshot, ad.format);
+  if (bad.length) { await fail(job.id, ad.id, `قنوات نشر غير متاحة: ${bad.join('؛ ')}`, job.accountId); return 'FAILED'; }
   const main = ad.media.find((m) => m.role === (ad.format === 'REEL_VIDEO' ? 'VIDEO' : 'FINAL'));
   if (!main || !(await storage().exists(main.storageKey))) { await fail(job.id, ad.id, 'ملف الوسائط النهائي غير متاح.', job.accountId); return 'FAILED'; }
   if (job.scheduledFor.getTime() < Date.now() + 2 * 60_000) {
@@ -104,7 +127,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
 
   const req = await buildPublishRequest(job.id);
   const attemptNo = job.attemptCount;
-  const attempt = await prisma.publicationAttempt.create({ data: { jobId: job.id, attemptNo, requestSummary: { network: req.network, format: req.format, publishAt: req.publishAt.toISOString(), brandId: req.providerBrandId, media: req.mediaUrls.map((u) => u.split('?')[0]) } } });
+  const attempt = await prisma.publicationAttempt.create({ data: { jobId: job.id, attemptNo, requestSummary: { networks: req.networks, format: req.format, publishAt: req.publishAt.toISOString(), brandId: req.providerBrandId, media: req.mediaUrls.map((u) => u.split('?')[0]) } } });
 
   let outcome;
   try { outcome = await (await getAdapter(job.provider)).submit(req); }

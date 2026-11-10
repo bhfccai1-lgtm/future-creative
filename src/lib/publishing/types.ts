@@ -3,7 +3,8 @@ import type { MediaFormat, SocialPlatform } from '@prisma/client';
 export interface PublishRequest {
   idempotencyKey: string;
   providerBrandId: string; // Metricool blogId
-  network: SocialPlatform;
+  /** Target networks on the provider brand (first = the account's own platform). */
+  networks: SocialPlatform[];
   format: MediaFormat;
   publishAt: Date; timezone: string;
   text: string;
@@ -11,6 +12,8 @@ export interface PublishRequest {
   thumbnailUrl?: string;
   title?: string; // YouTube / Pinterest
   aiGenerated: boolean;
+  /** Instagram Reels only: search term / id for licensed Instagram audio (resolved by Metricool). */
+  instagramAudio?: string;
 }
 
 export type SubmitOutcome =

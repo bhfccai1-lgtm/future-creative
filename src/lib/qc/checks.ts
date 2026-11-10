@@ -97,7 +97,9 @@ export async function checkContrast(background: Buffer, m: LayerManifest): Promi
     if (!l.color || l.id === 'cta') continue; // CTA sits on its own solid pill (navy on gold ≈ 8:1)
     const r = l.rect;
     if (r.width < 2 || r.height < 2) continue;
-    const st = await sharp(background).extract({ left: r.left, top: r.top, width: r.width, height: r.height }).stats();
+    // NB: sharp's stats() reads the *input* image, so the region must be materialised first.
+    const region = await sharp(background).extract({ left: r.left, top: r.top, width: r.width, height: r.height }).png().toBuffer();
+    const st = await sharp(region).stats();
     const bg: [number, number, number] = [st.channels[0].mean, st.channels[1].mean, st.channels[2].mean];
     const cr = contrastRatio(hexRgb(l.color), bg);
     if (cr < 3) low.push(`${l.id} (${cr.toFixed(1)}:1)`);

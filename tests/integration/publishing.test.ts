@@ -262,3 +262,19 @@ describe('restart recovery', () => {
     expect(adapter.submits).toHaveLength(0);
   });
 });
+
+describe('publishing channels', () => {
+  it('sends to all chosen channels linked on the brand; blocks unlinked ones before submitting', async () => {
+    const { accounts } = await setup();
+    await prisma.socialConnection.update({ where: { accountId: accounts[0].id }, data: { providerSnapshot: { label: 'b', networks: [{ network: 'instagram' }, { network: 'facebook' }] } } });
+    const ok = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'tester', direction: { channels: ['instagram', 'facebook'] } });
+    const job = await publishNow(ok.advertisement.id, admin);
+    expect(await processPublishJob(job.id, 'w')).toBe('SCHEDULED');
+    expect(adapter.submits[0].networks).toEqual(['instagram', 'facebook']);
+    const bad = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'tester', direction: { channels: ['tiktok'] } });
+    const job2 = await publishNow(bad.advertisement.id, admin);
+    expect(await processPublishJob(job2.id, 'w')).toBe('FAILED');
+    expect(adapter.submits).toHaveLength(1);
+    expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: job2.id } })).lastError).toMatch(/tiktok/);
+  });
+});

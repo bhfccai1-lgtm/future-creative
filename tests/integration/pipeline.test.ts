@@ -168,3 +168,20 @@ describe('creative direction', () => {
     expect(manifest.layers.find((l) => l.id === 'contact:saar:label')?.text).toBe('Saar');
   });
 });
+
+describe('design options & pro reels in the pipeline', () => {
+  it('pro reel generates one AI image per scene, saves channels/options, applies the theme', async () => {
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+    const ai = new FakeAiProvider(); setAiProviderOverride(ai);
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'REEL_VIDEO', direction: { designStyle: 'emerald_gold', designType: 'lifestyle', channels: ['instagram', 'facebook'], reelStyle: 'pro', reelDuration: 10, audio: 'upbeat' } });
+    expect(r.advertisement.state).toBe('QUALITY_REVIEW');
+    expect(ai.sceneCalls).toBe(2);
+    expect(await prisma.mediaAsset.count({ where: { advertisementId: r.advertisement.id, role: 'SCENE' } })).toBe(2);
+    expect(await prisma.aiUsage.count({ where: { kind: 'image' } })).toBe(2);
+    expect(r.advertisement.channels).toEqual(['instagram', 'facebook']);
+    expect(r.advertisement.options).toMatchObject({ reelStyle: 'pro', reelDuration: 10, audio: 'upbeat', designStyle: 'emerald_gold' });
+    const video = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: r.advertisement.id, role: 'VIDEO' } });
+    expect(video.durationSec).toBeCloseTo(10, 0);
+    expect(r.qc?.checks.find((c) => c.id === 'contrast')?.passed).toBe(true);
+  }, 240_000);
+});
