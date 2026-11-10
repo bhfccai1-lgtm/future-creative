@@ -8,7 +8,7 @@ type Variant = 'primary' | 'gold' | 'outline' | 'danger' | 'success' | 'ghost';
 
 /** Calls a backend endpoint and refreshes server data — the UI only reflects state the backend confirmed. */
 export function ActionButton({ url, body, label, variant = 'primary', size, confirm, prompt, promptKey, onDone, method = 'POST' }: {
-  url: string; method?: 'POST' | 'PATCH' | 'PUT'; body?: Record<string, unknown>; label: React.ReactNode; variant?: Variant; size?: 'sm' | 'md' | 'lg';
+  url: string; method?: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; body?: Record<string, unknown>; label: React.ReactNode; variant?: Variant; size?: 'sm' | 'md' | 'lg';
   confirm?: string; prompt?: string; promptKey?: string; onDone?: (r: unknown) => void;
 }) {
   const router = useRouter();

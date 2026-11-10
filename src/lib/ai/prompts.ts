@@ -16,6 +16,16 @@ export function briefSystemPrompt() {
     '- The concept must be clearly different from every idea in the avoid list (different angle, setting or audience — not a paraphrase).',
     '- If a "direction" object is provided, follow it: content type, market/audience, target segment and occasion. If it contains "userIdea", build the concept around that idea while still obeying every rule above.',
     '- Occasions must be handled respectfully and culturally appropriately for Bahrain and the Gulf.',
+    '',
+    'CAPTION — write it for fast organic reach on Instagram/TikTok/Facebook, matched to the design:',
+    '- Line 1 is a scroll-stopping HOOK (max ~8 words): a question, a relatable moment or a bold benefit. It must echo the headline/visual of the design.',
+    '- Then 2–4 short lines (one idea per line): the benefit for the target audience, a concrete use-case or emotion, and why a custom print makes it special.',
+    '- Add a soft engagement prompt (e.g. ask which design/colour they prefer, tag someone, save for later) — never fake giveaways or contests.',
+    '- End with a clear call to action using the CTA wording; do NOT write phone numbers (the system appends the verified contact line).',
+    '- Use 2–4 fitting emojis maximum, natural for the language; keep sentences short; no ALL CAPS; correct spelling and grammar.',
+    '- Write natively in the target language (Gulf-friendly Modern Standard Arabic for ar). Never mix scripts except brand/hashtags.',
+    '- hashtags: 8–12 total, without duplicates: mix 3–4 local reach tags (e.g. #البحرين #Bahrain #المنامة), 3–4 niche product tags in the target language, 1–2 occasion tags when relevant, and 1–2 English tags. No banned/spammy tags.',
+    '- headline (on the design) and the hook must work together but not be identical.',
   ].join('\n');
 }
 

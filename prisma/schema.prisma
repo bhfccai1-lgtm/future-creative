@@ -378,6 +378,8 @@ model PublicationSchedule {
   id          String        @id @default(cuid())
   accountId   String
   account     SocialAccount @relation(fields: [accountId], references: [id])
+  campaignId  String?
+  campaign    Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   slotAt      DateTime // publish time slot (UTC)
   status      String        @default("PLANNED") // PLANNED | GENERATING | READY | DONE | SKIPPED | FAILED
   reason      String?
@@ -388,6 +390,35 @@ model PublicationSchedule {
   @@unique([accountId, slotAt]) // one slot per account per time — idempotent scheduler
   @@index([slotAt, status])
   @@map("publication_schedules")
+}
+
+/// Recurring or one-off campaign: a NEW design is generated for every slot (never a repost).
+model Campaign {
+  id           String       @id @default(cuid())
+  name         String
+  accountIds   String[]
+  productId    String? // null = AI picks per account
+  format       MediaFormat?
+  language     Language?
+  direction    Json? // content type, market, segment, occasion, idea
+  scheduleType String       @default("RECURRING") // ONCE | RECURRING
+  everyHours   Int          @default(24)
+  daysOfWeek   Int[] // 0=Sun … 6=Sat (Asia/Bahrain); empty = every day
+  timeMode     String       @default("BEST") // BEST | FIXED
+  startAt      DateTime // first slot (FIXED / ONCE) or start date (BEST)
+  endAt        DateTime?
+  maxRuns      Int?
+  active       Boolean      @default(true)
+  nextRunAt    DateTime?
+  lastRunAt    DateTime?
+  runs         Int          @default(0)
+  createdBy    String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  schedules    PublicationSchedule[]
+
+  @@index([active, nextRunAt])
+  @@map("campaigns")
 }
 
 model PublicationJob {

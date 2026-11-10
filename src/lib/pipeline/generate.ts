@@ -194,14 +194,15 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.done', targetType: 'advertisement', targetId: ad.id, details: { qcPassed: qc.passed, publishable: qc.publishable } });
 
     // ── Step 12: routing by publishing mode ──
-    const autonomous = s.publishingMode === 'AUTONOMOUS' && !!s.autonomousAuthorizedAt && account.autonomousAuthorized && account.autoPublishEnabled && p.createdBy === 'scheduler';
+    const autonomous = s.publishingMode === 'AUTONOMOUS' && !!s.autonomousAuthorizedAt && account.autonomousAuthorized && account.autoPublishEnabled && (p.createdBy === 'scheduler' || p.createdBy.startsWith('campaign:'));
     if (qc.publishable && autonomous) {
       const job = await autoApproveAndQueue(updated.id);
       updated = await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } });
       return { advertisement: updated, qc, queued: !!job };
     }
     const reason = !qc.passed ? 'QC_FAILED' : s.publishingMode === 'ASSISTED' ? 'ASSISTED_MODE' : 'MANUAL_MODE';
-    await prisma.approvalRequest.create({ data: { advertisementId: ad.id, reason, note: provider.isDryRun ? 'معاينة تجريبية (Dry-run) — غير قابلة للنشر' : null } });
+    const campaignNote = p.createdBy.startsWith('campaign:') ? 'من حملة مجدولة — يُنشر في موعد الحملة بعد الاعتماد' : null;
+    await prisma.approvalRequest.create({ data: { advertisementId: ad.id, reason, note: provider.isDryRun ? 'معاينة تجريبية (Dry-run) — غير قابلة للنشر' : campaignNote } });
     if (!qc.passed) await notify('WARNING', 'QC_FAILED', 'إعلان لم يجتز فحص الجودة', `الإعلان ${ad.id} أُرسل إلى طابور المراجعة: ${qc.checks.filter((c) => !c.passed).map((c) => c.label).join('، ')}`, account.id);
     return { advertisement: updated, qc, queued: false };
   } catch (e) {

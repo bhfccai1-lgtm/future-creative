@@ -12,6 +12,7 @@ import { processPublishJob } from '../lib/publishing/publisher';
 import { reconcileSweep } from '../lib/publishing/reconcile';
 import { recoverAfterRestart, applyRetention } from '../lib/ops/recovery';
 import { refreshPerformanceScores } from '../lib/creative/selector';
+import { runCampaignCycle } from '../lib/campaigns/cycle';
 import { prisma } from '../lib/db';
 import { notify } from '../lib/audit';
 import { env } from '../lib/env';
@@ -30,12 +31,14 @@ async function main() {
   // Repeatable jobs (idempotent upsert): hourly cycle at minute 0 Bahrain time; reconcile every 5 minutes; nightly maintenance.
   await sched.upsertJobScheduler('hourly-cycle', { pattern: '0 * * * *', tz: TZ }, { name: 'cycle' });
   await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
+  await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
 
   const workers = [
     new Worker(QUEUE.scheduler, async (job: Job) => {
       if (job.name === 'cycle') return runSchedulerCycle();
       if (job.name === 'reconcile') return reconcileSweep();
+      if (job.name === 'campaigns') return runCampaignCycle();
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };
     }, { connection: newRedisConnection(), concurrency: 1 }),
     new Worker(QUEUE.generate, async (job: Job<GenerateJobData>) => {

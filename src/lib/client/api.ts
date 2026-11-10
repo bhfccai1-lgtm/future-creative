@@ -7,7 +7,7 @@ export async function apiCall<T = unknown>(url: string, opts: { method?: string;
   const res = await fetch(url, {
     method: opts.method ?? (opts.body || opts.form ? 'POST' : 'GET'),
     headers: { 'x-csrf-token': csrfToken(), ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
-    body: opts.form ?? (opts.body ? JSON.stringify(opts.body) : undefined),
+    body: opts.form ?? (opts.body && opts.method !== 'DELETE' ? JSON.stringify(opts.body) : undefined),
     credentials: 'same-origin',
   });
   const data = await res.json().catch(() => ({}));

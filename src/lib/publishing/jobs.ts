@@ -24,8 +24,14 @@ export async function approveAdvertisement(adId: string, user: { id: string; ema
   // If the ad came from a scheduler slot that is still in the future, keep that slot.
   const sched = ad.scheduleId ? await prisma.publicationSchedule.findUnique({ where: { id: ad.scheduleId } }) : null;
   const s = await getSettings();
-  if (sched && sched.slotAt.getTime() > Date.now() + s.scheduleLeadMinutes * 60_000 && s.autoPublishGlobal && !s.killSwitch) {
-    return createPublicationJob(adId, sched.slotAt, user.email);
+  const futureSlot = sched && sched.slotAt.getTime() > Date.now() + s.scheduleLeadMinutes * 60_000;
+  if (sched && futureSlot && !s.killSwitch && (s.autoPublishGlobal || sched.campaignId)) {
+    try { return await createPublicationJob(adId, sched.slotAt, user.email); }
+    catch (e) {
+      // approved, but the account is not connected / design not publishable (e.g. dry-run): keep it approved
+      if (e instanceof AppError && ['NOT_CONNECTED', 'DRY_RUN', 'QC_FAILED'].includes(e.code)) return null;
+      throw e;
+    }
   }
   return null;
 }

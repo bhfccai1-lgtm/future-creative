@@ -28,8 +28,8 @@ export const CreativeBriefJsonSchema = {
     headline: { type: 'string', description: 'Headline in the target language, max 6 words' },
     supportingCopy: { type: 'string', description: 'Optional one-line supporting copy in the target language, max 12 words, may be empty' },
     cta: { type: 'string', description: 'Call to action in the target language' },
-    caption: { type: 'string', description: 'Social caption in the target language. Must not include prices, discounts, delivery times or superlatives that cannot be verified.' },
-    hashtags: { type: 'array', items: { type: 'string' } },
+    caption: { type: 'string', description: 'High-reach social caption in the target language: hook line, 2-4 short benefit lines, engagement prompt, CTA. No prices, discounts, delivery times, unverifiable superlatives or phone numbers. Hashtags go in the hashtags field, not here.' },
+    hashtags: { type: 'array', items: { type: 'string' }, description: '8-12 hashtags, each starting with #: local reach + niche product + occasion + 1-2 English' },
     styleNotes: { type: 'string' },
   },
 } as const;

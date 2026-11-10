@@ -34,3 +34,19 @@ export const DirectionSchema = z.object({
   occasion: z.enum(optionValues(OCCASIONS)).optional(),
   idea: z.string().max(500).optional(),
 }).optional();
+
+export const CampaignInput = z.object({
+  name: z.string().min(2).max(100),
+  accountIds: z.array(z.string()).min(1, 'اختر حسابًا واحدًا على الأقل').max(50),
+  productId: z.string().optional().nullable(),
+  format: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO']).optional().nullable(),
+  language: z.enum(['ar', 'en', 'ml']).optional().nullable(),
+  direction: DirectionSchema,
+  scheduleType: z.enum(['ONCE', 'RECURRING']),
+  everyHours: z.number().int().min(1).max(24 * 14).default(24),
+  daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+  timeMode: z.enum(['BEST', 'FIXED']).default('BEST'),
+  startAt: z.coerce.date(),
+  endAt: z.coerce.date().optional().nullable(),
+  maxRuns: z.number().int().min(1).max(10000).optional().nullable(),
+});

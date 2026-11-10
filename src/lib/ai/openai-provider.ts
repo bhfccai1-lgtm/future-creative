@@ -17,6 +17,53 @@ function mapError(e: unknown): AiProviderError {
   return new AiProviderError('UNKNOWN', e instanceof Error ? e.message : String(e), false);
 }
 
+/**
+ * Optional request parameters that some models reject (e.g. reasoning / newer models accept only
+ * the default temperature and return 400 "Unsupported value: 'temperature'").
+ * We never send sampling parameters by default; if a model still rejects one of these optional
+ * parameters, it is removed and the request is retried — core fields (model, messages, prompt) are never touched.
+ */
+export const DROPPABLE_PARAMS = ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'seed', 'logprobs', 'top_logprobs', 'quality', 'n', 'max_tokens'] as const;
+
+/** Returns the optional parameter a 400 error complains about, if any. */
+export function rejectedParam(e: unknown, sent: Record<string, unknown>): string | null {
+  if (!(e instanceof OpenAI.APIError) || e.status !== 400) return null;
+  const param = (e as { param?: string | null }).param ?? undefined;
+  const msg = e.message ?? '';
+  const candidates: string[] = [...DROPPABLE_PARAMS, 'response_format'];
+  if (param && candidates.includes(param) && param in sent) return param;
+  if (!/unsupported|not supported|does not support|unrecognized|unknown parameter|invalid.*parameter/i.test(msg)) return null;
+  return candidates.find((k) => k in sent && new RegExp(`['"\`]?${k}['"\`]?`).test(msg)) ?? null;
+}
+
+/**
+ * Calls the API; on a 400 about an optional parameter, removes it (or downgrades json_schema → json_object)
+ * and retries, at most 3 times. Anything else is re-thrown unchanged.
+ */
+export async function callWithParamFallback<P extends Record<string, unknown>, R>(params: P, call: (p: P) => Promise<R>, onDrop?: (param: string) => void): Promise<R> {
+  let current: Record<string, unknown> = { ...params };
+  for (let attempt = 0; ; attempt++) {
+    try { return await call(current as P); }
+    catch (e) {
+      const bad = attempt < 3 ? rejectedParam(e, current) : null;
+      if (!bad) throw e;
+      onDrop?.(bad);
+      if (bad === 'response_format') {
+        const rf = current.response_format as { type?: string } | undefined;
+        if (rf?.type !== 'json_schema') throw e;
+        current = { ...current, response_format: { type: 'json_object' } };
+        const msgs = current.messages as { role: string; content: string }[] | undefined;
+        if (msgs?.length) current.messages = [...msgs, { role: 'system', content: 'Respond with a single JSON object only, using exactly the fields described above.' }];
+      } else {
+        const { [bad]: _removed, ...rest } = current; void _removed;
+        current = rest;
+      }
+    }
+  }
+}
+
+const warnDrop = (where: string) => (param: string) => console.warn(`[openai] ${where}: model rejected optional parameter "${param}" — retrying without it`);
+
 export class OpenAiProvider implements AiProvider {
   readonly name = 'openai';
   readonly isDryRun = false;
@@ -28,12 +75,12 @@ export class OpenAiProvider implements AiProvider {
   async generateBrief(req: BriefRequest, model: string) {
     let res;
     try {
-      res = await this.client.chat.completions.create({
+      // No temperature/top_p: newer models only accept the defaults (400 otherwise).
+      res = await callWithParamFallback({
         model,
-        temperature: 0.9,
-        messages: [{ role: 'system', content: briefSystemPrompt() }, { role: 'user', content: briefUserPrompt(req) }],
+        messages: [{ role: 'system' as const, content: briefSystemPrompt() }, { role: 'user' as const, content: briefUserPrompt(req) }],
         response_format: { type: 'json_schema', json_schema: { name: 'creative_brief', strict: true, schema: CreativeBriefJsonSchema as unknown as Record<string, unknown> } },
-      });
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('brief'));
     } catch (e) { throw mapError(e); }
     const content = res.choices[0]?.message?.content;
     if (!content) throw new AiProviderError('BAD_OUTPUT', 'استجابة فارغة من نموذج النص.', true);
@@ -47,11 +94,11 @@ export class OpenAiProvider implements AiProvider {
   async suggestIdeas(req: BriefRequest, model: string, count: number) {
     let res;
     try {
-      res = await this.client.chat.completions.create({
-        model, temperature: 1,
-        messages: [{ role: 'system', content: ideasSystemPrompt() }, { role: 'user', content: briefUserPrompt(req) + `\nReturn exactly ${count} ideas.` }],
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'system' as const, content: ideasSystemPrompt() }, { role: 'user' as const, content: briefUserPrompt(req) + `\nReturn exactly ${count} ideas.` }],
         response_format: { type: 'json_schema', json_schema: { name: 'idea_suggestions', strict: true, schema: IdeaSuggestionsJsonSchema as unknown as Record<string, unknown> } },
-      });
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('ideas'));
     } catch (e) { throw mapError(e); }
     let ideas: IdeaSuggestion[] = [];
     try { ideas = (JSON.parse(res.choices[0]?.message?.content ?? '{}').ideas ?? []).slice(0, count); }
@@ -62,7 +109,9 @@ export class OpenAiProvider implements AiProvider {
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024' }) {
     let res;
     try {
-      res = await this.client.images.generate({ model: opts.model, prompt, size: opts.size, quality: opts.quality, n: 1 });
+      res = await callWithParamFallback(
+        { model: opts.model, prompt, size: opts.size, quality: opts.quality, n: 1 },
+        (p) => this.client.images.generate(p as unknown as OpenAI.Images.ImageGenerateParamsNonStreaming), warnDrop('image'));
     } catch (e) { throw mapError(e); }
     const item = res.data?.[0];
     if (item?.b64_json) return { png: Buffer.from(item.b64_json, 'base64'), model: opts.model, revisedPrompt: item.revised_prompt ?? undefined };
