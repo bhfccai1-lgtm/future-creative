@@ -10,7 +10,7 @@ const Body = z.object({
   dryRun: z.boolean(), textModel: z.string().min(2).max(80), imageModel: z.string().min(2).max(80),
   imageQuality: z.enum(['low', 'medium', 'high']), monthlyBudgetUsd: z.number().min(0).max(100000),
   alertThresholdPct: z.number().min(1).max(100), maxDailyAds: z.number().int().min(0).max(1000), maxRetries: z.number().int().min(0).max(5),
-  creativeStyle: z.string().min(10).max(1000), languages: z.array(z.enum(['ar', 'en', 'ml'])).min(1), useAiReview: z.boolean().default(false),
+  creativeStyle: z.string().min(10).max(1000), languages: z.array(z.enum(['ar', 'en', 'ml'])).min(1), useAiReview: z.boolean().default(false), aiFullRequiresApproval: z.boolean().default(true),
   pricing: z.object({ textInputPer1M: z.number().min(0), textOutputPer1M: z.number().min(0), imageLow: z.number().min(0), imageMedium: z.number().min(0), imageHigh: z.number().min(0) }),
 });
 

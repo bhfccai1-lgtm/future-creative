@@ -217,3 +217,14 @@ describe('full-AI poster mode (ChatGPT-like)', () => {
     expect(r.qc?.checks.find((c) => c.id === 'ai_text_review')?.passed).toBe(true);
   });
 });
+
+describe('full-AI approval setting', () => {
+  it('admin can turn off the mandatory approval → autonomous mode queues full-AI designs', async () => {
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, publishingMode: 'AUTONOMOUS', autonomousAuthorizedAt: new Date().toISOString(), ai: { ...s.ai, dryRun: false, aiFullRequiresApproval: false } }) });
+    await prisma.socialAccount.update({ where: { id: accounts[0].id }, data: { autoPublishEnabled: true, autonomousAuthorized: true } });
+    setAiProviderOverride(new FakeAiProvider());
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler', direction: { renderMode: 'ai_full' } });
+    expect(r.qc?.requiresHuman).toBe(false);
+    expect(r.queued).toBe(true);
+  });
+});

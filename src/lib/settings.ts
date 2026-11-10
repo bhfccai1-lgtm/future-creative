@@ -33,6 +33,8 @@ export const SettingsSchema = z.object({
     creativeStyle: z.string().default('Premium commercial product photography, cinematic lighting, deep navy and elegant gold accents, clean composition with negative space at top and bottom for text.'),
     languages: z.array(z.enum(['ar', 'en', 'ml'])).default(['ar', 'en', 'ml']),
     useAiReview: z.boolean().default(false),
+    /** Full-AI posters (AI-drawn text): require a human approval before publishing. Admin may turn it off. */
+    aiFullRequiresApproval: z.boolean().default(true),
     // USD estimates — editable because provider pricing changes. Verify against current OpenAI pricing.
     pricing: z.object({
       textInputPer1M: z.number().default(0.4),

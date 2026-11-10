@@ -104,3 +104,24 @@ describe('multi-account isolation', () => {
     expect(b.qc?.checks.find((c) => c.id === 'language_match')?.passed).toBe(true);
   });
 });
+
+describe('one-click Metricool linking', () => {
+  it('links each brand to a placeholder slot (named after the brand), is idempotent, never enables auto-publish', async () => {
+    const { linkAllBrands } = await import('@/lib/publishing/link');
+    const { accounts } = await seedBase({ accounts: 3, connected: false });
+    const adapter = { listProfiles: async () => [
+      { brandId: '7680808', label: 'bhfcc.mugs', timezone: 'Asia/Bahrain', networks: [{ network: 'instagram' as const, handle: 'bhfcc.mugs' }] },
+      { brandId: '7839816', label: '@bhfcc.education', networks: [{ network: 'instagram' as const, handle: 'bhfcc.education' }, { network: 'facebook' as const, id: '1' }] },
+      { brandId: '999', label: 'empty', networks: [] },
+    ] } as never;
+    const r1 = await linkAllBrands(adapter);
+    expect(r1.map((x) => x.action)).toEqual(['linked', 'linked', 'skipped']);
+    const a0 = await prisma.socialAccount.findUniqueOrThrow({ where: { id: accounts[0].id }, include: { connection: true } });
+    expect(a0).toMatchObject({ name: 'bhfcc.mugs', handle: 'bhfcc.mugs', autoPublishEnabled: false });
+    expect(a0.connection).toMatchObject({ providerBrandId: '7680808', status: 'CONNECTED', canPublish: true });
+    expect((await prisma.socialAccount.findUniqueOrThrow({ where: { id: accounts[1].id } })).name).toBe('bhfcc.education');
+    const r2 = await linkAllBrands(adapter);
+    expect(r2.map((x) => x.action)).toEqual(['refreshed', 'refreshed', 'skipped']);
+    expect(await prisma.socialConnection.count()).toBe(2);
+  });
+});

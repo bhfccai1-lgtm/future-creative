@@ -232,7 +232,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
       productAllowed: productAllowed(account, product.id), duplicates: dups, dryRun: provider.isDryRun,
-      video: video?.probe ?? null, videoError, aiText,
+      video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval,
     });
 
     await storeFingerprints(account.id, ad.id, [

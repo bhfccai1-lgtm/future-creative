@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; pricing: Record<string, number> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; pricing: Record<string, number> };
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
   const router = useRouter();
@@ -26,6 +26,7 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
           {keyStatus.configured && <Button type="button" variant="ghost" onClick={async () => { if (confirm('حذف المفتاح؟')) { await apiCall('/api/settings/ai', { method: 'PUT', body: { ...v, apiKey: '__delete__' } }); router.refresh(); } }}>حذف</Button>}
         </div>
         <label className="flex items-center gap-2 rounded-lg border p-3 text-sm md:col-span-3"><input type="checkbox" checked={v.dryRun} onChange={(e) => setV({ ...v, dryRun: e.target.checked })} /><b>وضع التجربة (Dry-run)</b> — بدون استدعاء OpenAI وبدون تكلفة. المخرجات معاينات غير قابلة للنشر.</label>
+        <label className="flex items-start gap-2 rounded-lg border p-3 text-sm md:col-span-3"><input type="checkbox" className="mt-1" checked={v.aiFullRequiresApproval} onChange={(e) => setV({ ...v, aiFullRequiresApproval: e.target.checked })} /><span><b>طلب موافقتي على «التصميم الكامل بالذكاء الاصطناعي» قبل النشر</b> — النص في هذه التصاميم يرسمه النموذج وقد يحتوي أخطاء إملائية. عند إلغاء هذا الخيار تُنشر تلقائيًا في الوضع الذاتي (الشعار والأرقام وزر الطلب تبقى مضمونة لأن النظام يضيفها).</span></label>
         <div><label className="label">نموذج النص</label><input className="input ltr" value={v.textModel} onChange={(e) => setV({ ...v, textModel: e.target.value })} /></div>
         <div><label className="label">نموذج الصور</label><input className="input ltr" value={v.imageModel} onChange={(e) => setV({ ...v, imageModel: e.target.value })} /></div>
         <div><label className="label">جودة الصور</label><select className="input" value={v.imageQuality} onChange={(e) => setV({ ...v, imageQuality: e.target.value as Ai['imageQuality'] })}><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option></select></div>

@@ -18,6 +18,8 @@ export interface QcInput {
   video?: VideoProbe | null; videoError?: string | null;
   /** Full-AI posters: text drawn by the image model + (optional) vision transcription of it. */
   aiText?: { expected: string[]; transcript: string | null } | null;
+  /** Admin setting: AI-drawn text needs a human approval (default true). */
+  aiTextNeedsHuman?: boolean;
 }
 
 export interface QcReport { passed: boolean; publishable: boolean; checks: QcCheck[]; checkedAt: string; requiresHuman?: boolean }
@@ -79,5 +81,5 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
 
   const blockers = checks.filter((c) => c.severity === 'BLOCKER' && !c.passed);
   const designBlockers = blockers.filter((c) => c.id !== 'real_ai_media');
-  return { passed: designBlockers.length === 0, publishable: blockers.length === 0, checks, checkedAt: new Date().toISOString(), requiresHuman: !!q.aiText };
+  return { passed: designBlockers.length === 0, publishable: blockers.length === 0, checks, checkedAt: new Date().toISOString(), requiresHuman: !!q.aiText && q.aiTextNeedsHuman !== false };
 }
