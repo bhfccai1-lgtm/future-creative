@@ -58,6 +58,7 @@ describe('voice personas and dialects', () => {
     expect(v.autoVoiceLang({ market: null, contentLang: 'ar' })).toBe('ar_bh');
     expect(v.autoVoiceLang({ market: 'indian_community', contentLang: 'ml' })).toBe('ml');
     expect(v.autoVoiceLang({ market: 'english_expats', contentLang: 'en' })).toBe('en_gb');
+    expect(v.autoVoiceLang({ market: 'gcc_saudi', contentLang: 'ar' })).toBe('ar_sa');
     expect(v.autoPersona('الفرق والبطولات الرياضية', [])).toBe('s_commentator');
     expect(v.autoPersona('الأطفال والمدارس', ['k_girl'])).toBe('k_boy');
     expect(v.autoPersona('هدايا الموظفين والعملاء', [])).toBe('ad_male');

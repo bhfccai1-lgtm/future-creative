@@ -1,5 +1,20 @@
 # Changelog
 
+## 8.14.0 — 2026-11-12 (occasions calendar)
+- New page **«تقويم المناسبات»** (occasions calendar).
+  - It shows the Bahraini and Gulf occasions of the next 5 months, each with its peak date, a countdown, its publishing window and suggested categories.
+  - **«إنشاء حملة لهذه المناسبة»** (create a campaign for this occasion) creates a campaign in one click:
+    - it runs from the start of the window to one day after the peak, daily at the best time;
+    - format, style and method are set to auto;
+    - the category is optional;
+    - accounts are filtered by market (Saudi occasions → the Saudi account).
+- **New occasions:**
+  - **القرقاعون** (Gergaoon, 15 Ramadan);
+  - **يوم المرأة البحرينية** (Bahraini Women's Day, 1 Dec);
+  - **يوم المعلم** (Teachers' Day, 5 Oct).
+- 2026 lunar dates were added.
+- Fix: a Saudi-market account now gets the Saudi dialect for its voice-over, not the Bahraini one. The market mapping was wrong.
+
 ## 8.13.2 — 2026-11-12 (recommended one-click setup)
 - New card on the schedule page: «⭐ الإعداد الموصى به» (recommended setup).
   - A preview comes first, then one click applies it to every account: every 7 hours (daily cap 4), smart format variety, and niche categories matched to the account name.

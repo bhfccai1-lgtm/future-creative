@@ -270,7 +270,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
             .map((r) => ((r.options ?? {}) as { audioUsed?: { persona?: string } }).audioUsed?.persona).filter((x): x is string => !!x);
           const category = (await prisma.productCategory.findUnique({ where: { id: product.categoryId }, select: { nameAr: true } }))?.nameAr ?? '';
           const persona = personaOf(s.ai.audio.persona) ?? personaOf(autoPersona(category, recentPersonas))!;
-          const vlang = voiceLangOf(s.ai.audio.voiceLang) ?? voiceLangOf(autoVoiceLang({ market: d.market ?? marketOf(account), contentLang: lang }))!;
+          const vlang = voiceLangOf(s.ai.audio.voiceLang) ?? voiceLangOf(autoVoiceLang({ market: d.market ?? (marketOf(account) === 'KSA' ? 'gcc_saudi' : null), contentLang: lang }))!;
           const seconds = Math.max(3, (veo ? veo.durationSec + 3 : reelDuration) - 3.5);
           const maxWords = wordsFor(seconds, persona);
           let script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });

@@ -51,6 +51,9 @@ export const OCCASIONS: (Opt & { headlineAr?: string; headlineEn?: string })[] =
   { value: 'new_year', ar: 'العام الجديد', en: 'New Year', prompt: 'the new year — fresh start, planning ahead', headlineAr: 'بداية جديدة بإبداع', headlineEn: 'A Fresh Start in Print' },
   { value: 'exhibitions_events', ar: 'موسم المعارض والفعاليات', en: 'Exhibitions & events', prompt: 'exhibition and conference season', headlineAr: 'جاهزون لمعرضكم القادم', headlineEn: 'Ready for Your Next Event' },
   { value: 'business_launch', ar: 'افتتاح أو إطلاق مشروع', en: 'Business launch', prompt: 'opening a new shop or launching a new business', headlineAr: 'انطلاقة تليق بمشروعك', headlineEn: 'Launch Your Business Right' },
+  { value: 'gergaoon', ar: 'القرقاعون (منتصف رمضان)', en: 'Gergaoon', prompt: 'Gergaoon — the Bahraini mid-Ramadan children\'s celebration: children in traditional dress, colourful bags of sweets and nuts, joyful neighbourhood atmosphere', headlineAr: 'قرقاعون عادت عليكم', headlineEn: 'Happy Gergaoon' },
+  { value: 'bahraini_women_day', ar: 'يوم المرأة البحرينية (1 ديسمبر)', en: 'Bahraini Women\'s Day', prompt: 'Bahraini Women\'s Day (1 December) — appreciation and pride, elegant and respectful', headlineAr: 'تحية للمرأة البحرينية', headlineEn: 'Celebrating Bahraini Women' },
+  { value: 'teachers_day', ar: 'يوم المعلم (5 أكتوبر)', en: "Teachers' Day", prompt: "World Teachers' Day (5 October) — gratitude gifts for teachers from students and parents", headlineAr: 'شكرًا معلمي', headlineEn: 'Thank You, Teacher' },
   { value: 'onam', ar: 'مهرجان أونام', en: 'Onam', prompt: 'Onam festival celebrated by the Malayali community — floral pookalam motifs', headlineEn: 'Happy Onam' },
   { value: 'diwali', ar: 'مهرجان ديوالي', en: 'Diwali', prompt: 'Diwali festival of lights — diyas and warm glowing light', headlineEn: 'Happy Diwali' },
 ];

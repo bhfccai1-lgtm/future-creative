@@ -124,7 +124,7 @@ export const voiceLangOf = (id?: string) => VOICE_LANGS.find((l) => l.id === id)
 
 /** «تلقائي»: language from the audience/market and the design language. */
 export function autoVoiceLang(o: { market?: string | null; contentLang: 'ar' | 'en' | 'ml' }): string {
-  const m: Record<string, string> = { bahrain_local: 'ar_bh', bahrain_business: 'ar_bh', gcc_saudi: 'ar_gulf', indian_community: 'ml', english_expats: 'en_gb' };
+  const m: Record<string, string> = { bahrain_local: 'ar_bh', bahrain_business: 'ar_bh', gcc_saudi: 'ar_sa', indian_community: 'ml', english_expats: 'en_gb' };
   if (o.market && m[o.market]) return o.contentLang === 'en' && o.market === 'indian_community' ? 'en_in' : m[o.market];
   return o.contentLang === 'en' ? 'en_gb' : o.contentLang === 'ml' ? 'ml' : 'ar_bh';
 }
