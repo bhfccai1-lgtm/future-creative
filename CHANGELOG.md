@@ -1,5 +1,12 @@
 # Changelog
 
+## 8.15.0 — 2026-11-12 (direct Google Drive archive, no n8n or Google Cloud)
+- Each verified publication goes to the owner's own **Google Apps Script** web app, through the durable outbox (with retries).
+  - The payload carries signed links to the exact published files.
+  - The script saves the files and the caption into a folder per account and appends a row to the «published» sheet.
+  - It skips duplicates and downloads only from the system's host.
+- In the dashboard (Integrations): a card to save the script URL (encrypted), test it and archive the last 20 posts.
+
 ## 8.14.1 — 2026-11-12 (Google Drive and Sheets from the dashboard)
 - The n8n settings take the **Drive archive folder link** and the **Google Sheets link**, stored as their IDs.
 - `scripts/n8n-setup.sh` writes them to `.env` as `GDRIVE_FOLDER_ID` and `GSHEET_ID`, so nothing has to be typed in the console.

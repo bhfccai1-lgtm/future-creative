@@ -4,6 +4,7 @@ import { getSettings, secretStatus } from '@/lib/settings';
 import { Card, PageHeader, Badge } from '@/components/ui';
 import { IntegrationsForm } from '@/components/integrations-form';
 import { N8nForm } from '@/components/n8n-form';
+import { GoogleArchiveForm } from '@/components/google-archive-form';
 import { ActionButton } from '@/components/action-button';
 import { EVENTS } from '@/lib/integrations/events';
 import { env } from '@/lib/env';
@@ -49,6 +50,7 @@ export default async function IntegrationsPage() {
           {!deliveries.length && <p className="text-sm text-slate-500">لا توجد أحداث بعد.</p>}
         </div>
       </Card>
+      <Card title="أرشيف Google Drive و Sheets (مباشر)" className="mt-6"><GoogleArchiveForm configured={(await secretStatus('GOOGLE_ARCHIVE_URL')).configured} /></Card>
       <Card title="مزودات أخرى" className="mt-6">
         <p className="text-sm text-slate-600">واجهة المحوّل (PublishingAdapter) جاهزة لإضافة الواجهات الرسمية مباشرة (Meta Graph API، TikTok Content Posting API، YouTube Data API …). غير مفعّلة في هذا الإصدار — راجع docs/FEATURES.md.</p>
       </Card>

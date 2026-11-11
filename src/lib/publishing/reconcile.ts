@@ -1,4 +1,5 @@
 import { prisma } from '../db';
+import { queueGoogleArchive } from '../integrations/google-archive';
 import { audit, notify } from '../audit';
 import { getAdapter } from './registry';
 import { buildPublishRequest } from './publisher';
@@ -83,6 +84,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
         prisma.socialAccount.update({ where: { id: job.accountId }, data: { lastPublishedAt: new Date() } }),
       ]);
       await audit({ actorLabel: 'worker', action: 'publication.verified_published', targetType: 'publication_job', targetId: job.id, details: { url: st.publicUrl ?? null } });
+      if (job.primary) await queueGoogleArchive(job.advertisementId, st.publicUrl ?? null);
       await emitEvent('publication.published', { jobId: job.id, adId: job.advertisementId, accountId: job.accountId, account: job.account.name, publicUrl: st.publicUrl ?? null, verifiedAt: new Date().toISOString() });
       return 'PUBLISHED';
     }
