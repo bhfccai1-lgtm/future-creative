@@ -1,5 +1,19 @@
 # Changelog
 
+## 8.3.0 — 2026-11-11 (Instagram carousels)
+- New format `IMAGE_CAROUSEL`. Each post has 5–6 slides at 1080×1350:
+  - the designed cover;
+  - 3–4 useful content slides, with a large number, title and body on a blurred backdrop of the same product, a vector swipe arrow, and both branch numbers on every slide;
+  - a final slide with save & share, the official CTA and both branches.
+  - The audit measured zero shares and one save with single images; carousels are the format built for saves and shares.
+- The AI brief returns `slides` for carousels. Missing slides are topped up with truthful generic slides (no prices, times or promises). The dry-run preview builds slides from the approved product messages.
+- QC blocker `carousel_slides`: 5–10 images, every text fits, no missing glyphs, no overlap. While building this, QC caught that the Arabic font has no "←" glyph, so the arrow is now drawn as a vector.
+- Approval binding covers the whole bundle: SHA-256 of the ordered file hashes. The publisher re-hashes every slide; one modified slide blocks publishing.
+- Publishing sends all images in order in a single Metricool post (an Instagram carousel). Networks without carousel support are reported as unavailable.
+- The growth mix is now 50% Reels, 25% carousels, 15% feed, 10% stories.
+- The dashboard shows the slide strip on the design page. The n8n event includes `slideUrls`. The CLI pre-publish check verifies every slide.
+- 154 tests passing.
+
 ## 8.2.0 — 2026-11-11 (content engine + n8n)
 ### Content generation
 - **Seasonal content planner:** when the occasion is left on automatic, the system picks a timely one:

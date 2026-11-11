@@ -16,4 +16,4 @@ export const ConnBadge = ({ status }: { status?: ConnectionStatus | null }) => {
 
 export const PLATFORM_AR: Record<string, string> = { instagram: 'إنستغرام', facebook: 'فيسبوك', tiktok: 'تيك توك', threads: 'ثريدز', youtube: 'يوتيوب', pinterest: 'بنترست', linkedin: 'لينكدإن', twitter: 'X' };
 export const LANG_AR: Record<string, string> = { ar: 'العربية', en: 'English', ml: 'മലയാളം' };
-export const FORMAT_AR: Record<string, string> = { IMAGE_STORY: 'صورة عمودية 1080×1920', IMAGE_FEED: 'صورة منشور 1080×1350', IMAGE_SQUARE: 'صورة مربعة 1080×1080', REEL_VIDEO: 'فيديو Reel متحرك' };
+export const FORMAT_AR: Record<string, string> = { IMAGE_STORY: 'صورة عمودية 1080×1920', IMAGE_FEED: 'صورة منشور 1080×1350', IMAGE_SQUARE: 'صورة مربعة 1080×1080', REEL_VIDEO: 'فيديو Reel متحرك', IMAGE_CAROUSEL: 'كاروسيل (شرائح)' };

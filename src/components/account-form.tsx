@@ -40,11 +40,11 @@ export function AccountForm({ account, products }: { account?: Account; products
       <div><label className="label">فئة النشاط</label><input className="input" value={a.businessCategory ?? ''} onChange={(e) => set('businessCategory', e.target.value || null)} placeholder="مثال: هدايا، شركات، أعراس" /></div>
       <div><label className="label">صيغة النشر</label>
         <select className="input" value={a.publishFormat} onChange={(e) => set('publishFormat', e.target.value)}>
-          <option value="IMAGE_STORY">صورة عمودية 1080×1920</option><option value="IMAGE_FEED">صورة منشور 1080×1350</option><option value="IMAGE_SQUARE">صورة مربعة 1080×1080</option><option value="REEL_VIDEO">فيديو Reel متحرك (MP4)</option>
+          <option value="IMAGE_STORY">صورة عمودية 1080×1920</option><option value="IMAGE_FEED">صورة منشور 1080×1350</option><option value="IMAGE_SQUARE">صورة مربعة 1080×1080</option><option value="REEL_VIDEO">فيديو Reel متحرك (MP4)</option><option value="IMAGE_CAROUSEL">كاروسيل 5–6 شرائح 1080×1350</option>
         </select></div>
       <div><label className="label">استراتيجية المحتوى</label>
         <select className="input" value={a.formatStrategy ?? 'FIXED'} onChange={(e) => set('formatStrategy', e.target.value)}>
-          <option value="GROWTH_MIX">مزيج النمو: 60% ريلز · 30% منشورات · 10% ستوري (موصى به)</option><option value="FIXED">صيغة ثابتة (صيغة النشر أعلاه فقط)</option>
+          <option value="GROWTH_MIX">مزيج النمو: 50% ريلز · 25% كاروسيل · 15% منشور · 10% ستوري (موصى به)</option><option value="FIXED">صيغة ثابتة (صيغة النشر أعلاه فقط)</option>
         </select>
         <p className="mt-1 text-xs text-slate-500">بيانات حساباتك: الريلز وصلت 5–7 أضعاف وصول الصور، والستوري لا تجلب متابعين جددًا.</p></div>
       <div><label className="label">فترة النشر (دقائق)</label><input type="number" min={60} step={30} className="input" value={a.publishIntervalMinutes} onChange={(e) => set('publishIntervalMinutes', Number(e.target.value))} /></div>

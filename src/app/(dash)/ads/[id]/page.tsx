@@ -41,6 +41,16 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
         <div className="space-y-4">
           {video ? <video className="w-full rounded-xl shadow" src={`/api/media/${video.storageKey}`} controls playsInline /> : finalImg ? <img className="w-full rounded-xl shadow" src={`/api/media/${finalImg.storageKey}`} alt="التصميم النهائي" /> : <div className="card p-8 text-center text-slate-500">لا توجد وسائط</div>}
           {video && finalImg && <img className="w-1/2 rounded-lg" src={`/api/media/${finalImg.storageKey}`} alt="صورة ثابتة" />}
+          {ad.format === 'IMAGE_CAROUSEL' && (
+            <div>
+              <div className="mb-1 text-xs font-bold text-slate-600">شرائح الكاروسيل (بالترتيب — تُنشر كمنشور واحد)</div>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {[...ad.media.filter((m) => m.role === 'FINAL'), ...ad.media.filter((m) => m.role === 'SLIDE').sort((a, b) => Number((a.meta as { index?: number })?.index ?? 0) - Number((b.meta as { index?: number })?.index ?? 0))].map((m, i) => (
+                  <a key={m.id} href={`/api/media/${m.storageKey}`} target="_blank" rel="noreferrer" className="shrink-0"><img className="h-40 rounded-lg border shadow-sm" src={`/api/media/${m.storageKey}`} alt={`شريحة ${i + 1}`} /><div className="text-center text-[10px] text-slate-500">{i + 1}</div></a>
+                ))}
+              </div>
+            </div>
+          )}
           {video && <p className="text-xs text-slate-500 ltr">MP4 · {video.width}×{video.height} · {video.durationSec?.toFixed(1)}s · {(video.bytes / 1e6).toFixed(1)}MB</p>}
         </div>
         <div className="space-y-6">

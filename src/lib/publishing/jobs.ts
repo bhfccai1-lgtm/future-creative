@@ -7,13 +7,14 @@ import { assertTransition } from './state-machine';
 import { enq } from '../queue/queues';
 import type { QcReport } from '../qc';
 import { emitEvent } from '../integrations/events';
+import { bundleSha, publishableMedia } from './media';
 
 /** SHA-256 recorded at render time for the asset that will actually be published (video for Reels). */
 export async function primaryMediaSha(adId: string) {
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId }, include: { media: true } });
-  const main = ad.media.find((m) => m.role === (ad.format === 'REEL_VIDEO' ? 'VIDEO' : 'FINAL'));
-  if (!main) throw new AppError('NEEDS_ASSET', 'ملف التصميم النهائي غير موجود — لا يمكن الاعتماد.', 409);
-  return main.sha256;
+  const list = publishableMedia(ad);
+  if (!list.length || (ad.format === 'IMAGE_CAROUSEL' && list.length < 4)) throw new AppError('NEEDS_ASSET', 'ملفات التصميم النهائية غير مكتملة — لا يمكن الاعتماد.', 409);
+  return bundleSha(list.map((m) => m.sha256));
 }
 
 /** Optimistic state change: only succeeds if the row is still in `from`. Returns false if someone else moved it. */

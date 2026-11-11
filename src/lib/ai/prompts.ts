@@ -33,6 +33,8 @@ export function briefSystemPrompt() {
 export function briefUserPrompt(r: BriefRequest) {
   return JSON.stringify({
     task: 'Create a new advertisement concept.',
+    format: r.format ?? 'IMAGE_STORY',
+    formatNote: r.format === 'IMAGE_CAROUSEL' ? 'Carousel post: the cover uses headline/badge/supportingCopy; fill `slides` with 3-4 genuinely useful slides (saves and shares come from useful carousels). End the caption by inviting people to save the post.' : 'Return slides as [].',
     targetLanguage: LANG_NAME[r.language],
     account: { name: r.accountName, category: r.businessCategory },
     product: {

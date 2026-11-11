@@ -19,6 +19,7 @@ import { renderReel } from '../video/reel';
 import { runQualityChecks, type QcReport } from '../qc';
 import { sha256 } from '../crypto';
 import { nextFormatFor } from '../creative/format-mix';
+import { renderCarousel, normaliseSlides } from '../render/carousel';
 import { marketOf, pickContentType, pickOccasion } from '../creative/planner';
 import { emitEvent } from '../integrations/events';
 import { signedMediaUrl } from '../storage';
@@ -132,7 +133,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
           accountName: account.name, businessCategory: account.businessCategory, creativeStyle,
           defaultCta: ctaFor(business, lang), avoidIdeas, avoidHeadlines, attempt,
-          direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion,
+          direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format,
         }, s.ai.textModel));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: out.model, kind: 'text', inputTokens: out.usage.inputTokens, outputTokens: out.usage.outputTokens, costUsd: estimateTextCost(s, out.usage.inputTokens, out.usage.outputTokens) });
         return out;
@@ -196,6 +197,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const extraBackgrounds = await Promise.all(extraScenes.map((x) => buildBackground(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme, features.length)));
     const jpeg = await toJpeg(composed.png);
 
+    // ── Carousel: teaching slides + save/CTA slide (same theme, product backdrop, contacts on every slide) ──
+    let carousel: Awaited<ReturnType<typeof renderCarousel>> | null = null;
+    if (format === 'IMAGE_CAROUSEL') carousel = await renderCarousel(composed, scene.png, normaliseSlides(brief.slides, lang), lang);
+
     // ── Step 11: format (real video for Reels) ──
     let video: Awaited<ReturnType<typeof renderReel>> | null = null;
     let videoError: string | null = null;
@@ -220,6 +225,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       await put('VIDEO', 'reel.mp4', video.mp4, 'video/mp4', { width: video.probe.width, height: video.probe.height, durationSec: video.probe.durationSec, meta: video.probe as unknown as Prisma.InputJsonValue });
       await put('THUMBNAIL', 'thumb.jpg', video.thumbnail, 'image/jpeg');
     }
+    if (carousel) for (let i = 0; i < carousel.slides.length; i++) await put('SLIDE', `slide-${String(i + 2).padStart(2, '0')}.jpg`, carousel.slides[i], 'image/jpeg', { width: 1080, height: 1350, meta: { index: i + 2 } });
     const primarySha = video ? sha256(video.mp4) : sha256(jpeg);
 
     await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'GENERATED', briefId: briefRow.id, headline: brief.headline, caption: buildCaption(brief), logoSha256: logo.sha256, templateKey: composed.templateKey, layerManifest: composed.manifest as unknown as Prisma.InputJsonValue } });
@@ -249,6 +255,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
       productAllowed: productAllowed(account, product.id), duplicates: dups, dryRun: provider.isDryRun,
       video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval,
+      carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
     });
 
     await storeFingerprints(account.id, ad.id, [
@@ -277,13 +284,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const campaignNote = p.createdBy.startsWith('campaign:') ? 'من حملة مجدولة — يُنشر في موعد الحملة بعد الاعتماد' : null;
     await prisma.approvalRequest.create({ data: { advertisementId: ad.id, reason, note: provider.isDryRun ? 'معاينة تجريبية (Dry-run) — غير قابلة للنشر' : campaignNote } });
     {
-      const media = await prisma.mediaAsset.findMany({ where: { advertisementId: ad.id, role: { in: ['FINAL', 'VIDEO'] } } });
+      const media = await prisma.mediaAsset.findMany({ where: { advertisementId: ad.id, role: { in: ['FINAL', 'VIDEO', 'SLIDE'] } }, orderBy: { storageKey: 'asc' } });
       const img = media.find((m) => m.role === 'FINAL'); const vid = media.find((m) => m.role === 'VIDEO');
       await emitEvent('ad.ready_for_review', {
         adId: ad.id, account: { id: account.id, name: account.name, handle: account.handle }, format, language: lang,
         headline: updated.headline, caption: updated.caption, product: product.titleAr, reason, dryRun: provider.isDryRun,
         qcPassed: qc.passed, publishable: qc.publishable, requiresHuman: !!qc.requiresHuman,
         imageUrl: img ? signedMediaUrl(img.storageKey) : null, videoUrl: vid ? signedMediaUrl(vid.storageKey) : null,
+        slideUrls: media.filter((m) => m.role === 'SLIDE').map((m) => signedMediaUrl(m.storageKey)),
         reviewUrl: `/ads/${ad.id}`,
       });
     }

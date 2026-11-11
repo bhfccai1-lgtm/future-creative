@@ -41,6 +41,7 @@ enum MediaFormat {
   IMAGE_FEED // 1080x1350
   IMAGE_SQUARE // 1080x1080
   REEL_VIDEO // 1080x1920 MP4
+  IMAGE_CAROUSEL // 1080x1350 multi-slide feed post (cover + teaching slides + CTA slide)
 }
 
 // Explicit publication / advertisement state machine (section 12)

@@ -16,7 +16,7 @@ export const DIMENSIONS: Record<string, string> = {
   occasion: 'المناسبة', category: 'فئة المنتج', language: 'اللغة', template: 'القالب',
 };
 const LABELS: Record<string, Record<string, string>> = {
-  format: { IMAGE_STORY: 'ستوري', IMAGE_FEED: 'منشور', IMAGE_SQUARE: 'مربع', REEL_VIDEO: 'ريلز' },
+  format: { IMAGE_STORY: 'ستوري', IMAGE_FEED: 'منشور', IMAGE_SQUARE: 'مربع', REEL_VIDEO: 'ريلز', IMAGE_CAROUSEL: 'كاروسيل' },
   language: { ar: 'العربية', en: 'الإنجليزية', ml: 'المالايالامية' },
   occasion: Object.fromEntries(OCCASIONS.map((o) => [o.value, o.ar])),
   contentType: Object.fromEntries(CONTENT_TYPES.map((o) => [o.value, o.ar])),

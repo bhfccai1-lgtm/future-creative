@@ -5,6 +5,7 @@ export const FORMAT_SIZE: Record<MediaFormat, { w: number; h: number }> = {
   REEL_VIDEO: { w: 1080, h: 1920 },
   IMAGE_FEED: { w: 1080, h: 1350 },
   IMAGE_SQUARE: { w: 1080, h: 1080 },
+  IMAGE_CAROUSEL: { w: 1080, h: 1350 },
 };
 
 export interface Box { x: number; y: number; w: number; h: number } // fractions of canvas

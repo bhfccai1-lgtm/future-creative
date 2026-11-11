@@ -15,6 +15,7 @@ import { getSettings } from '../settings';
 import { sha256 } from '../crypto';
 import { log } from '../ops/log';
 import { emitEvent } from '../integrations/events';
+import { bundleSha, publishableMedia } from './media';
 
 export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'ACCOUNT_PAUSED' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
 
@@ -53,6 +54,7 @@ export function unavailableChannels(networks: SocialPlatform[], snapshot: unknow
   for (const n of networks) {
     if (linked.length && !linked.includes(n)) out.push(`${n}: غير مرتبط بالعلامة في Metricool`);
     if (n === 'youtube' && format !== 'REEL_VIDEO') out.push('youtube: يتطلب فيديو (Reel)');
+    if (format === 'IMAGE_CAROUSEL' && !['instagram', 'facebook', 'linkedin', 'threads'].includes(n)) out.push(`${n}: لا يدعم منشورات الكاروسيل`);
   }
   return out;
 }
@@ -60,9 +62,8 @@ export function unavailableChannels(networks: SocialPlatform[], snapshot: unknow
 export async function buildPublishRequest(jobId: string): Promise<PublishRequest> {
   const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId }, include: { advertisement: { include: { media: true, product: true } }, account: { include: { connection: true } } } });
   const ad = job.advertisement;
-  const isVideo = ad.format === 'REEL_VIDEO';
-  const main = ad.media.find((m) => m.role === (isVideo ? 'VIDEO' : 'FINAL'));
-  if (!main) throw new Error('Final media asset missing');
+  const list = publishableMedia(ad);
+  if (!list.length) throw new Error('Final media asset missing');
   const thumb = ad.media.find((m) => m.role === 'THUMBNAIL');
   const business = await getBusiness();
   const opts = (ad.options ?? {}) as { audio?: string | null; audioQuery?: string | null };
@@ -77,7 +78,7 @@ export async function buildPublishRequest(jobId: string): Promise<PublishRequest
     timezone: job.account.timezone,
     ...captionFor(ad.caption ?? '', contactFooter(ad.language, locationsOf(business)), networks, (await getSettings()).metricool.hashtagsInFirstComment),
     altText: [ad.headline, ad.product?.titleAr && ad.language === 'ar' ? ad.product.titleAr : ad.product?.titleEn, 'مطبعة إبداع المستقبل — Future Creative Printing'].filter(Boolean).join(' — '),
-    mediaUrls: [signedMediaUrl(main.storageKey)],
+    mediaUrls: list.map((m) => signedMediaUrl(m.storageKey)),
     thumbnailUrl: thumb ? signedMediaUrl(thumb.storageKey) : undefined,
     title: ad.headline ?? undefined,
     aiGenerated: true,
@@ -129,11 +130,17 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
   }
   const bad = unavailableChannels(targetNetworks(job.account.platform, ad.channels), conn.providerSnapshot, ad.format);
   if (bad.length) { await fail(job.id, ad.id, `قنوات نشر غير متاحة: ${bad.join('؛ ')}`, job.accountId); return 'FAILED'; }
-  const main = ad.media.find((m) => m.role === (ad.format === 'REEL_VIDEO' ? 'VIDEO' : 'FINAL'));
-  if (!main || !(await storage().exists(main.storageKey))) { await fail(job.id, ad.id, 'ملف الوسائط النهائي غير متاح.', job.accountId); return 'FAILED'; }
-  // Integrity: the bytes on disk must be exactly the bytes rendered AND the bytes approved.
-  const actual = sha256(await storage().get(main.storageKey));
-  if (actual !== main.sha256) { await fail(job.id, ad.id, 'ملف التصميم تغيّر بعد إنشائه (بصمة SHA-256 غير مطابقة) — أعد التوليد والاعتماد.', job.accountId); return 'FAILED'; }
+  const list = publishableMedia(ad);
+  if (!list.length || (ad.format === 'IMAGE_CAROUSEL' && list.length < 4)) { await fail(job.id, ad.id, 'ملفات الوسائط النهائية غير مكتملة.', job.accountId); return 'FAILED'; }
+  // Integrity: every file's bytes on disk must be exactly the bytes rendered AND the bytes approved.
+  const shas: string[] = [];
+  for (const m of list) {
+    if (!(await storage().exists(m.storageKey))) { await fail(job.id, ad.id, 'ملف الوسائط النهائي غير متاح.', job.accountId); return 'FAILED'; }
+    const h = sha256(await storage().get(m.storageKey));
+    if (h !== m.sha256) { await fail(job.id, ad.id, 'ملف التصميم تغيّر بعد إنشائه (بصمة SHA-256 غير مطابقة) — أعد التوليد والاعتماد.', job.accountId); return 'FAILED'; }
+    shas.push(h);
+  }
+  const actual = bundleSha(shas);
   const approval = await prisma.approvalRequest.findFirst({ where: { advertisementId: ad.id, status: 'APPROVED' }, orderBy: { decidedAt: 'desc' } });
   if (approval?.mediaSha256 && approval.mediaSha256 !== actual) { await fail(job.id, ad.id, 'الملف الحالي ليس الملف الذي تم اعتماده — أعد الاعتماد.', job.accountId); return 'FAILED'; }
   if (job.scheduledFor.getTime() < Date.now() + 2 * 60_000) {

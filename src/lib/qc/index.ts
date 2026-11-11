@@ -22,6 +22,8 @@ export interface QcInput {
   /** Admin setting: AI-drawn text needs a human approval (default true). */
   aiTextNeedsHuman?: boolean;
   hashtags?: string[];
+  /** Carousel: total images (cover included) and rendering problems. */
+  carousel?: { images: number; problems: string[] } | null;
 }
 
 export interface QcReport { passed: boolean; publishable: boolean; checks: QcCheck[]; checkedAt: string; requiresHuman?: boolean }
@@ -78,6 +80,10 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
     });
   }
 
+  if (q.format === 'IMAGE_CAROUSEL') {
+    const ok = !!q.carousel && q.carousel.images >= 5 && q.carousel.images <= 10 && q.carousel.problems.length === 0;
+    checks.push({ id: 'carousel_slides', label: 'شرائح الكاروسيل مكتملة ومقروءة (5–10 صور، نص يتسع، أرقام الفرعين)', passed: ok, severity: 'BLOCKER', detail: !q.carousel ? 'لم تُنتج الشرائح' : [`${q.carousel.images} صور`, ...q.carousel.problems].join('؛ ') });
+  }
   const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
   checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });
 

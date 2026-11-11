@@ -360,3 +360,29 @@ describe('publishing channels', () => {
     expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: job2.id } })).lastError).toMatch(/tiktok/);
   });
 });
+
+describe('carousel publishing', () => {
+  it('generates cover + slides, binds approval to the whole bundle, publishes all images in order; a modified slide blocks publishing', async () => {
+    const { accounts } = await setup();
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'tester', format: 'IMAGE_CAROUSEL' });
+    expect(r.advertisement.state).toBe('QUALITY_REVIEW');
+    expect(r.qc?.checks.find((c) => c.id === 'carousel_slides')?.passed).toBe(true);
+    const slides = await prisma.mediaAsset.findMany({ where: { advertisementId: r.advertisement.id, role: 'SLIDE' } });
+    expect(slides.length).toBeGreaterThanOrEqual(4);
+    const job = await publishNow(r.advertisement.id, admin);
+    expect(await processPublishJob(job.id, 'w')).toBe('SCHEDULED');
+    const sent = adapter.submits[0];
+    expect(sent.format).toBe('IMAGE_CAROUSEL');
+    expect(sent.mediaUrls).toHaveLength(slides.length + 1);
+    expect(sent.mediaUrls[0]).toMatch(/final\.jpg$/); expect(sent.mediaUrls[1]).toMatch(/slide-02\.jpg$/);
+
+    const r2 = await generateAdvertisement({ accountId: accounts[1].id, createdBy: 'tester', format: 'IMAGE_CAROUSEL' });
+    await approveAdvertisement(r2.advertisement.id, admin);
+    const job2 = await createPublicationJob(r2.advertisement.id, new Date(), 't');
+    const s3 = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: r2.advertisement.id, role: 'SLIDE' } });
+    const { storage } = await import('@/lib/storage');
+    await storage().put(s3.storageKey, Buffer.concat([await storage().get(s3.storageKey), Buffer.from('x')]), 'image/jpeg');
+    expect(await processPublishJob(job2.id, 'w')).toBe('FAILED');
+    expect(adapter.submits).toHaveLength(1);
+  }, 300_000);
+});

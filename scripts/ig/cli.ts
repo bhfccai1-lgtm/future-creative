@@ -31,6 +31,7 @@ import { qcVerdict, type QcReport } from '../../src/lib/qc';
 import { loadApprovedLogo } from '../../src/lib/brand/logo';
 import { storage } from '../../src/lib/storage';
 import { sha256 } from '../../src/lib/crypto';
+import { bundleSha, publishableMedia } from '../../src/lib/publishing/media';
 import { getSettings } from '../../src/lib/settings';
 import { probeVideo, REEL_REQUIREMENTS } from '../../src/lib/video/probe';
 import { audit } from '../../src/lib/audit';
@@ -55,13 +56,15 @@ async function preflight(adId: string) {
   add('QC publishable', !!qc?.publishable, `verdict ${qcVerdict(qc)}`);
   add('state approvable/approved', ['QUALITY_REVIEW', 'APPROVED', 'QUEUED'].includes(ad.state), ad.state);
   try { const logo = await loadApprovedLogo(ad.account.businessId); add('logo fingerprint unchanged', logo.sha256 === ad.logoSha256); } catch (e) { add('logo fingerprint unchanged', false, (e as Error).message); }
-  const main = ad.media.find((m) => m.role === (ad.format === 'REEL_VIDEO' ? 'VIDEO' : 'FINAL'));
-  if (!main || !(await storage().exists(main.storageKey))) add('final media present', false);
+  const list = publishableMedia(ad);
+  const missing = [];
+  for (const m of list) if (!(await storage().exists(m.storageKey))) missing.push(m.storageKey);
+  if (!list.length || missing.length) add('final media present', false, `${list.length} files, missing ${missing.length}`);
   else {
-    const actual = sha256(await storage().get(main.storageKey));
-    add('media SHA-256 matches render', actual === main.sha256, actual.slice(0, 16));
+    const shas = await Promise.all(list.map(async (m) => sha256(await storage().get(m.storageKey))));
+    add(`media SHA-256 matches render (${list.length} file${list.length > 1 ? 's' : ''})`, shas.every((h, i) => h === list[i].sha256));
     const appr = ad.approvals[0];
-    if (appr) add('media matches approved bytes', !appr.mediaSha256 || appr.mediaSha256 === actual);
+    if (appr) add('media matches approved bytes', !appr.mediaSha256 || appr.mediaSha256 === bundleSha(shas));
   }
   const c = ad.account.connection;
   add('connection verified with publish permission', !!c && c.status === 'CONNECTED' && c.canPublish && !!c.providerBrandId, c?.status);

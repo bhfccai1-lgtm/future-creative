@@ -6,10 +6,11 @@ import { prisma } from '../db';
  * 59–90 people while feed images reached ~12 (followers only) and stories added almost nothing — so Reels
  * carry discovery, feed builds the profile grid, stories keep existing followers warm.
  */
-export const DEFAULT_MIX: Partial<Record<MediaFormat, number>> = { REEL_VIDEO: 60, IMAGE_FEED: 30, IMAGE_STORY: 10 };
+/** Reels = discovery, carousels = saves/shares (zero saves/shares were measured with single images), feed = grid, stories = warm followers. */
+export const DEFAULT_MIX: Partial<Record<MediaFormat, number>> = { REEL_VIDEO: 50, IMAGE_CAROUSEL: 25, IMAGE_FEED: 15, IMAGE_STORY: 10 };
 
 export function normaliseMix(raw: unknown): Partial<Record<MediaFormat, number>> {
-  const allowed: MediaFormat[] = ['REEL_VIDEO', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE'];
+  const allowed: MediaFormat[] = ['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE'];
   const out: Partial<Record<MediaFormat, number>> = {};
   if (raw && typeof raw === 'object') for (const [k, v] of Object.entries(raw)) if (allowed.includes(k as MediaFormat) && typeof v === 'number' && v > 0) out[k as MediaFormat] = v;
   return Object.keys(out).length ? out : DEFAULT_MIX;

@@ -237,7 +237,7 @@ describe('growth content mix in the generation pipeline', () => {
     expect(first.advertisement.format).toBe('REEL_VIDEO');
     expect(await prisma.mediaAsset.count({ where: { advertisementId: first.advertisement.id, role: 'VIDEO' } })).toBe(1);
     const second = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler' });
-    expect(second.advertisement.format).toBe('IMAGE_FEED');
+    expect(second.advertisement.format).toBe('IMAGE_CAROUSEL');
     const fixed = await generateAdvertisement({ accountId: accounts[1].id, createdBy: 'scheduler' });
     expect(fixed.advertisement.format).toBe('IMAGE_STORY');
   }, 300_000);

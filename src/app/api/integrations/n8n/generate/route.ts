@@ -10,7 +10,7 @@ import { DirectionSchema } from '@/lib/validation';
 
 const Body = z.object({
   accountId: z.string().optional(), handle: z.string().optional(),
-  format: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO']).optional(),
+  format: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO', 'IMAGE_CAROUSEL']).optional(),
   language: z.enum(['ar', 'en', 'ml']).optional(), productSlug: z.string().optional(),
   direction: DirectionSchema,
 }).refine((b) => b.accountId || b.handle, 'accountId or handle is required');

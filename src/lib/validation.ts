@@ -8,7 +8,7 @@ export const AccountInput = z.object({
   language: z.enum(['ar', 'en', 'ml']),
   businessCategory: z.string().max(100).optional().nullable(),
   allowedProductIds: z.array(z.string()).max(200).default([]),
-  publishFormat: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO']),
+  publishFormat: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO', 'IMAGE_CAROUSEL']),
   publishIntervalMinutes: z.number().int().min(60).max(7 * 24 * 60),
   publishWindowStart: z.string().regex(/^\d{2}:\d{2}$/),
   publishWindowEnd: z.string().regex(/^\d{2}:\d{2}$/),
@@ -16,7 +16,7 @@ export const AccountInput = z.object({
   reelDurationSec: z.number().int().min(6).max(60).default(10),
   maxDailyAds: z.number().int().min(1).max(48).default(4),
   formatStrategy: z.enum(['FIXED', 'GROWTH_MIX']).default('FIXED'),
-  formatMix: z.record(z.enum(['REEL_VIDEO', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE']), z.number().int().min(0).max(100)).optional(),
+  formatMix: z.record(z.enum(['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE']), z.number().int().min(0).max(100)).optional(),
 });
 
 export const ProductInput = z.object({
@@ -51,7 +51,7 @@ export const CampaignInput = z.object({
   name: z.string().min(2).max(100),
   accountIds: z.array(z.string()).min(1, 'اختر حسابًا واحدًا على الأقل').max(50),
   productId: z.string().optional().nullable(),
-  format: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO']).optional().nullable(),
+  format: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO', 'IMAGE_CAROUSEL']).optional().nullable(),
   language: z.enum(['ar', 'en', 'ml']).optional().nullable(),
   direction: DirectionSchema,
   scheduleType: z.enum(['ONCE', 'RECURRING']),

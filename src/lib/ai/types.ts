@@ -13,13 +13,15 @@ export const CreativeBriefSchema = z.object({
   caption: z.string().min(10).max(1800),
   hashtags: z.array(z.string().max(40)).max(12),
   styleNotes: z.string().max(400),
+  /** Carousel only: 3–4 teaching/benefit slides; empty for other formats. */
+  slides: z.array(z.object({ title: z.string().max(60), body: z.string().max(220) })).max(5).default([]),
 });
 export type CreativeBriefOut = z.infer<typeof CreativeBriefSchema>;
 
 /** JSON schema for OpenAI structured outputs (strict mode — all fields required). */
 export const CreativeBriefJsonSchema = {
   type: 'object', additionalProperties: false,
-  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'badge', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes'],
+  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'badge', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes', 'slides'],
   properties: {
     idea: { type: 'string', description: 'One-sentence advertising concept, in English' },
     ideaKey: { type: 'string', description: 'short kebab-case English key summarising the concept angle, e.g. "mug-morning-ritual-gift"' },
@@ -33,6 +35,7 @@ export const CreativeBriefJsonSchema = {
     caption: { type: 'string', description: 'High-reach social caption in the target language: hook line, 2-4 short benefit lines, engagement prompt, CTA. No prices, discounts, delivery times, unverifiable superlatives or phone numbers. Hashtags go in the hashtags field, not here.' },
     hashtags: { type: 'array', items: { type: 'string' }, description: '8-12 hashtags, each starting with #: local reach + niche product + occasion + 1-2 English' },
     styleNotes: { type: 'string' },
+    slides: { type: 'array', description: 'ONLY when format is IMAGE_CAROUSEL: 3-4 swipeable slides in the target language that teach or help (ideas, use-cases, how to choose, how to order) — title max 5 words, body max 20 words, no prices/times/promises/phone numbers. For every other format return [].', items: { type: 'object', additionalProperties: false, required: ['title', 'body'], properties: { title: { type: 'string' }, body: { type: 'string' } } } },
   },
 } as const;
 
@@ -48,6 +51,8 @@ export interface BriefRequest {
   direction?: Record<string, string>;
   /** Selected occasion key, if any (lets providers pick occasion-appropriate wording). */
   occasionKey?: string;
+  /** Target format (IMAGE_CAROUSEL needs slides). */
+  format?: string;
 }
 
 export interface IdeaSuggestion { title: string; idea: string }

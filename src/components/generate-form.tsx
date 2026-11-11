@@ -65,7 +65,7 @@ export function GenerateForm({ accounts, products }: { accounts: Opt[]; products
         <Select name="accountId" label="الحساب" value={v.accountId} onChange={set('accountId')}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Select>
         <Select name="productId" label="المنتج" value={v.productId} onChange={set('productId')}><option value="">اختيار تلقائي بالذكاء الاصطناعي</option>{products.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</Select>
         <Select name="format" label="الصيغة" value={v.format} onChange={set('format')}>
-          <option value="">حسب إعداد الحساب</option><option value="IMAGE_STORY">صورة عمودية 1080×1920</option><option value="IMAGE_FEED">صورة منشور 1080×1350</option><option value="IMAGE_SQUARE">صورة مربعة</option><option value="REEL_VIDEO">فيديو Reel متحرك</option>
+          <option value="">حسب إعداد الحساب</option><option value="IMAGE_STORY">صورة عمودية 1080×1920</option><option value="IMAGE_FEED">صورة منشور 1080×1350</option><option value="IMAGE_SQUARE">صورة مربعة</option><option value="REEL_VIDEO">فيديو Reel متحرك</option><option value="IMAGE_CAROUSEL">كاروسيل شرائح (للحفظ والمشاركة)</option>
         </Select>
         <Select name="language" label="لغة المحتوى" value={v.language} onChange={set('language')} hint="النصوص وعبارة الحث وأسماء الفروع بهذه اللغة">
           <option value="">حسب لغة الحساب</option>{LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.ar}</option>)}
