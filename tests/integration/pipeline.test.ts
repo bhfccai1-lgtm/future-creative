@@ -37,7 +37,7 @@ describe('content generation pipeline', () => {
     expect(r.qc?.publishable).toBe(true);
     const usage = await prisma.aiUsage.findMany();
     expect(usage.map((u) => u.kind).sort()).toEqual(['image', 'text']);
-    expect(Number(usage.find((u) => u.kind === 'image')!.costUsd)).toBeCloseTo(0.063, 3);
+    expect(Number(usage.find((u) => u.kind === 'image')!.costUsd)).toBeCloseTo(0.016, 3); // default account format is a story → low quality by default (qualityByFormat)
     const qc = r.advertisement.qcReport as unknown as QcReport;
     for (const id of ['logo_present', 'logo_fingerprint', 'logo_pixels', 'phones', 'language_match', 'claims', 'text_fit', 'no_overlap', 'image_dimensions', 'duplicates']) {
       expect(qc.checks.find((c) => c.id === id)?.passed, id).toBe(true);
