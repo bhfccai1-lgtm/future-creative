@@ -4,20 +4,29 @@ import { AiProviderError } from '../ai/types';
  * Voice-over via OpenAI text-to-speech (same OpenAI key as the designs). Only VERIFIED copy is spoken
  * (headline, supporting line, CTA) — never phone numbers, prices or invented claims.
  */
-export const VOICES = [
-  { value: 'onyx', ar: 'رجالي عميق (Onyx)' },
-  { value: 'ash', ar: 'رجالي دافئ (Ash)' },
-  { value: 'coral', ar: 'نسائي دافئ (Coral)' },
-  { value: 'nova', ar: 'نسائي حيوي (Nova)' },
-  { value: 'sage', ar: 'هادئ ومتزن (Sage)' },
-] as const;
-export type Voice = (typeof VOICES)[number]['value'];
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { run } from '../video/probe';
+import { findClaims } from '../qc/checks';
+import type { Persona, VoiceLang } from './voices';
 
-const STYLE: Record<'ar' | 'en' | 'ml', string> = {
-  ar: 'Speak natural Gulf Arabic (Bahraini) like a premium TV commercial voice-over: warm, confident, clear, medium pace, short pauses between phrases. Pronounce every Arabic word correctly.',
-  en: 'Premium TV commercial voice-over: warm, confident, clear, medium pace, short pauses between phrases.',
-  ml: 'Natural Malayalam commercial voice-over: warm, clear, medium pace.',
-};
+/** Acting + accent instructions for the TTS model. */
+export function ttsInstructions(persona: Persona, lang: VoiceLang) {
+  return [
+    `Voice: ${persona.acting}.`,
+    `Language and accent: ${lang.prompt}. Sound like a native speaker of exactly this variety.`,
+    'Delivery: natural commercial read, clear diction, brief pauses at commas, smile in the voice where it fits. Read the text exactly as written.',
+  ].join(' ');
+}
+
+/** Removes anything that must never be spoken; null when the script breaks the ad rules (caller falls back to the verified copy). */
+export function sanitizeScript(script: string, maxWords: number): string | null {
+  const clean = script.replace(/https?:\/\/\S+|www\.\S+|#\S+|[0-9٠-٩۰-۹]+/g, '').replace(/["“”«»]/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean || findClaims(clean).length) return null;
+  const words = clean.split(' ');
+  return words.length > maxWords + 4 ? words.slice(0, maxWords).join(' ') : clean;
+}
 
 /** Spoken script built from verified layers only. Digits and URLs are dropped. */
 export function voiceScript(p: { headline: string; badge?: string | null; support?: string | null; cta?: string | null }) {
@@ -25,14 +34,14 @@ export function voiceScript(p: { headline: string; badge?: string | null; suppor
   return [...new Set(parts)].join('… ');
 }
 
-export async function openaiSpeak(apiKey: string, text: string, o: { voice: Voice; lang: 'ar' | 'en' | 'ml'; model?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
+export async function openaiSpeak(apiKey: string, text: string, o: { persona: Persona; lang: VoiceLang; model?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
   const model = o.model ?? 'gpt-4o-mini-tts';
   let r: Response;
   try {
     r = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, voice: o.voice, input: text.slice(0, 1500), instructions: STYLE[o.lang], response_format: 'wav' }),
+      body: JSON.stringify({ model, voice: o.persona.voice, input: text.slice(0, 1500), instructions: ttsInstructions(o.persona, o.lang), response_format: 'wav' }),
     });
   } catch (e) { throw new AiProviderError('NETWORK', `TTS: ${(e as Error).message}`, true); }
   if (!r.ok) {
@@ -40,7 +49,22 @@ export async function openaiSpeak(apiKey: string, text: string, o: { voice: Voic
     const code = r.status === 401 ? 'AUTH' : r.status === 429 ? 'RATE_LIMIT' : r.status === 402 ? 'BILLING' : 'UNKNOWN';
     throw new AiProviderError(code, `TTS HTTP ${r.status}: ${body.slice(0, 200)}`, r.status === 429 || r.status >= 500);
   }
-  return { audio: Buffer.from(await r.arrayBuffer()), model, chars: text.length };
+  return { audio: await shapeVoice(Buffer.from(await r.arrayBuffer()), o.persona), model, chars: text.length };
+}
+
+/** Child / elderly personas: pitch + formant shift (rubberband; asetrate fallback) and tempo, so the voice sounds the right age. */
+export async function shapeVoice(wav: Buffer, persona: Persona): Promise<Buffer> {
+  const pitch = persona.pitch ?? 1, tempo = persona.tempo ?? 1;
+  if (pitch === 1 && tempo === 1) return wav;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-vo-'));
+  try {
+    const i = path.join(dir, 'in.wav'), o = path.join(dir, 'out.wav');
+    await fs.writeFile(i, wav);
+    const ff = process.env.FFMPEG_PATH ?? 'ffmpeg';
+    let r = await run(ff, ['-y', '-loglevel', 'error', '-i', i, '-af', `rubberband=pitch=${pitch}:tempo=${tempo}:formant=shifted`, o], 60_000);
+    if (r.code !== 0) r = await run(ff, ['-y', '-loglevel', 'error', '-i', i, '-af', `asetrate=24000*${pitch},aresample=24000,atempo=${(tempo / pitch).toFixed(4)}`, o], 60_000);
+    return r.code === 0 ? fs.readFile(o) : wav;
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
 }
 
 /** Deterministic stand-in for tests / dry-run: a soft tone with the length a voice-over would have. */

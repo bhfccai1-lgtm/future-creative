@@ -31,6 +31,12 @@ export class DryRunProvider implements AiProvider {
   readonly name = 'dry-run';
   readonly isDryRun = true;
 
+  async writeVoiceover(req: import('./types').VoiceoverRequest) {
+    const c = req.copy;
+    const script = [c.headline, c.badge, c.support, c.cta].filter(Boolean).join('، ').split(/\s+/).slice(0, req.maxWords).join(' ');
+    return { script, model: 'dry-run', usage: { inputTokens: 0, outputTokens: 0 } };
+  }
+
   async generateBrief(req: BriefRequest) {
     const p = req.product;
     const lang = req.language;

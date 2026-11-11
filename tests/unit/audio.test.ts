@@ -41,3 +41,46 @@ describe('reel audio', () => {
     expect(await lufs(ig.mp4)).toBeLessThan(-60);
   }, 300_000);
 });
+
+describe('voice personas and dialects', () => {
+  it('catalogue: 23 personas and 73 languages with unique ids and known groups', async () => {
+    const v = await import('@/lib/audio/voices');
+    expect(v.PERSONAS).toHaveLength(23);
+    expect(v.VOICE_LANGS).toHaveLength(73);
+    expect(new Set(v.PERSONAS.map((p) => p.id)).size).toBe(23);
+    expect(new Set(v.VOICE_LANGS.map((l) => l.id)).size).toBe(73);
+    for (const p of v.PERSONAS) expect(v.PERSONA_GROUPS[p.group]).toBeTruthy();
+    for (const l of v.VOICE_LANGS) expect(v.LANG_GROUPS[l.group]).toBeTruthy();
+    expect(v.voiceLangOf('ar_bh')!.prompt).toMatch(/Bahraini/);
+  });
+  it('auto choice: Bahraini by default, persona from the product category with rotation', async () => {
+    const v = await import('@/lib/audio/voices');
+    expect(v.autoVoiceLang({ market: null, contentLang: 'ar' })).toBe('ar_bh');
+    expect(v.autoVoiceLang({ market: 'indian_community', contentLang: 'ml' })).toBe('ml');
+    expect(v.autoVoiceLang({ market: 'english_expats', contentLang: 'en' })).toBe('en_gb');
+    expect(v.autoPersona('الفرق والبطولات الرياضية', [])).toBe('s_commentator');
+    expect(v.autoPersona('الأطفال والمدارس', ['k_girl'])).toBe('k_boy');
+    expect(v.autoPersona('هدايا الموظفين والعملاء', [])).toBe('ad_male');
+  });
+  it('script sanitizer drops digits/links and rejects price or claim language', async () => {
+    const { sanitizeScript, ttsInstructions } = await import('@/lib/audio/tts');
+    const v = await import('@/lib/audio/voices');
+    expect(sanitizeScript('اطلب كوبك الحين، اتصل 33316319 www.x.com', 20)).toBe('اطلب كوبك الحين، اتصل');
+    expect(sanitizeScript('خصم 50% على كل الأكواب', 20)).toBeNull();
+    expect(sanitizeScript(Array(40).fill('كلمة').join(' '), 10)!.split(' ')).toHaveLength(10);
+    const ins = ttsInstructions(v.personaOf('e_grandpa')!, v.voiceLangOf('ar_bh')!);
+    expect(ins).toMatch(/grandfather/); expect(ins).toMatch(/Bahraini/);
+  });
+  it('elderly voices are slowed and children are pitched up (rubberband)', async () => {
+    const { shapeVoice, fakeSpeech } = await import('@/lib/audio/tts');
+    const v = await import('@/lib/audio/voices');
+    const src = fakeSpeech('نص تجريبي لاختبار الصوت الطويل نسبيا');
+    const dur = async (b: Buffer) => { const f = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'fc-d-')), 'a.wav'); await fs.writeFile(f, b); const r = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]); return Number(r.stdout); };
+    const base = await dur(src);
+    expect(await dur(await shapeVoice(src, v.personaOf('e_grandpa')!))).toBeGreaterThan(base * 1.08);
+    const kid = await shapeVoice(src, v.personaOf('k_girl')!);
+    expect(kid.equals(src)).toBe(false);
+    expect(Math.abs((await dur(kid)) - base)).toBeLessThan(0.3);
+    expect(await shapeVoice(src, v.personaOf('ad_male')!)).toBe(src);
+  });
+});

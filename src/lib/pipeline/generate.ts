@@ -2,7 +2,8 @@ import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { getSecret, getSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
-import { fakeSpeech, openaiSpeak, voiceScript, estimateTtsCost } from '../audio/tts';
+import { fakeSpeech, openaiSpeak, sanitizeScript, voiceScript, estimateTtsCost } from '../audio/tts';
+import { autoPersona, autoVoiceLang, personaOf, voiceLangOf, wordsFor } from '../audio/voices';
 import { audit, notify } from '../audit';
 import { AppError } from '../errors';
 import { getBusiness, contactLines, ctaFor, locationsOf } from '../business';
@@ -264,17 +265,30 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         const track = audio === 'library' || audio === 'voiceover' ? await pickTrack(MOOD_FOR_STYLE[d.designStyle ?? ''] ?? undefined) : null;
         let voice: Buffer | undefined;
         if (audio === 'voiceover') {
-          const script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });
+          // persona & dialect: settings, or «تلقائي» (category → persona rotation; audience/market → Bahraini by default)
+          const recentPersonas = (await prisma.advertisement.findMany({ where: { accountId: account.id, format: 'REEL_VIDEO' }, orderBy: { createdAt: 'desc' }, take: 4, select: { options: true } }))
+            .map((r) => ((r.options ?? {}) as { audioUsed?: { persona?: string } }).audioUsed?.persona).filter((x): x is string => !!x);
+          const category = (await prisma.productCategory.findUnique({ where: { id: product.categoryId }, select: { nameAr: true } }))?.nameAr ?? '';
+          const persona = personaOf(s.ai.audio.persona) ?? personaOf(autoPersona(category, recentPersonas))!;
+          const vlang = voiceLangOf(s.ai.audio.voiceLang) ?? voiceLangOf(autoVoiceLang({ market: d.market ?? marketOf(account), contentLang: lang }))!;
+          const seconds = Math.max(3, (veo ? veo.durationSec + 3 : reelDuration) - 3.5);
+          const maxWords = wordsFor(seconds, persona);
+          let script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });
           try {
+            if (provider.writeVoiceover) {
+              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr } }, s.ai.textModel);
+              if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: w.model, kind: 'text', inputTokens: w.usage.inputTokens, outputTokens: w.usage.outputTokens, costUsd: estimateTextCost(s, w.usage.inputTokens, w.usage.outputTokens) });
+              script = sanitizeScript(w.script, maxWords) ?? script; // rule-breaking script → verified copy instead
+            }
             if (provider.isDryRun) voice = fakeSpeech(script);
             else {
               const key = await getSecret('OPENAI_API_KEY');
               if (!key) throw new Error('مفتاح OpenAI غير مضبوط');
-              const v = await openaiSpeak(key, script, { voice: s.ai.audio.voice, lang });
+              const v = await openaiSpeak(key, script, { persona, lang: vlang });
               voice = v.audio;
               await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
             }
-            audioNote = { voiceScript: script, voice: s.ai.audio.voice };
+            audioNote = { voiceScript: script, persona: persona.id, voiceLang: vlang.id };
           } catch (e) {
             await notify('WARNING', 'VOICEOVER_FAILED', 'تعذر إنشاء التعليق الصوتي', `أُنتج الريلز بالموسيقى فقط: ${(e as Error).message}`, account.id);
             audioNote = { voiceError: (e as Error).message };

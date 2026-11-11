@@ -62,7 +62,10 @@ export const SettingsSchema = z.object({
     }).default({}),
     /** Reel sound: voice-over voice, synthesised sound effects, music level under the voice, default audio for reels. */
     audio: z.object({
-      voice: z.enum(['onyx', 'ash', 'coral', 'nova', 'sage']).default('onyx'),
+      /** speaker persona id (see audio/voices.ts) or 'auto' = chosen from the product category */
+      persona: z.string().max(40).default('auto'),
+      /** voice-over language/dialect id or 'auto' = from the audience/market (Bahraini by default) */
+      voiceLang: z.string().max(40).default('auto'),
       sfx: z.boolean().default(true),
       musicVolume: z.number().min(0.1).max(1).default(0.35),
       defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']).default('upbeat'),

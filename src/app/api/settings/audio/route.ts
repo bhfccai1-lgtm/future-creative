@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { api } from '@/lib/auth/server';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { audit } from '@/lib/audit';
+import { PERSONAS, VOICE_LANGS } from '@/lib/audio/voices';
 
 const Body = z.object({
-  voice: z.enum(['onyx', 'ash', 'coral', 'nova', 'sage']),
+  persona: z.string().refine((v) => v === 'auto' || PERSONAS.some((p) => p.id === v), 'شخصية غير معروفة'),
+  voiceLang: z.string().refine((v) => v === 'auto' || VOICE_LANGS.some((l) => l.id === v), 'لغة غير معروفة'),
   sfx: z.boolean(),
   musicVolume: z.number().min(0.1).max(1),
   defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']),

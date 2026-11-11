@@ -1,13 +1,13 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { apiCall } from '@/lib/client/api';
+import { apiCall, csrfToken } from '@/lib/client/api';
 import { Button, Badge } from './ui';
+import { LANG_GROUPS, PERSONA_GROUPS, PERSONAS, Q_AR, VOICE_LANGS } from '@/lib/audio/voices';
 
-type Audio = { voice: string; sfx: boolean; musicVolume: number; defaultReelAudio: string };
+type Audio = { persona: string; voiceLang: string; sfx: boolean; musicVolume: number; defaultReelAudio: string };
 type Track = { id: string; name: string; mood: string; durationSec: number; startSec: number; licenseNote: string; active: boolean; uses: number };
 const MOODS: [string, string][] = [['upbeat', 'حماسي'], ['calm', 'هادئ'], ['luxury', 'فاخر'], ['festive', 'احتفالي'], ['corporate', 'رسمي للشركات']];
-const VOICES: [string, string][] = [['onyx', 'رجالي عميق'], ['ash', 'رجالي دافئ'], ['coral', 'نسائي دافئ'], ['nova', 'نسائي حيوي'], ['sage', 'هادئ ومتزن']];
 const DEFAULTS: [string, string][] = [['none', 'بدون صوت'], ['upbeat', 'إيقاع حماسي (مولد)'], ['ambient', 'موسيقى هادئة (مولدة)'], ['library', 'من مكتبة موسيقاك المرخّصة'], ['voiceover', 'تعليق صوتي + موسيقى'], ['instagram', 'صوت من مكتبة إنستغرام']];
 
 export function AudioSettings({ audio, tracks }: { audio: Audio; tracks: Track[] }) {
@@ -17,18 +17,41 @@ export function AudioSettings({ audio, tracks }: { audio: Audio; tracks: Track[]
   const [file, setFile] = useState<File | null>(null);
   const [up, setUp] = useState({ name: '', mood: 'upbeat', licenseNote: '', startSec: '0', confirm: false });
   const [busy, setBusy] = useState(false);
+  const curLang = VOICE_LANGS.find((l) => l.id === v.voiceLang);
+  const [group, setGroup] = useState(curLang?.group ?? 'arabic');
+  const [sample, setSample] = useState<{ url: string; script: string } | null>(null);
+  const [sampling, setSampling] = useState(false);
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-4">
         <div><label className="label">الصوت الافتراضي للريلز</label><select className="input" value={v.defaultReelAudio} onChange={(e) => setV({ ...v, defaultReelAudio: e.target.value })}>{DEFAULTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
-        <div><label className="label">صوت المعلّق (OpenAI)</label><select className="input" value={v.voice} onChange={(e) => setV({ ...v, voice: e.target.value })}>{VOICES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select><p className="mt-1 text-xs text-slate-500">≈ $0.002 لكل ريلز — يقرأ العنوان والعبارة وزر الطلب فقط (بلا أرقام).</p></div>
+        <div><label className="label">الجمهور (مجموعة اللغات)</label><select className="input" value={group} onChange={(e) => { setGroup(e.target.value); setV({ ...v, voiceLang: 'auto' }); }}>{Object.entries(LANG_GROUPS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+        <div><label className="label">لغة / لهجة التعليق</label><select className="input" value={v.voiceLang} onChange={(e) => setV({ ...v, voiceLang: e.target.value })}>
+          <option value="auto">تلقائي — حسب الجمهور (البحرينية افتراضيًا)</option>
+          {VOICE_LANGS.filter((l) => l.group === group).map((l) => <option key={l.id} value={l.id}>{l.ar} — جودة {Q_AR[l.q]}</option>)}</select></div>
+        <div><label className="label">الشخصية الصوتية</label><select className="input" value={v.persona} onChange={(e) => setV({ ...v, persona: e.target.value })}>
+          <option value="auto">تلقائي — حسب فئة المنتج (تتنوع)</option>
+          {Object.entries(PERSONA_GROUPS).map(([g, gl]) => <optgroup key={g} label={gl}>{PERSONAS.filter((p) => p.group === g).map((p) => <option key={p.id} value={p.id}>{p.ar}</option>)}</optgroup>)}</select>
+          <p className="mt-1 text-xs text-slate-500">≈ $0.003 لكل ريلز. النص يكتبه الذكاء الاصطناعي باللهجة المختارة من نص التصميم الموثّق — بلا أرقام أو أسعار أو وعود.</p></div>
         <div><label className="label">مستوى الموسيقى تحت التعليق</label><input type="range" min={0.1} max={1} step={0.05} className="w-full" value={v.musicVolume} onChange={(e) => setV({ ...v, musicVolume: Number(e.target.value) })} /><span className="text-xs text-slate-500">{Math.round(v.musicVolume * 100)}%</span></div>
         <label className="mt-6 flex items-center gap-2 text-sm"><input type="checkbox" checked={v.sfx} onChange={(e) => setV({ ...v, sfx: e.target.checked })} /> مؤثرات صوتية (ضربة الافتتاح، انتقالات، رنين الخاتمة)</label>
       </div>
       <div className="flex items-center gap-3">
         <Button type="button" onClick={async () => { try { await apiCall('/api/settings/audio', { method: 'PUT', body: v }); setMsg({ ok: true, t: 'تم الحفظ ✓' }); } catch (x) { setMsg({ ok: false, t: (x as Error).message }); } }}>حفظ</Button>
+        <Button type="button" variant="outline" disabled={sampling} onClick={async () => {
+          setSampling(true); setMsg(null);
+          try {
+            const r = await fetch('/api/settings/audio/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken() }, body: JSON.stringify({ persona: v.persona, voiceLang: v.voiceLang, group }) });
+            if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { message?: string }).message ?? `HTTP ${r.status}`);
+            const script = decodeURIComponent(r.headers.get('x-voice-script') ?? '');
+            if (sample) URL.revokeObjectURL(sample.url);
+            setSample({ url: URL.createObjectURL(await r.blob()), script });
+          } catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
+          setSampling(false);
+        }}>{sampling ? 'جارٍ التوليد…' : '🔊 استماع لعينة'}</Button>
         {msg && <span className={msg.ok ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>{msg.t}</span>}
       </div>
+      {sample && <div className="rounded-lg border bg-slate-50 p-3 text-sm"><audio controls autoPlay src={sample.url} className="w-full" /><p className="mt-1 text-xs text-slate-600">النص: {sample.script}</p></div>}
 
       <fieldset className="rounded-xl border p-3">
         <legend className="px-1 text-sm font-extrabold text-navy-800">مكتبة الموسيقى المرخّصة</legend>

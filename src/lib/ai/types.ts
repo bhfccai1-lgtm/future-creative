@@ -64,6 +64,12 @@ export const IdeaSuggestionsJsonSchema = {
 export interface TextUsage { inputTokens: number; outputTokens: number }
 export interface ImageResult { png: Buffer; model: string; revisedPrompt?: string }
 
+export interface VoiceoverRequest {
+  language: string; persona: string; seconds: number; maxWords: number;
+  copy: { headline: string; badge?: string | null; support?: string | null; cta?: string | null; caption?: string | null };
+  product: { titleEn: string; titleAr: string };
+}
+
 export interface AiProvider {
   readonly name: string;
   readonly isDryRun: boolean;
@@ -71,6 +77,8 @@ export interface AiProvider {
   /** Optional vision transcription of text drawn in an image (used to review full-AI posters). */
   readText?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
   suggestIdeas(req: BriefRequest, model: string, count: number): Promise<{ ideas: IdeaSuggestion[]; usage: TextUsage; model: string }>;
+  /** Optional: writes a spoken voice-over script in a given dialect/language for a persona. */
+  writeVoiceover?(req: VoiceoverRequest, model: string): Promise<{ script: string; usage: TextUsage; model: string }>;
   generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string }): Promise<ImageResult>;
 }
 

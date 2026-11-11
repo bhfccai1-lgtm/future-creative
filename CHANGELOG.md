@@ -1,5 +1,23 @@
 # Changelog
 
+## 8.13.0 — 2026-11-12 (Bahraini and multilingual voice-over)
+- **23 speaker personas** in 12 groups:
+  - commercial announcers, female, male, youth;
+  - children: pitch and formant shift with rubberband;
+  - elderly: slower and deeper;
+  - broadcasters, sports commentator, hakawati storyteller, theatrical, comedy, folk, documentary narrator.
+- **73 languages and dialects** in 19 audience groups:
+  - **Bahraini is the default.** It has accent instructions: ق pronounced as "g", Gulf intonation, Bahraini vocabulary.
+  - Other Gulf and Arab dialects, plus Indian, Pakistani, Bangladeshi, Filipino, Nepali, Sri Lankan, African, European, Russian/Eurasian, Turkish, Iranian, Chinese, Japanese, Asian, Latin, American, Canadian and Australian varieties.
+  - Each entry carries an honest expected-quality label.
+- **Native script per reel:** the AI writes the voice-over in the chosen dialect, sized to the reel length and faithful to the verified copy.
+  - Digits, links and hashtags are removed. A script with price or claim language is rejected, and the verified copy is spoken instead.
+- **«تلقائي» (auto):**
+  - the persona follows the product category and rotates (e.g. sports → commentator, kids → child voices, weddings → elegant female);
+  - the dialect follows the audience or market.
+- **«استماع لعينة» (listen to a sample)** in the AI settings: a real sample for any persona × dialect (≈ $0.003).
+- Every reel records the persona, dialect and spoken script.
+
 ## 8.12.0 — 2026-11-12 (professional reel video and sound)
 - **Video quality:**
   - camera moves with cosine easing;

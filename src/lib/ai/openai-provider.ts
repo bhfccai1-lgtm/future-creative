@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { normalizeBrief, briefIssueAr } from './brief-normalize';
-import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion } from './types';
+import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion, type VoiceoverRequest } from './types';
+import { voiceoverSystemPrompt } from './prompts';
 import { briefSystemPrompt, briefUserPrompt, ideasSystemPrompt } from './prompts';
 
 function mapError(e: unknown): AiProviderError {
@@ -108,6 +109,22 @@ export class OpenAiProvider implements AiProvider {
     try { ideas = (JSON.parse(res.choices[0]?.message?.content ?? '{}').ideas ?? []).slice(0, count); }
     catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
     return { ideas, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
+  async writeVoiceover(req: VoiceoverRequest, model: string) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'system' as const, content: voiceoverSystemPrompt() }, { role: 'user' as const, content: JSON.stringify(req) }],
+        response_format: { type: 'json_schema', json_schema: { name: 'voiceover', strict: true, schema: { type: 'object', additionalProperties: false, required: ['script'], properties: { script: { type: 'string', description: 'The spoken script only, in the requested language/dialect.' } } } } },
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('voiceover'));
+    } catch (e) { throw mapError(e); }
+    let script = '';
+    try { script = String(JSON.parse(res.choices[0]?.message?.content ?? '{}').script ?? '').trim(); }
+    catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    if (!script) throw new AiProviderError('BAD_OUTPUT', 'نص التعليق الصوتي فارغ.', true);
+    return { script, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
   async readText(png: Buffer, model: string) {

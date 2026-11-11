@@ -39,6 +39,8 @@ describe('licensed music library', () => {
     expect(o.audio).toBe('voiceover');
     expect(o.audioUsed).toMatchObject({ trackId: t.id, license: 'YouTube Audio Library', voiceOver: true, sfx: true });
     expect(o.audioUsed.voiceScript).not.toMatch(/[0-9]/);
+    expect(o.audioUsed).toMatchObject({ voiceLang: 'ar_bh' });
+    expect((o.audioUsed as unknown as { persona: string }).persona).toBeTruthy();
     expect((await prisma.audioTrack.findUniqueOrThrow({ where: { id: t.id } })).uses).toBe(1);
   }, 300_000);
 });

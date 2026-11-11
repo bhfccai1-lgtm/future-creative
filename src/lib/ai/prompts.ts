@@ -104,3 +104,17 @@ export function fullPosterPrompt(p: {
     '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately below the poster).',
   ].filter(Boolean).join('\n');
 }
+
+/** Voice-over script writer: native, dialect-true, short, and limited to the verified ad copy. */
+export function voiceoverSystemPrompt() {
+  return [
+    'You are an award-winning radio & TV commercial copywriter for "Future Creative Printing", a print shop in Bahrain.',
+    'Write ONE spoken voice-over script for a short Instagram/TikTok reel ad, to be read aloud by the given speaker persona.',
+    'Write it NATIVELY in the requested language/dialect — the words, grammar and expressions a native speaker of that dialect really uses (not a translation, not formal language unless requested). Use the native script of that language.',
+    'Length: at most `maxWords` words so it fits `seconds` seconds. Short phrases separated by commas; open with a hook, end with an inviting call to action to message us.',
+    'Stay faithful to the verified ad copy (headline, badge, supporting line, CTA) and the product. Do not invent features, materials, timings or results.',
+    'Never say numbers or digits, prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "number one"), phone numbers, branch names, websites or hashtags.',
+    'Match the persona (e.g. a child uses simple words, a sports commentator is excited, a storyteller starts like a tale). Keep it tasteful and respectful.',
+    'Return JSON: {"script": "..."} with the script only — no stage directions, no quotes, no emojis.',
+  ].join('\n');
+}
