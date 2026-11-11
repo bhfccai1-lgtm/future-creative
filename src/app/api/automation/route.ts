@@ -13,6 +13,7 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('kill'), reason: z.string().max(300).optional() }),
   z.object({ action: z.literal('release_kill') }),
   z.object({ action: z.literal('publishing_mode'), mode: z.enum(['MANUAL', 'ASSISTED', 'AUTONOMOUS']), confirm: z.string().optional() }),
+  z.object({ action: z.literal('enable_accounts'), accountIds: z.array(z.string()).min(1).max(100), enabled: z.boolean().default(true) }),
   z.object({ action: z.literal('scheduler_mode'), mode: z.enum(['A_PER_ACCOUNT_HOURLY', 'B_FIXED_PER_HOUR']), postsPerHour: z.number().int().min(1).max(100).optional(), accountIds: z.array(z.string()).optional() }),
 ]);
 
@@ -31,6 +32,15 @@ export const POST = api('dashboard:view', async (req, { user }) => {
       const enabled = await prisma.socialAccount.count({ where: { autoPublishEnabled: true, connection: { status: 'CONNECTED', canPublish: true } } });
       if (!enabled) throw new AppError('NO_ACCOUNTS', 'لا توجد حسابات مرتبطة ومفعّل لها النشر الآلي. اختر الحسابات المسموح لها أولًا.', 412);
       s = await updateSettings((x) => ({ ...x, autoPublishGlobal: true }), user.email); break;
+    }
+    case 'enable_accounts': {
+      // bulk "allow auto-publishing" — only for accounts with a verified publish connection; others are reported, not changed
+      const accs = await prisma.socialAccount.findMany({ where: { id: { in: b.accountIds } }, include: { connection: true } });
+      const ok = accs.filter((a) => !b.enabled || (a.connection?.status === 'CONNECTED' && a.connection.canPublish));
+      await prisma.socialAccount.updateMany({ where: { id: { in: ok.map((a) => a.id) } }, data: { autoPublishEnabled: b.enabled } });
+      const skipped = accs.filter((a) => !ok.includes(a)).map((a) => ({ name: a.name, reason: !a.connection ? 'غير مرتبط بـ Metricool' : `الربط: ${a.connection.status}${a.connection.canPublish ? '' : ' (بلا صلاحية نشر)'}` }));
+      await audit({ actorId: user.sub, actorLabel: user.email, action: 'automation.enable_accounts', details: { enabled: b.enabled, changed: ok.map((a) => a.name), skipped } });
+      return NextResponse.json({ ...(await getSettings()), changed: ok.length, skipped });
     }
     case 'stop': s = await updateSettings((x) => ({ ...x, autoPublishGlobal: false }), user.email); break;
     case 'kill':

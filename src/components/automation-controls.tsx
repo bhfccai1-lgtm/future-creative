@@ -6,16 +6,22 @@ import { Button } from './ui';
 
 type S = { publishingMode: string; schedulerMode: string; modeBPostsPerHour: number; modeBAccountIds: string[]; autoPublishGlobal: boolean; killSwitch: boolean };
 
-export function AutomationControls({ s, accounts }: { s: S; accounts: { id: string; name: string; eligible: boolean }[] }) {
+type Acc = { id: string; name: string; eligible: boolean; reason: string | null; connected: boolean };
+export function AutomationControls({ s, accounts }: { s: S; accounts: Acc[] }) {
   const router = useRouter();
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [mode, setMode] = useState(s.schedulerMode);
   const [perHour, setPerHour] = useState(s.modeBPostsPerHour);
   const [sel, setSel] = useState<string[]>(s.modeBAccountIds);
+  const [allow, setAllow] = useState<string[]>(accounts.filter((a) => a.eligible).map((a) => a.id));
   const call = async (body: Record<string, unknown>, confirmText?: string) => {
     if (confirmText && !window.confirm(confirmText)) return;
     setMsg(null);
-    try { await apiCall('/api/automation', { body }); setMsg({ ok: true, t: 'تم الحفظ وتأكيده من الخادم ✓' }); router.refresh(); }
+    try {
+      const r = await apiCall<{ changed?: number; skipped?: { name: string; reason: string }[] }>('/api/automation', { body });
+      setMsg({ ok: !r.skipped?.length, t: r.changed !== undefined ? `تم السماح لـ ${r.changed} حساب ✓${r.skipped?.length ? ` · لم يُفعّل: ${r.skipped.map((x) => `${x.name} (${x.reason})`).join('، ')}` : ''}` : 'تم الحفظ وتأكيده من الخادم ✓' });
+      router.refresh();
+    }
     catch (e) { setMsg({ ok: false, t: (e as Error).message }); }
   };
   return (
@@ -27,6 +33,19 @@ export function AutomationControls({ s, accounts }: { s: S; accounts: { id: stri
         {s.killSwitch
           ? <Button variant="outline" size="lg" onClick={() => call({ action: 'release_kill' }, 'إلغاء الإيقاف الطارئ؟ لن يُعاد تشغيل النشر الآلي تلقائيًا.')}>إلغاء الإيقاف الطارئ</Button>
           : <Button variant="danger" size="lg" onClick={() => { const r = window.prompt('سبب الإيقاف الطارئ:'); if (r !== null) call({ action: 'kill', reason: r }); }}>⛔ إيقاف طارئ فوري</Button>}
+      </div>
+
+      <div className="rounded-xl border border-gold-300 bg-gold-300/10 p-4">
+        <h3 className="mb-1 font-bold">الحسابات المسموح لها بالنشر الآلي ({accounts.filter((a) => a.eligible).length} من {accounts.length})</h3>
+        <p className="mb-3 text-xs text-slate-600">ضع علامة على الحسابات ثم اضغط «السماح بالنشر الآلي». الحسابات غير المرتبطة بـ Metricool لا تُفعّل (يظهر السبب).</p>
+        <div className="mb-3 grid grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-3">
+          {accounts.map((a) => <label key={a.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allow.includes(a.id)} onChange={(e) => setAllow(e.target.checked ? [...allow, a.id] : allow.filter((x) => x !== a.id))} />{a.name}{a.eligible ? <span className="text-xs text-emerald-700">✓ مفعّل</span> : a.reason && <span className={`text-xs ${a.connected ? 'text-sky-700' : 'text-amber-600'}`}>({a.reason})</span>}</label>)}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" type="button" onClick={() => setAllow(accounts.filter((a) => a.connected).map((a) => a.id))}>تحديد كل المرتبطة</Button>
+          <Button size="sm" variant="success" type="button" disabled={!allow.length} onClick={() => call({ action: 'enable_accounts', accountIds: allow, enabled: true }, `السماح بالنشر الآلي لـ ${allow.length} حساب؟ (سيُولَّد تصميم لكل حساب حسب فترته — كل 7 ساعات افتراضيًا)`)}>السماح بالنشر الآلي للمحدد</Button>
+          <Button size="sm" variant="outline" type="button" disabled={!allow.length} onClick={() => call({ action: 'enable_accounts', accountIds: allow, enabled: false })}>إيقاف المحدد</Button>
+        </div>
       </div>
 
       <div>
@@ -60,7 +79,7 @@ export function AutomationControls({ s, accounts }: { s: S; accounts: { id: stri
             <label className="label">عدد الإعلانات في الساعة</label>
             <input type="number" min={1} max={100} className="input mb-3 w-32" value={perHour} onChange={(e) => setPerHour(Number(e.target.value))} />
             <div className="grid grid-cols-2 gap-1 md:grid-cols-3">
-              {accounts.map((a) => <label key={a.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sel.includes(a.id)} onChange={(e) => setSel(e.target.checked ? [...sel, a.id] : sel.filter((x) => x !== a.id))} />{a.name}{!a.eligible && <span className="text-xs text-amber-600">(غير مرتبط/غير مفعّل)</span>}</label>)}
+              {accounts.map((a) => <label key={a.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sel.includes(a.id)} onChange={(e) => setSel(e.target.checked ? [...sel, a.id] : sel.filter((x) => x !== a.id))} />{a.name}{a.reason && <span className={`text-xs ${a.connected ? 'text-sky-700' : 'text-amber-600'}`}>({a.reason})</span>}</label>)}
             </div>
           </div>
         )}

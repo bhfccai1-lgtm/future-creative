@@ -1,5 +1,16 @@
 # Changelog
 
+## 8.8.2 — 2026-11-11 (enabling auto-publishing)
+- The schedule page has a new section **«الحسابات المسموح لها بالنشر الآلي»** (accounts allowed to auto-publish): tick accounts, or use «تحديد كل المرتبطة» (select all linked), then «السماح بالنشر الآلي للمحدد» (allow selected) in one click. Previously each account had to be opened separately.
+  - Accounts without a verified Metricool connection are never enabled. The reason is reported per account.
+- The ambiguous label «غير مرتبط/غير مفعّل» is replaced by the exact reason for each account:
+  - not linked to Metricool;
+  - connection broken (status);
+  - emergency-paused;
+  - «مرتبط ✓ — النشر الآلي غير مسموح بعد» (linked, auto-publishing not allowed yet).
+- The scheduler text now says 7 hours.
+- HTTP smoke test: start → NO_ACCOUNTS; bulk enable → 2 changed, 1 unlinked skipped with reason; start → on.
+
 ## 8.8.1 — 2026-11-11 (fix: «الموجز لا يطابق المخطط: String must contain at most 30 character(s)»)
 - **Root cause:** the text model sometimes writes a CTA longer than 30 characters, or other over-long fields. Strict schema validation then rejected the whole brief. Retries repeated the same mistake, so the design failed with no media.
 - **Fix:** `normalizeBrief` fits fields to their limits before validation.
