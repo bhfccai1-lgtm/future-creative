@@ -75,7 +75,7 @@ services:
   # Optional n8n automation on the SAME server (no extra server): docker compose --profile n8n up -d
   # Editor: https://n8n.${DOMAIN}  ·  talks to the app internally at http://web:3000 (never leaves the server)
   n8n:
-    image: n8nio/n8n:1.88.0
+    image: n8nio/n8n:2.35.7 # version the deploy/n8n templates were tested against
     profiles: ["n8n"]
     environment:
       N8N_HOST: n8n.${DOMAIN}
