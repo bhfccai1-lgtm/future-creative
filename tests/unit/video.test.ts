@@ -17,6 +17,9 @@ describe('real video reel pipeline', () => {
     expect(r.probe.valid).toBe(true);
     expect(r.probe).toMatchObject({ codec: 'h264', width: 1080, height: 1920, pixFmt: 'yuv420p', hasAudio: true, audioCodec: 'aac' });
     expect(Math.abs(r.probe.durationSec - 8)).toBeLessThan(0.2);
+    // mastering: BT.709-tagged colour (no washed-out look on phones), 48 kHz audio, high-quality master bitrate
+    expect(r.probe).toMatchObject({ colorSpace: 'bt709', audioRate: 48000 });
+    expect(r.probe.bitrateKbps!).toBeGreaterThan(1500);
 
     // It is genuinely moving: frames at 0.2s and 4s differ substantially
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-vt-'));

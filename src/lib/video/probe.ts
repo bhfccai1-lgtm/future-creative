@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 export interface VideoProbe {
   valid: boolean; problems: string[];
   container: string; codec: string; width: number; height: number; pixFmt: string; fps: number;
-  durationSec: number; hasAudio: boolean; audioCodec?: string; bytes: number;
+  durationSec: number; hasAudio: boolean; audioCodec?: string; audioRate?: number; colorSpace?: string; bitrateKbps?: number; bytes: number;
 }
 
 export function run(cmd: string, args: string[], timeoutMs = 300_000): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -34,7 +34,7 @@ export async function probeVideo(file: string, req: VideoRequirements = REEL_REQ
     valid: true, problems: [],
     container: j.format?.format_name ?? '', codec: v?.codec_name ?? '', width: v?.width ?? 0, height: v?.height ?? 0,
     pixFmt: v?.pix_fmt ?? '', fps: den ? num / den : 0, durationSec: Number(j.format?.duration ?? 0),
-    hasAudio: !!a, audioCodec: a?.codec_name, bytes: Number(j.format?.size ?? 0),
+    hasAudio: !!a, audioCodec: a?.codec_name, audioRate: a?.sample_rate ? Number(a.sample_rate) : undefined, colorSpace: v?.color_space, bitrateKbps: j.format?.bit_rate ? Math.round(Number(j.format.bit_rate) / 1000) : undefined, bytes: Number(j.format?.size ?? 0),
   };
   const p = out.problems;
   if (!out.container.includes('mp4')) p.push(`container ${out.container} is not MP4`);

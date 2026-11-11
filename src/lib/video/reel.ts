@@ -25,7 +25,13 @@ export class VideoRenderError extends Error {}
 
 const FPS = 30;
 const XFADE = 0.7; // seconds
-const TRANSITIONS = ['fade', 'smoothleft', 'circleopen', 'slideup', 'smoothright'];
+// cinematic transitions only (no cheap wipes); all available since FFmpeg 4.3
+const TRANSITIONS = ['fade', 'smoothleft', 'smoothup', 'fadeblack', 'smoothright'];
+/** Cosine ease-in-out of progress on/F (camera moves start and stop softly, like a real slider). */
+const EASE = (F: number) => `(0.5-0.5*cos(PI*min(1\\,on/${F})))`;
+/** Mastering: AAC 48 kHz stereo; music/native audio normalised to −14 LUFS (Instagram/TikTok loudness). */
+const AUDIO_RATE = 48000;
+const LOUDNORM = 'loudnorm=I=-14:TP=-1.5:LRA=11';
 /** Camera moves per scene: push-in, pull-out, pan right, pan left (applied on a 2× upscaled frame). */
 /**
  * Opening "snap" for scene 1: fast punch-in (1.30 → 1.12 in the first ~0.8 s), then a slow drift.
@@ -36,10 +42,12 @@ const HOOK_MOTION = (F: number) => {
   return `z='if(lt(on,${H}),1.30-0.18*on/${H},1.12+0.06*(on-${H})/${Math.max(1, F - H)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
 };
 const MOTIONS = [
-  (F: number) => `z='1+0.10*on/${F}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
-  (F: number) => `z='1.12-0.10*on/${F}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
-  (F: number) => `z='1.10':x='(iw-iw/zoom)*on/${F}':y='ih/2-(ih/zoom/2)'`,
-  (F: number) => `z='1.10':x='(iw-iw/zoom)*(1-on/${F})':y='ih/2-(ih/zoom/2)'`,
+  (F: number) => `z='1+0.10*${EASE(F)}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
+  (F: number) => `z='1.12-0.10*${EASE(F)}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
+  (F: number) => `z='1.10':x='(iw-iw/zoom)*${EASE(F)}':y='ih/2-(ih/zoom/2)'`,
+  (F: number) => `z='1.10':x='(iw-iw/zoom)*(1-${EASE(F)})':y='ih/2-(ih/zoom/2)'`,
+  // slow rise: tilt up with a gentle push-in
+  (F: number) => `z='1.06+0.06*${EASE(F)}':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-${EASE(F)})'`,
 ];
 
 /** Royalty-free audio generated mathematically (no third-party music, no licensing risk). */
@@ -49,7 +57,7 @@ export function audioSource(kind: ReelAudio, D: number): string {
     // slow C → Am pad (4 s each), gentle tremolo
     const f = (a: number, b: number) => `if(lt(mod(t,8),4),${a},${b})`;
     const pad = `(sin(2*PI*${f(261.63, 220)}*t)+sin(2*PI*${f(329.63, 261.63)}*t)+sin(2*PI*${f(392, 329.63)}*t)+0.5*sin(2*PI*${f(523.25, 440)}*t))*(0.65+0.35*sin(2*PI*0.25*t))*0.07`;
-    return `aevalsrc=${e(`${pad}|${pad}`)}:s=44100:d=${D},lowpass=f=1800,afade=t=in:d=1.5,afade=t=out:st=${Math.max(0, D - 2)}:d=2`;
+    return `aevalsrc=${e(`${pad}|${pad}`)}:s=${AUDIO_RATE}:d=${D},lowpass=f=1800,${LOUDNORM},aresample=${AUDIO_RATE},afade=t=in:d=1.5,afade=t=out:st=${Math.max(0, D - 2)}:d=2`;
   }
   if (kind === 'upbeat') {
     // 120 bpm: kick on beats, hi-hat on off-beats, bass + chord stabs
@@ -58,9 +66,9 @@ export function audioSource(kind: ReelAudio, D: number): string {
     const bass = `sin(2*PI*${'if(lt(mod(t,4),2),55,65.41)'}*t)*0.12*(0.5+0.5*exp(-6*mod(t,0.5)))`;
     const stab = `(sin(2*PI*261.63*t)+sin(2*PI*329.63*t)+sin(2*PI*392*t))*exp(-10*mod(t+0.25,1))*0.035`;
     const mix = `${kick}+${hat}+${bass}+${stab}`;
-    return `aevalsrc=${e(`${mix}|${mix}`)}:s=44100:d=${D},volume=0.6,alimiter=limit=0.7,afade=t=in:d=0.3,afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5`;
+    return `aevalsrc=${e(`${mix}|${mix}`)}:s=${AUDIO_RATE}:d=${D},volume=0.6,alimiter=limit=0.7,${LOUDNORM},aresample=${AUDIO_RATE},afade=t=in:d=0.3,afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5`;
   }
-  return `anullsrc=channel_layout=stereo:sample_rate=44100`;
+  return `anullsrc=channel_layout=stereo:sample_rate=${AUDIO_RATE}`;
 }
 
 /**
@@ -95,13 +103,16 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       await fs.writeFile(vf, opts.baseVideo);
       const bp = await probeVideo(vf, { ...REEL_REQUIREMENTS, width: 0, height: 0, minSec: 0.5 });
       baseHasAudio = bp.hasAudio;
-      const clip = Math.max(1, Math.min(bp.durationSec || endStart, endStart + XFADE));
+      const need = endStart + XFADE;
+      // a short AI clip is slowed gently (≤1.25×) so the picture keeps moving instead of freezing before the end card
+      const slow = bp.durationSec > 0 && bp.durationSec < need ? Math.min(1.25, need / bp.durationSec) : 1;
+      const clip = Math.max(1, Math.min((bp.durationSec || endStart) * slow, need));
       inputs.push('-i', vf);
       const th = THEMES[c.themeKey ?? 'navy_gold'];
       const shade = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${th.panel}" stop-opacity="0.75"/><stop offset="0.3" stop-color="${th.panel}" stop-opacity="0"/><stop offset="0.58" stop-color="${th.panel}" stop-opacity="0"/><stop offset="1" stop-color="${th.panel}" stop-opacity="0.92"/></linearGradient></defs><rect width="1080" height="1920" fill="url(#t)"/></svg>`);
       const sf = path.join(dir, 'shade.png'); await fs.writeFile(sf, await sharp(shade).png().toBuffer());
       inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', sf);
-      filters.push(`[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=${FPS},setsar=1,trim=duration=${clip.toFixed(3)},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${D},trim=duration=${D},format=rgba[raw0]`);
+      filters.push(`[0:v]setpts=${slow.toFixed(4)}*PTS,scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,fps=${FPS},setsar=1,trim=duration=${clip.toFixed(3)},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${D},trim=duration=${D},format=rgba[raw0]`);
       filters.push(`[1:v]format=rgba[shade]`);
       filters.push(`[raw0][shade]overlay=0:0[s0]`);
     }
@@ -112,7 +123,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       const frames = Math.round(len * FPS);
       inputs.push('-loop', '1', '-framerate', String(FPS), '-t', len.toFixed(3), '-i', f);
       const motion = i === 0 && opts.hook !== false ? HOOK_MOTION(frames) : MOTIONS[i % MOTIONS.length](frames);
-      filters.push(`[${i}:v]scale=2160:3840,zoompan=${motion}:d=1:s=1080x1920:fps=${FPS},format=rgba,setsar=1[s${i}]`);
+      filters.push(`[${i}:v]scale=2160:3840:flags=lanczos,zoompan=${motion}:d=1:s=1080x1920:fps=${FPS},format=rgba,setsar=1[s${i}]`);
     }
     let base = 's0';
     for (let i = 1; i < n; i++) {
@@ -145,7 +156,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       filters.push(t.start === 0 && t.fade <= 0.25
         ? `[${idx}:v]format=rgba[o${idx}]` // fully visible on frame 0 (no fade-from-transparent)
         : `[${idx}:v]format=rgba,fade=t=in:st=${t.start.toFixed(2)}:d=${t.fade}:alpha=1[o${idx}]`);
-      const y = t.slide ? `'${t.layer.top}+${t.slide}*max(0\\,1-(t-${t.start.toFixed(2)})/${t.fade})*gte(1\\,(t-${t.start.toFixed(2)})/${t.fade})'` : String(t.layer.top);
+      const y = t.slide ? `'${t.layer.top}+${t.slide}*pow(max(0\\,1-(t-${t.start.toFixed(2)})/${t.fade})\\,3)'` : String(t.layer.top); // cubic ease-out
       filters.push(`[${base}][o${idx}]overlay=x=${t.layer.left}:y=${y}:enable='gte(t,${t.start.toFixed(2)})':eval=frame[v${idx}]`);
       base = `v${idx}`;
       idx++;
@@ -155,9 +166,11 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', path.join(dir, 'end.png'));
     const endIdx = idx++;
     filters.push(`[${endIdx}:v]format=rgba,fade=t=in:st=${endStart}:d=0.7:alpha=1[end]`);
-    filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})',format=yuv420p[vout]`);
+    // finishing: light sharpening of the upscaled AI image, correct BT.709 conversion (no washed-out colours on phones),
+    // debanding of smooth gradients and a very fine temporal grain so platform re-encoding doesn't band or smear
+    filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})',unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
     const useNative = !!opts.baseVideo && !!opts.nativeAudio && baseHasAudio;
-    if (useNative) filters.push(`[0:a]aresample=44100,apad,atrim=duration=${D},afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5[aout]`);
+    if (useNative) filters.push(`[0:a]aresample=${AUDIO_RATE},${LOUDNORM},aresample=${AUDIO_RATE},apad,atrim=duration=${D},afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5[aout]`);
     else inputs.push('-f', 'lavfi', '-t', String(D), '-i', audioSource(audio, D));
     const audioIdx = idx;
 
@@ -166,16 +179,18 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       '-y', '-hide_banner', '-loglevel', 'error', ...inputs,
       '-filter_complex', filters.join(';'),
       '-map', '[vout]', '-map', useNative ? '[aout]' : `${audioIdx}:a`,
-      '-c:v', 'libx264', '-profile:v', 'high', '-level', '4.1', '-preset', 'medium', '-crf', '20', '-maxrate', '8M', '-bufsize', '16M',
-      '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', String(FPS * 2),
-      '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
+      // high-quality master: platforms re-encode, so a cleaner source survives better (capped at 8 Mb/s → a 60 s reel stays ≤ 60 MB)
+      '-c:v', 'libx264', '-profile:v', 'high', '-level', '4.2', '-preset', process.env.REEL_X264_PRESET ?? 'slow', '-crf', '17', '-maxrate', '8M', '-bufsize', '16M',
+      '-x264-params', 'aq-mode=3:aq-strength=0.9', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', String(FPS * 2),
+      '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', String(AUDIO_RATE), '-ac', '2',
       '-t', String(D), '-movflags', '+faststart', out,
     ];
     const r = await run(process.env.FFMPEG_PATH ?? 'ffmpeg', args, 900_000);
     if (r.code !== 0) throw new VideoRenderError(`ffmpeg failed (${r.code}): ${r.stderr.slice(-800)}`);
     const probe = await probeVideo(out, { ...REEL_REQUIREMENTS, targetSec: D });
     const thumbFile = path.join(dir, 'thumb.jpg');
-    await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(Math.min(4.5, D - 3.5)), '-i', out, '-frames:v', '1', '-q:v', '3', thumbFile], 60_000);
+    await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(Math.min(4.5, D - 3.5)), '-i', out, '-frames:v', '1', '-q:v', '2', thumbFile], 60_000);
     return { mp4: await fs.readFile(out), probe, thumbnail: await fs.readFile(thumbFile), scenes: n, audio, nativeAudio: useNative, aiVideo: !!opts.baseVideo };
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
