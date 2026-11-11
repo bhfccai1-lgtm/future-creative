@@ -6,6 +6,12 @@ import { Button } from './ui';
 
 type N8n = { enabled: boolean; webhookUrl: string; events: string[]; allowInboundApprovals: boolean; allowInboundGeneration: boolean; allowInboundControl: boolean; approvalReminderHours: number; telegramChatId: string; telegramAllowedUserIds: string };
 
+function n8nHint(err: string | null, http: number | null) {
+  if (http === 404) return 'HTTP 404 — n8n يعمل لكن المسار خطأ أو القالب 01 غير منشور (Publish). صحّح الرابط أو أعد تشغيل bash scripts/n8n-setup.sh';
+  if (err && /fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|timeout/i.test(err)) return 'لا يمكن الوصول إلى n8n — الخدمة غير مُشغّلة على السيرفر. نفّذ في الكونسول: cd /opt/future-creative ثم bash scripts/n8n-setup.sh';
+  return err ?? (http ? `HTTP ${http}` : 'خطأ غير معروف');
+}
+
 export function N8nForm({ n8n, events, secret, token, apiBase, telegram }: { n8n: N8n; events: Record<string, string>; secret: boolean; token: boolean; apiBase: string; telegram: boolean }) {
   const router = useRouter();
   const [v, setV] = useState<N8n>({ ...n8n, webhookUrl: n8n.webhookUrl || 'http://n8n:5678/webhook/future-creative' });
@@ -25,6 +31,8 @@ export function N8nForm({ n8n, events, secret, token, apiBase, telegram }: { n8n
         <div>
           <label className="label">رابط Webhook في n8n (يستقبل الأحداث)</label>
           <input className="input ltr" placeholder="http://n8n:5678/webhook/future-creative" value={v.webhookUrl} onChange={(e) => setV({ ...v, webhookUrl: e.target.value.trim() })} />
+          {/^https?:\/\/n8n:5678\//.test(v.webhookUrl) && v.webhookUrl !== 'http://n8n:5678/webhook/future-creative' && (
+            <p className="mt-1 text-xs text-red-700">المسار يجب أن يكون بالضبط <span className="ltr">http://n8n:5678/webhook/future-creative</span> — لا تُضف اسم البوت أو أي شيء بعده. <button type="button" className="underline" onClick={() => setV({ ...v, webhookUrl: 'http://n8n:5678/webhook/future-creative' })}>تصحيح</button></p>)}
           <p className="mt-1 text-xs text-slate-500">إذا كان n8n يعمل على نفس السيرفر (ملف docker-compose) استخدم العنوان الداخلي <span className="ltr">http://n8n:5678/webhook/…</span> — لا يمر عبر الإنترنت.</p>
         </div>
         <div>
@@ -76,7 +84,7 @@ export function N8nForm({ n8n, events, secret, token, apiBase, telegram }: { n8n
           catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
         }}>إعادة إرسال الأحداث الفاشلة</Button>
         <Button type="button" variant="gold" size="sm" onClick={async () => {
-          try { const r = await apiCall<{ status: string; httpStatus: number | null; error: string | null }>('/api/settings/n8n/test', { body: {} }); setMsg({ ok: r.status === 'DELIVERED', t: r.status === 'DELIVERED' ? `وصل الاختبار إلى n8n ✓ (HTTP ${r.httpStatus})` : `لم يصل: ${r.error ?? r.httpStatus}` }); router.refresh(); }
+          try { const r = await apiCall<{ status: string; httpStatus: number | null; error: string | null }>('/api/settings/n8n/test', { body: {} }); setMsg({ ok: r.status === 'DELIVERED', t: r.status === 'DELIVERED' ? `وصل الاختبار إلى n8n ✓ (HTTP ${r.httpStatus})` : `لم يصل: ${n8nHint(r.error, r.httpStatus)}` }); router.refresh(); }
           catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
         }}>إرسال حدث اختبار</Button>
       </div>
