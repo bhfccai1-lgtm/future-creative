@@ -36,7 +36,9 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
           {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && qc?.publishable && <ActionButton url={`/api/ads/${id}/publish-now`} label="نشر الآن" variant="gold" confirm="سيتم إرسال الإعلان إلى المزود لأقرب موعد آمن. متابعة؟" />}
           {['QUALITY_REVIEW', 'APPROVED', 'QUEUED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/reject`} label="رفض" variant="danger" prompt="سبب الرفض (اختياري)" promptKey="note" />}
         </>} />
-      {ad.errorMessage && <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{ad.errorMessage}</div>}
+      {ad.errorMessage && <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{ad.errorMessage}
+        {ad.state === 'FAILED' && <div className="mt-2"><ActionButton url={`/api/ads/${id}/regenerate`} label="إعادة التوليد بنفس الإعدادات" variant="gold" size="sm" /> <span className="text-xs text-slate-600">يظهر التصميم الجديد في طابور الموافقات خلال دقيقة تقريبًا.</span></div>}
+      </div>}
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <div className="space-y-4">
           {video ? <video className="w-full rounded-xl shadow" src={`/api/media/${video.storageKey}`} controls playsInline /> : finalImg ? <img className="w-full rounded-xl shadow" src={`/api/media/${finalImg.storageKey}`} alt="التصميم النهائي" /> : <div className="card p-8 text-center text-slate-500">لا توجد وسائط</div>}

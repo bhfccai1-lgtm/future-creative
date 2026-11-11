@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { normalizeBrief, briefIssueAr } from './brief-normalize';
 import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion } from './types';
 import { briefSystemPrompt, briefUserPrompt, ideasSystemPrompt } from './prompts';
 
@@ -86,8 +87,11 @@ export class OpenAiProvider implements AiProvider {
     if (!content) throw new AiProviderError('BAD_OUTPUT', 'استجابة فارغة من نموذج النص.', true);
     let parsed: unknown;
     try { parsed = JSON.parse(content); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
-    const brief = CreativeBriefSchema.safeParse(parsed);
-    if (!brief.success) throw new AiProviderError('BAD_OUTPUT', `الموجز لا يطابق المخطط: ${brief.error.issues[0]?.message}`, true);
+    // fit over-long fields instead of failing the whole design (the model ignores length limits sometimes)
+    const { brief: fitted, adjusted } = normalizeBrief(parsed, req.defaultCta);
+    if (adjusted.length) console.warn(`[openai] brief fields fitted to limits: ${adjusted.join(', ')}`);
+    const brief = CreativeBriefSchema.safeParse(fitted);
+    if (!brief.success) throw new AiProviderError('BAD_OUTPUT', briefIssueAr(brief.error.issues[0]), true);
     return { brief: brief.data, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 

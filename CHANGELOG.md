@@ -1,5 +1,17 @@
 # Changelog
 
+## 8.8.1 — 2026-11-11 (fix: «الموجز لا يطابق المخطط: String must contain at most 30 character(s)»)
+- **Root cause:** the text model sometimes writes a CTA longer than 30 characters, or other over-long fields. Strict schema validation then rejected the whole brief. Retries repeated the same mistake, so the design failed with no media.
+- **Fix:** `normalizeBrief` fits fields to their limits before validation.
+  - Text is cut at a word boundary.
+  - Captions drop whole trailing lines, never half a sentence.
+  - Hashtags and slides are capped.
+  - An over-long or missing CTA is replaced by the official CTA, which is what the design uses anyway.
+- The JSON schema descriptions now state the limits, so the model rarely exceeds them.
+- A genuinely broken reply now gives an Arabic, field-specific message instead of English Zod text.
+- New **«إعادة التوليد بنفس الإعدادات»** button on failed designs.
+- Regression tests reproduce the exact error. 189 tests passing.
+
 ## 8.8.0 — 2026-11-11 (competitor analysis)
 - **New تحليل المنافسين page:**
   - benchmark: followers, growth, posts per week, Reel share, average interactions, engagement rate, sample size, and our own row;

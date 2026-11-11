@@ -113,3 +113,28 @@ describe('OpenAI provider — regression: 400 "Unsupported value: temperature"',
     expect(seen[1]).toMatchObject({ size: '1024x1536', prompt: 'scene' });
   });
 });
+
+describe('regression: "الموجز لا يطابق المخطط: String must contain at most 30 character(s)"', () => {
+  const clientReturning = (brief: unknown) => ({ chat: { completions: { create: async (p: Record<string, unknown>) => ({ model: String(p.model), usage: { prompt_tokens: 1, completion_tokens: 1 }, choices: [{ message: { content: JSON.stringify(brief) } }] }) } } }) as unknown as OpenAI;
+  it('a long CTA (and other over-long fields) no longer fail the design: fitted, official CTA used', async () => {
+    const long = {
+      ...validBrief,
+      cta: 'اطلب الآن واحصل على تصميمك المخصص لمطبوعات المدارس', // > 30 chars — exactly the real failure
+      headline: 'مطبوعات المدارس بتصاميم احترافية مخصصة لكل صف ولكل مناسبة مدرسية في البحرين',
+      badge: 'مطبوعات مدرسية مخصصة جدًا', hashtags: Array.from({ length: 15 }, (_, i) => `#وسم${i}`),
+    };
+    const r = await new OpenAiProvider('k', clientReturning(long)).generateBrief(req, 'gpt-x');
+    expect(r.brief.cta).toBe('اطلب الآن');
+    expect([...r.brief.headline].length).toBeLessThanOrEqual(60);
+    expect(r.brief.headline.endsWith(' ')).toBe(false);
+    expect(r.brief.headline).toMatch(/^مطبوعات المدارس/);
+    expect([...r.brief.badge].length).toBeLessThanOrEqual(24);
+    expect(r.brief.hashtags).toHaveLength(12);
+  });
+  it('a really broken reply still fails, with an Arabic field-specific message', async () => {
+    const e = await new OpenAiProvider('k', clientReturning({ ...validBrief, headline: undefined })).generateBrief(req, 'gpt-x').catch((x) => x);
+    expect(e).toBeInstanceOf(AiProviderError);
+    expect(e.message).toMatch(/حقل «العنوان»/);
+    expect(e.message).not.toMatch(/String must contain/);
+  });
+});
