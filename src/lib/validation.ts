@@ -37,9 +37,11 @@ export const DirectionSchema = z.object({
   occasion: z.enum(optionValues(OCCASIONS)).optional(),
   idea: z.string().max(500).optional(),
   designType: z.enum(optionValues(DESIGN_TYPES)).optional(),
-  designStyle: z.enum(optionValues(DESIGN_STYLES)).optional(),
+  designStyle: z.enum(['auto', ...optionValues(DESIGN_STYLES)] as [string, ...string[]]).optional(),
   layout: z.enum(['gold-poster', 'navy-gold-classic', 'gold-frame-lower']).optional(),
-  renderMode: z.enum(['layered', 'ai_full']).optional(),
+  renderMode: z.enum(['layered', 'ai_full', 'auto']).optional(),
+  /** campaign: vary the format per post (growth mix) regardless of the account's fixed format */
+  autoFormat: z.boolean().optional(),
   customPrompt: z.string().max(3000).optional(),
   channels: z.array(z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'linkedin', 'twitter', 'gmb'])).max(8).optional(),
   reelStyle: z.enum(['standard', 'pro']).optional(),

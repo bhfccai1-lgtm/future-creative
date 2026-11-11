@@ -23,7 +23,7 @@ function Sel({ label, value, onChange, children }: { label: string; value: strin
 export function CampaignForm({ accounts, products }: { accounts: Opt[]; products: Opt[] }) {
   const router = useRouter();
   const [v, setV] = useState({
-    name: '', accountIds: [] as string[], productId: '', format: '', language: '',
+    name: '', accountIds: [] as string[], productId: '', format: 'AUTO', language: '', ideaMode: 'auto' as 'auto' | 'custom',
     contentType: '', market: '', segment: '', occasion: '', idea: '',
     scheduleType: 'RECURRING' as 'ONCE' | 'RECURRING', everyHours: 24, daysOfWeek: [] as number[], timeMode: 'BEST' as 'BEST' | 'FIXED',
     start: nowLocal(), end: '', maxRuns: '',
@@ -31,7 +31,8 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
   const set = <K extends keyof typeof v>(k: K) => (val: (typeof v)[K]) => setV((x) => ({ ...x, [k]: val }));
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [design, setDesign] = useState<DesignValues>(EMPTY_DESIGN);
+  const [design, setDesign] = useState<DesignValues>({ ...EMPTY_DESIGN, renderMode: 'auto', designStyle: 'auto' });
+  const fmt = v.format === 'AUTO' ? '' : v.format;
 
   const startAt = useMemo(() => { try { return fromZonedTime(v.start.length === 10 ? `${v.start}T00:00` : v.start, TZ); } catch { return null; } }, [v.start]);
   const endAt = useMemo(() => { try { return v.end ? fromZonedTime(`${v.end}T23:59`, TZ) : null; } catch { return null; } }, [v.end]);
@@ -45,11 +46,13 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
     <form className="space-y-6" onSubmit={async (e) => {
       e.preventDefault(); setMsg(null); setBusy(true);
       const direction: Record<string, unknown> = {};
-      for (const k of ['contentType', 'market', 'segment', 'occasion', 'idea'] as const) if (v[k].trim()) direction[k] = v[k].trim();
-      Object.assign(direction, designDirection(design, v.format));
+      for (const k of ['contentType', 'market', 'segment', 'occasion'] as const) if (v[k].trim()) direction[k] = v[k].trim();
+      if (v.ideaMode === 'custom' && v.idea.trim()) direction.idea = v.idea.trim();
+      if (v.format === 'AUTO') direction.autoFormat = true;
+      Object.assign(direction, designDirection(design, fmt));
       try {
         await apiCall('/api/campaigns', { body: {
-          name: v.name, accountIds: v.accountIds, productId: v.productId || null, format: v.format || null, language: v.language || null,
+          name: v.name, accountIds: v.accountIds, productId: v.productId || null, format: fmt || null, language: v.language || null,
           direction: Object.keys(direction).length ? direction : undefined,
           scheduleType: v.scheduleType, everyHours: v.everyHours, daysOfWeek: v.daysOfWeek, timeMode: v.scheduleType === 'ONCE' ? 'FIXED' : v.timeMode,
           startAt: startAt?.toISOString(), endAt: endAt?.toISOString() ?? null, maxRuns: v.maxRuns ? Number(v.maxRuns) : null,
@@ -63,16 +66,17 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
         <legend className="mb-2 text-sm font-extrabold text-navy-800">١. ماذا ننشر؟</legend>
         <div className="md:col-span-2"><label className="label">اسم الحملة</label><input className="input" required value={v.name} onChange={(e) => set('name')(e.target.value)} placeholder="مثال: أكواب العيد الوطني" /></div>
         <Sel label="المنتج" value={v.productId} onChange={set('productId')}><option value="">اختيار تلقائي لكل إعلان</option>{products.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</Sel>
-        <Sel label="الصيغة" value={v.format} onChange={set('format')}><option value="">حسب الحساب</option><option value="IMAGE_STORY">صورة عمودية</option><option value="IMAGE_FEED">صورة منشور</option><option value="IMAGE_SQUARE">صورة مربعة</option><option value="REEL_VIDEO">فيديو Reel</option><option value="IMAGE_CAROUSEL">كاروسيل (شرائح)</option></Sel>
+        <Sel label="الصيغة" value={v.format} onChange={set('format')}><option value="AUTO">تلقائي — تنويع ذكي (Reel · كاروسيل · منشور · ستوري)</option><option value="">حسب إعداد الحساب</option><option value="IMAGE_STORY">صورة عمودية</option><option value="IMAGE_FEED">صورة منشور</option><option value="IMAGE_SQUARE">صورة مربعة</option><option value="REEL_VIDEO">فيديو Reel</option><option value="IMAGE_CAROUSEL">كاروسيل (شرائح)</option></Sel>
         <Sel label="لغة المحتوى" value={v.language} onChange={set('language')}><option value="">حسب الحساب</option>{LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.ar}</option>)}</Sel>
         <Sel label="نوع المحتوى" value={v.contentType} onChange={set('contentType')}><option value="">تلقائي (يتنوع)</option>{CONTENT_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="الجمهور والسوق" value={v.market} onChange={set('market')}><option value="">تلقائي</option>{MARKETS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="الفئة المستهدفة" value={v.segment} onChange={set('segment')}><option value="">تلقائي</option>{SEGMENTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="نوع المناسبة" value={v.occasion} onChange={set('occasion')}><option value="">تلقائي</option>{OCCASIONS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
-        <div className="md:col-span-3"><label className="label">الفكرة العامة (اختياري)</label><input className="input" maxLength={500} value={v.idea} onChange={(e) => set('idea')(e.target.value)} placeholder="يبتكر الذكاء الاصطناعي تصميمًا جديدًا بزاوية مختلفة في كل مرة حول هذه الفكرة" /></div>
+        <Sel label="الفكرة العامة" value={v.ideaMode} onChange={(x) => set('ideaMode')(x as 'auto' | 'custom')}><option value="auto">تلقائي — فكرة جديدة مختلفة في كل مرة</option><option value="custom">أكتب فكرة محددة</option></Sel>
+        {v.ideaMode === 'custom' && <div className="md:col-span-3"><label className="label">فكرتك</label><input className="input" maxLength={500} value={v.idea} onChange={(e) => set('idea')(e.target.value)} placeholder="مثال: أكواب بمناسبة اليوم الوطني للشركات — يبتكر الذكاء الاصطناعي زاوية مختلفة حولها في كل مرة" /></div>}
       </fieldset>
 
-      <DesignFields v={design} set={(patch) => setDesign((x) => ({ ...x, ...patch }))} format={v.format} />
+      <DesignFields v={design} set={(patch) => setDesign((x) => ({ ...x, ...patch }))} format={fmt} />
 
       {/* 2 — where */}
       <fieldset>

@@ -29,7 +29,7 @@ import { signedMediaUrl } from '../storage';
 import { storage } from '../storage';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
-import { designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
+import { DESIGN_STYLES, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 
 export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null; revisionOf?: string }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
@@ -86,7 +86,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   if (!product) throw new AppError('NO_PRODUCT', 'لا توجد منتجات نشطة مسموح بها لهذا الحساب.', 422);
 
   const lang = (p.language ?? account.language) as Lang; // content language may override the account default
-  const format = p.format ?? (await nextFormatFor(account)); // GROWTH_MIX rotates Reels / feed / stories
+  // GROWTH_MIX rotates Reels / carousel / feed / stories; a campaign set to «تلقائي» uses the mix even for fixed-format accounts
+  const format = p.format ?? (await nextFormatFor(p.direction?.autoFormat ? { ...account, formatStrategy: 'GROWTH_MIX' } : account));
   const provider = await getAiProvider(s);
   // Design options chosen by the user
   // Planner: fill "automatic" occasion / content angle (seasonal calendar + rotation) and record it.
@@ -100,6 +101,22 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       auto.push('contentType');
     }
     if (auto.length) p = { ...p, direction: { ...dir, autoPicked: auto } };
+  }
+  // «تلقائي» design style / design method: resolved here and recorded, so reports can compare what was picked.
+  if (p.direction?.designStyle === 'auto' || p.direction?.renderMode === 'auto') {
+    const dir: Direction = { ...p.direction };
+    const auto = [...(dir.autoPicked ?? [])];
+    if (dir.designStyle === 'auto') {
+      const recent = await prisma.advertisement.findMany({ where: { accountId: account.id }, orderBy: { createdAt: 'desc' }, take: 20, select: { options: true } });
+      dir.designStyle = pickLeastRecent(DESIGN_STYLES.map((x) => x.value), recent.map((r) => ((r.options ?? {}) as { designStyle?: string | null }).designStyle ?? null));
+      auto.push('designStyle');
+    }
+    if (dir.renderMode === 'auto') {
+      // auto-publishing accounts need verified system text (ai_full always needs a human); otherwise the full AI poster for vertical formats
+      dir.renderMode = account.autonomousAuthorized || !(format === 'IMAGE_STORY' || format === 'REEL_VIDEO') ? 'layered' : 'ai_full';
+      auto.push('renderMode');
+    }
+    p = { ...p, direction: { ...dir, autoPicked: auto } };
   }
   const d = p.direction ?? {};
   const style = styleOf(d.designStyle);
@@ -351,4 +368,15 @@ export function buildCaption(b: CreativeBriefOut) {
   // Instagram accepts at most 5 hashtags — keep the first 5 unique ones the model ranked highest
   const tags = [...new Set(b.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '_')))].slice(0, 5).join(' ');
   return [b.caption.trim(), tags].filter(Boolean).join('\n\n');
+}
+
+/** The option not used for the longest time among `recent` (newest first); unused options come first. */
+export function pickLeastRecent(options: string[], recent: (string | null)[]) {
+  let best = options[0], bestIdx = -1;
+  for (const o of options) {
+    const i = recent.indexOf(o);
+    if (i === -1) return o;
+    if (i > bestIdx) { bestIdx = i; best = o; }
+  }
+  return best;
 }

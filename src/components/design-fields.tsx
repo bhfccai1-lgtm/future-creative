@@ -39,12 +39,14 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
     <>
       <fieldset className="space-y-3">
         <legend className="mb-2 text-sm font-extrabold text-navy-800">طريقة التصميم</legend>
-        <div className="grid gap-3 md:grid-cols-2">
-          {RENDER_MODES.map((m) => (
+        <div className="grid gap-3 md:grid-cols-3">
+          {[{ value: 'auto', ar: 'تلقائي (موصى به)' }, ...RENDER_MODES].map((m) => (
             <button type="button" key={m.value} onClick={() => set({ renderMode: m.value })}
               className={`rounded-xl border-2 p-3 text-right text-sm ${v.renderMode === m.value ? 'border-gold-500 bg-gold-300/20' : 'border-slate-200'}`}>
               <div className="font-extrabold">{m.ar}</div>
-              <div className="mt-1 text-xs text-slate-600">{m.value === 'ai_full'
+              <div className="mt-1 text-xs text-slate-600">{m.value === 'auto'
+                ? 'يختار النظام لكل منشور: نصوص النظام المضمونة للحسابات ذات النشر الذاتي وللصيغ غير العمودية، والملصق الكامل بالذكاء الاصطناعي للستوري والريلز التي تمر بموافقتك.'
+                : m.value === 'ai_full'
                 ? 'يرسم الذكاء الاصطناعي الملصق كاملًا (العناوين، الشارة الذهبية، المزايا، الزخارف، المنتج). النظام يضيف الشعار الأصلي والأرقام وزر الطلب. يتطلب موافقتك دائمًا لأن النص المرسوم قد يحتوي أخطاء.'
                 : 'الذكاء الاصطناعي يصوّر المنتج فقط، والنظام يكتب كل النصوص بخط صحيح 100% ويفحصها آليًا. مناسب للنشر الذاتي.'}</div>
             </button>
@@ -64,7 +66,7 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
         <legend className="mb-2 text-sm font-extrabold text-navy-800">التصميم</legend>
         <Sel label="قالب التصميم (للطبقات الثابتة)" value={v.layout} onChange={(x) => set({ layout: x })} hint="الملصق الذهبي للصيغ العمودية فقط"><option value="">تلقائي (الملصق الذهبي للعمودي)</option>{LAYOUTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="نوع التصميم" value={v.designType} onChange={(x) => set({ designType: x })}><option value="">اختيار تلقائي</option>{DESIGN_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
-        <Sel label="أسلوب التصميم" value={v.designStyle} onChange={(x) => set({ designStyle: x })} hint="يغيّر ألوان القالب وأسلوب الصورة؛ الشعار يبقى كما هو"><option value="">هوية المطبعة (كحلي وذهبي)</option>{DESIGN_STYLES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
+        <Sel label="أسلوب التصميم" value={v.designStyle} onChange={(x) => set({ designStyle: x })} hint="يغيّر ألوان القالب وأسلوب الصورة؛ الشعار يبقى كما هو"><option value="auto">تلقائي — يتنوع بين الأساليب</option><option value="">هوية المطبعة (كحلي وذهبي)</option>{DESIGN_STYLES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <div>
           <label className="label">قنوات النشر</label>
           <div className="grid grid-cols-2 gap-1 rounded-lg border p-2 text-sm">
