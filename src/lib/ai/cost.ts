@@ -12,8 +12,14 @@ export function estimateImageCost(s: Settings, quality: 'low' | 'medium' | 'high
   return n * (quality === 'low' ? p.imageLow : quality === 'high' ? p.imageHigh : p.imageMedium);
 }
 /** Estimated cost of one full advertisement (brief + one scene image, ~2.5k in / 800 out tokens). */
-export function estimateAdCost(s: Settings) {
-  return estimateTextCost(s, 2500, 800) + estimateImageCost(s, s.ai.imageQuality);
+/** Effective image quality for a format (per-format override, else the global quality). */
+export function qualityFor(s: Settings, format?: string | null): 'low' | 'medium' | 'high' {
+  const q = format ? (s.ai.qualityByFormat as Record<string, string>)[format] : '';
+  return (q || s.ai.imageQuality) as 'low' | 'medium' | 'high';
+}
+
+export function estimateAdCost(s: Settings, format?: string | null) {
+  return estimateTextCost(s, 2500, 800) + estimateImageCost(s, qualityFor(s, format));
 }
 
 export async function monthToDateSpend(now = new Date()): Promise<number> {

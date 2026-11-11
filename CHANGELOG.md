@@ -1,5 +1,16 @@
 # Changelog
 
+## 8.9.0 — 2026-11-11 (quality per format, interval and no-approval publishing in bulk)
+- **Image quality per format** (`ai.qualityByFormat`):
+  - Stories default to **low** (they live 24 h); every other format follows the global quality.
+  - Budget checks and recorded costs use the effective quality.
+  - The AI settings page shows a selector per format with the cost per design, plus «تطبيق الموصى به» (apply recommended).
+- **Schedule page, bulk actions on the selected accounts:**
+  - **publish every 5 / 7 / 9 hours** (or any value). The daily cap follows the cadence, and a shorter interval takes effect soon instead of after the old wait.
+  - **«نشر بدون موافقة للمحدد»** (publish without approval): autonomous authorisation for linked accounts only, audited. It needs the `autonomy:authorize` permission and warns when the global mode is not «ذاتي». «إرجاع للموافقة اليدوية» returns accounts to manual approval.
+- **Account form:** the interval is now chosen in hours.
+- Tests: quality per format (low for a story, medium for a feed post) with recorded costs; HTTP smoke test of the bulk interval and autonomy. 190 tests passing.
+
 ## 8.8.2 — 2026-11-11 (enabling auto-publishing)
 - The schedule page has a new section **«الحسابات المسموح لها بالنشر الآلي»** (accounts allowed to auto-publish): tick accounts, or use «تحديد كل المرتبطة» (select all linked), then «السماح بالنشر الآلي للمحدد» (allow selected) in one click. Previously each account had to be opened separately.
   - Accounts without a verified Metricool connection are never enabled. The reason is reported per account.

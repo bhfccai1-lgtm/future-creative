@@ -301,3 +301,18 @@ describe('Gemini Veo reels in the pipeline', () => {
     } finally { setVideoProviderOverride(null); }
   }, 300_000);
 });
+
+describe('image quality per format', () => {
+  it('stories use low quality by default; other formats follow the global quality; cost recorded accordingly', async () => {
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false, imageQuality: 'medium' } }) });
+    const ai = new FakeAiProvider(); const seen: string[] = [];
+    const orig = ai.generateScene.bind(ai);
+    ai.generateScene = async (p, o) => { seen.push(o.quality); return orig(p, o); };
+    setAiProviderOverride(ai);
+    await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_STORY' });
+    await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED' });
+    expect(seen).toEqual(['low', 'medium']);
+    const costs = (await prisma.aiUsage.findMany({ where: { kind: 'image' }, orderBy: { createdAt: 'asc' } })).map((u) => Number(u.costUsd));
+    expect(costs).toEqual([0.016, 0.063]);
+  }, 300_000);
+});

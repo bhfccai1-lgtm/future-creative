@@ -30,6 +30,14 @@ export const SettingsSchema = z.object({
     textModel: z.string().default('gpt-4.1-mini'),
     imageModel: z.string().default('gpt-image-1'),
     imageQuality: z.enum(['low', 'medium', 'high']).default('medium'),
+    /** Image quality per format ('' = use imageQuality). Stories live 24 h → low is enough by default. */
+    qualityByFormat: z.object({
+      IMAGE_STORY: z.enum(['', 'low', 'medium', 'high']).default('low'),
+      IMAGE_FEED: z.enum(['', 'low', 'medium', 'high']).default(''),
+      IMAGE_SQUARE: z.enum(['', 'low', 'medium', 'high']).default(''),
+      IMAGE_CAROUSEL: z.enum(['', 'low', 'medium', 'high']).default(''),
+      REEL_VIDEO: z.enum(['', 'low', 'medium', 'high']).default(''),
+    }).default({}),
     monthlyBudgetUsd: z.number().min(0).default(50),
     alertThresholdPct: z.number().min(1).max(100).default(80),
     maxDailyAds: z.number().int().min(0).default(48),

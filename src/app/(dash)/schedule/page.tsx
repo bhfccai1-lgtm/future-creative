@@ -20,7 +20,7 @@ export default async function SchedulePage() {
     <>
       <PageHeader title="جدول النشر الآلي" subtitle="المجدول يستيقظ كل ساعة؛ لكل حساب فترة نشر مستقلة. لا يتم أي نشر تلقائي دون تفعيل صريح." />
       <Card title="التحكم في الأتمتة" className="mb-6">
-        <AutomationControls s={s} accounts={accounts.map((a) => ({ id: a.id, name: a.name, eligible: a.autoPublishEnabled && a.connection?.status === 'CONNECTED' && !a.paused, reason: !a.connection || a.connection.status === 'NOT_CONNECTED' ? 'غير مرتبط بـ Metricool' : a.connection.status !== 'CONNECTED' || !a.connection.canPublish ? `الربط منقطع (${a.connection.status})` : a.paused ? 'موقوف طارئًا' : !a.autoPublishEnabled ? 'مرتبط ✓ — النشر الآلي غير مسموح بعد' : null, connected: a.connection?.status === 'CONNECTED' && !!a.connection.canPublish }))} />
+        <AutomationControls s={s} accounts={accounts.map((a) => ({ id: a.id, name: a.name, eligible: a.autoPublishEnabled && a.connection?.status === 'CONNECTED' && !a.paused, reason: !a.connection || a.connection.status === 'NOT_CONNECTED' ? 'غير مرتبط بـ Metricool' : a.connection.status !== 'CONNECTED' || !a.connection.canPublish ? `الربط منقطع (${a.connection.status})` : a.paused ? 'موقوف طارئًا' : !a.autoPublishEnabled ? 'مرتبط ✓ — النشر الآلي غير مسموح بعد' : null, connected: a.connection?.status === 'CONNECTED' && !!a.connection.canPublish, everyHours: Math.round((a.publishIntervalMinutes / 60) * 10) / 10, autonomous: a.autonomousAuthorized }))} />
       </Card>
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title={`الحسابات المسموح لها بالنشر الآلي (${auto.length})`}>

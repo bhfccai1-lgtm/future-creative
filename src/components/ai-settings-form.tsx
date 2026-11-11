@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; pricing: Record<string, number> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
   const router = useRouter();
@@ -30,6 +31,24 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div><label className="label">نموذج النص</label><input className="input ltr" value={v.textModel} onChange={(e) => setV({ ...v, textModel: e.target.value })} /></div>
         <div><label className="label">نموذج الصور</label><input className="input ltr" value={v.imageModel} onChange={(e) => setV({ ...v, imageModel: e.target.value })} /></div>
         <div><label className="label">جودة الصور</label><select className="input" value={v.imageQuality} onChange={(e) => setV({ ...v, imageQuality: e.target.value as Ai['imageQuality'] })}><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option></select></div>
+        <fieldset className="rounded-lg border p-3 md:col-span-3">
+          <legend className="px-1 text-sm font-bold text-navy-800">الجودة حسب الصيغة</legend>
+          <p className="mb-2 text-xs text-slate-500">الذكاء الاصطناعي يرسم صورة المنتج فقط — الشعار والنصوص والأرقام يضيفها النظام بنفس الدقة في كل المستويات. «حسب الإعداد العام» = جودة الصور أعلاه.</p>
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5">
+            {FORMATS.map(([f, label]) => {
+              const q = (v.qualityByFormat?.[f] || v.imageQuality) as 'low' | 'medium' | 'high';
+              const price = q === 'low' ? v.pricing.imageLow : q === 'high' ? v.pricing.imageHigh : v.pricing.imageMedium;
+              return (
+                <div key={f}><label className="label">{label}</label>
+                  <select className="input" value={v.qualityByFormat?.[f] ?? ''} onChange={(e) => setV({ ...v, qualityByFormat: { ...v.qualityByFormat, [f]: e.target.value as Ai['qualityByFormat'][string] } })}>
+                    <option value="">حسب الإعداد العام</option><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500 ltr">≈ ${(price + 0.002).toFixed(3)} / design</p></div>
+              );
+            })}
+          </div>
+          <button type="button" className="mt-2 text-xs font-bold text-gold-600 underline" onClick={() => setV({ ...v, qualityByFormat: { IMAGE_STORY: 'low', IMAGE_FEED: 'medium', IMAGE_SQUARE: 'medium', IMAGE_CAROUSEL: 'medium', REEL_VIDEO: 'medium' } })}>تطبيق الموصى به (ستوري منخفضة · الباقي متوسطة)</button>
+        </fieldset>
         <div><label className="label">حد الإنفاق الشهري (USD)</label><input type="number" min={0} step="0.5" className="input" value={v.monthlyBudgetUsd} onChange={num('monthlyBudgetUsd')} /></div>
         <div><label className="label">تنبيه عند نسبة (%)</label><input type="number" min={1} max={100} className="input" value={v.alertThresholdPct} onChange={num('alertThresholdPct')} /></div>
         <div><label className="label">الحد الأقصى اليومي للإعلانات</label><input type="number" min={0} className="input" value={v.maxDailyAds} onChange={num('maxDailyAds')} /></div>

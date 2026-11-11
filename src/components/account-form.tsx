@@ -47,7 +47,10 @@ export function AccountForm({ account, products }: { account?: Account; products
           <option value="GROWTH_MIX">مزيج النمو: 50% ريلز · 25% كاروسيل · 15% منشور · 10% ستوري (موصى به)</option><option value="FIXED">صيغة ثابتة (صيغة النشر أعلاه فقط)</option>
         </select>
         <p className="mt-1 text-xs text-slate-500">بيانات حساباتك: الريلز وصلت 5–7 أضعاف وصول الصور، والستوري لا تجلب متابعين جددًا.</p></div>
-      <div><label className="label">فترة النشر (دقائق)</label><input type="number" min={60} step={30} className="input" value={a.publishIntervalMinutes} onChange={(e) => set('publishIntervalMinutes', Number(e.target.value))} /></div>
+      <div><label className="label">النشر كل</label>
+        <select className="input" value={a.publishIntervalMinutes} onChange={(e) => { const m = Number(e.target.value); setA((x) => ({ ...x, publishIntervalMinutes: m, maxDailyAds: Math.max(1, Math.ceil(1440 / m)) })); }}>
+          {[...new Set([3, 4, 5, 6, 7, 8, 9, 12, 24, 48].map((h) => h * 60).concat(a.publishIntervalMinutes))].sort((x, y) => x - y).map((m) => <option key={m} value={m}>{m % 60 ? `${m} دقيقة` : `${m / 60} ساعات`}</option>)}
+        </select></div>
       <div><label className="label">بداية نافذة النشر</label><input type="time" className="input ltr" value={a.publishWindowStart} onChange={(e) => set('publishWindowStart', e.target.value)} /></div>
       <div><label className="label">نهاية نافذة النشر</label><input type="time" className="input ltr" value={a.publishWindowEnd} onChange={(e) => set('publishWindowEnd', e.target.value)} /></div>
       <div><label className="label">مدة الـReel (ثانية)</label><input type="number" min={6} max={60} className="input" value={a.reelDurationSec} onChange={(e) => set('reelDurationSec', Number(e.target.value))} /></div>

@@ -9,7 +9,7 @@ import { productAllowed, selectProductForAccount } from '../creative/selector';
 import { getAiProvider } from '../ai';
 import { AiProviderError, type AiProvider, type CreativeBriefOut } from '../ai/types';
 import { fullPosterPrompt, scenePrompt } from '../ai/prompts';
-import { assertBudget, estimateAdCost, estimateImageCost, estimateTextCost, recordUsage } from '../ai/cost';
+import { qualityFor, assertBudget, estimateAdCost, estimateImageCost, estimateTextCost, recordUsage } from '../ai/cost';
 import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
@@ -106,10 +106,11 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const dtype = designTypeOf(d.designType);
   const creativeStyle = style?.prompt ?? s.ai.creativeStyle;
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
+  const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
   const aiFull = d.renderMode === 'ai_full' && (format === 'IMAGE_STORY' || format === 'REEL_VIDEO');
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Up-front budget check for the WHOLE advertisement (incl. extra pro-reel scenes), so a partial spend never happens near the cap.
-  if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s) + (sceneCount - 1) * estimateImageCost(s, s.ai.imageQuality));
+  if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s, format) + (sceneCount - 1) * estimateImageCost(s, imgQuality));
 
   const ad = await prisma.advertisement.create({
     data: {
@@ -157,13 +158,13 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     });
 
     // ── Step 7: AI scene (no text, no logo) ──
-    await assertBudget(s, estimateImageCost(s, s.ai.imageQuality));
+    await assertBudget(s, estimateImageCost(s, imgQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
         ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle);
-      const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: s.ai.imageQuality, size: '1024x1536', seedHint: `${ad.id}` }));
-      if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, s.ai.imageQuality) });
+      const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}` }));
+      if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
       return img;
     });
 
@@ -189,10 +190,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     ];
     const extraScenes: { png: Buffer; model: string }[] = [];
     for (let i = 1; i < sceneCount; i++) {
-      await assertBudget(s, estimateImageCost(s, s.ai.imageQuality));
+      await assertBudget(s, estimateImageCost(s, imgQuality));
       extraScenes.push(await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(`${brief!.sceneDescription} ${SHOTS[(i - 1) % SHOTS.length]}`, creativeStyle), { model: s.ai.imageModel, quality: s.ai.imageQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
-        if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, s.ai.imageQuality) });
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(`${brief!.sceneDescription} ${SHOTS[(i - 1) % SHOTS.length]}`, creativeStyle), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
+        if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         return img;
       }));
     }

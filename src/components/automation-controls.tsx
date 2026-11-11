@@ -6,7 +6,7 @@ import { Button } from './ui';
 
 type S = { publishingMode: string; schedulerMode: string; modeBPostsPerHour: number; modeBAccountIds: string[]; autoPublishGlobal: boolean; killSwitch: boolean };
 
-type Acc = { id: string; name: string; eligible: boolean; reason: string | null; connected: boolean };
+type Acc = { id: string; name: string; eligible: boolean; reason: string | null; connected: boolean; everyHours: number; autonomous: boolean };
 export function AutomationControls({ s, accounts }: { s: S; accounts: Acc[] }) {
   const router = useRouter();
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
@@ -14,12 +14,13 @@ export function AutomationControls({ s, accounts }: { s: S; accounts: Acc[] }) {
   const [perHour, setPerHour] = useState(s.modeBPostsPerHour);
   const [sel, setSel] = useState<string[]>(s.modeBAccountIds);
   const [allow, setAllow] = useState<string[]>(accounts.filter((a) => a.eligible).map((a) => a.id));
+  const [hours, setHours] = useState<number>(7);
   const call = async (body: Record<string, unknown>, confirmText?: string) => {
     if (confirmText && !window.confirm(confirmText)) return;
     setMsg(null);
     try {
-      const r = await apiCall<{ changed?: number; skipped?: { name: string; reason: string }[] }>('/api/automation', { body });
-      setMsg({ ok: !r.skipped?.length, t: r.changed !== undefined ? `تم السماح لـ ${r.changed} حساب ✓${r.skipped?.length ? ` · لم يُفعّل: ${r.skipped.map((x) => `${x.name} (${x.reason})`).join('، ')}` : ''}` : 'تم الحفظ وتأكيده من الخادم ✓' });
+      const r = await apiCall<{ changed?: number; skipped?: { name: string; reason: string }[]; warning?: string }>('/api/automation', { body });
+      setMsg({ ok: !r.skipped?.length && !r.warning, t: r.changed !== undefined ? `تم تحديث ${r.changed} حساب ✓${r.skipped?.length ? ` · لم يُطبّق على: ${r.skipped.map((x) => `${x.name} (${x.reason})`).join('، ')}` : ''}${r.warning ? ` · ${r.warning}` : ''}` : 'تم الحفظ وتأكيده من الخادم ✓' });
       router.refresh();
     }
     catch (e) { setMsg({ ok: false, t: (e as Error).message }); }
@@ -39,12 +40,31 @@ export function AutomationControls({ s, accounts }: { s: S; accounts: Acc[] }) {
         <h3 className="mb-1 font-bold">الحسابات المسموح لها بالنشر الآلي ({accounts.filter((a) => a.eligible).length} من {accounts.length})</h3>
         <p className="mb-3 text-xs text-slate-600">ضع علامة على الحسابات ثم اضغط «السماح بالنشر الآلي». الحسابات غير المرتبطة بـ Metricool لا تُفعّل (يظهر السبب).</p>
         <div className="mb-3 grid grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-3">
-          {accounts.map((a) => <label key={a.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allow.includes(a.id)} onChange={(e) => setAllow(e.target.checked ? [...allow, a.id] : allow.filter((x) => x !== a.id))} />{a.name}{a.eligible ? <span className="text-xs text-emerald-700">✓ مفعّل</span> : a.reason && <span className={`text-xs ${a.connected ? 'text-sky-700' : 'text-amber-600'}`}>({a.reason})</span>}</label>)}
+          {accounts.map((a) => <label key={a.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={allow.includes(a.id)} onChange={(e) => setAllow(e.target.checked ? [...allow, a.id] : allow.filter((x) => x !== a.id))} />{a.name}{a.eligible ? <span className="text-xs text-emerald-700">✓ مفعّل</span> : a.reason && <span className={`text-xs ${a.connected ? 'text-sky-700' : 'text-amber-600'}`}>({a.reason})</span>}<span className="text-[11px] text-slate-500">كل {a.everyHours} س{a.autonomous ? ' · بدون موافقة' : ' · بموافقتك'}</span></label>)}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" type="button" onClick={() => setAllow(accounts.filter((a) => a.connected).map((a) => a.id))}>تحديد كل المرتبطة</Button>
           <Button size="sm" variant="success" type="button" disabled={!allow.length} onClick={() => call({ action: 'enable_accounts', accountIds: allow, enabled: true }, `السماح بالنشر الآلي لـ ${allow.length} حساب؟ (سيُولَّد تصميم لكل حساب حسب فترته — كل 7 ساعات افتراضيًا)`)}>السماح بالنشر الآلي للمحدد</Button>
           <Button size="sm" variant="outline" type="button" disabled={!allow.length} onClick={() => call({ action: 'enable_accounts', accountIds: allow, enabled: false })}>إيقاف المحدد</Button>
+        </div>
+        <div className="mt-4 grid gap-3 border-t pt-3 md:grid-cols-2">
+          <div>
+            <div className="mb-1 text-sm font-bold">كل كم ساعة ينشر كل حساب محدد؟</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {[5, 7, 9].map((h) => <Button key={h} size="sm" type="button" variant={hours === h ? 'gold' : 'outline'} onClick={() => setHours(h)}>كل {h} ساعات</Button>)}
+              <input type="number" min={1} max={168} className="input" style={{ width: '5.5rem' }} value={hours} onChange={(e) => setHours(Number(e.target.value))} aria-label="عدد الساعات" />
+              <Button size="sm" type="button" disabled={!allow.length || !hours} onClick={() => call({ action: 'account_settings', accountIds: allow, intervalHours: hours })}>تطبيق</Button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">ضمن نافذة النشر لكل حساب (افتراضيًا 9 صباحًا – 10 مساءً). كل {hours} ساعات ≈ {Math.max(1, Math.floor(13 / hours) + 1)} منشور يوميًا للحساب.</p>
+          </div>
+          <div>
+            <div className="mb-1 text-sm font-bold">النشر بدون موافقتي</div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" type="button" variant="danger" disabled={!allow.length} onClick={() => call({ action: 'account_settings', accountIds: allow, autonomous: true }, `سيُنشر ما يجتاز فحص الجودة لـ ${allow.length} حساب دون موافقتك. التصاميم التي يرسم فيها الذكاء الاصطناعي النص تبقى بحاجة لموافقتك (يمكن تغييره من إعدادات الذكاء الاصطناعي). متابعة؟`)}>نشر بدون موافقة للمحدد</Button>
+              <Button size="sm" type="button" variant="outline" disabled={!allow.length} onClick={() => call({ action: 'account_settings', accountIds: allow, autonomous: false })}>إرجاع للموافقة اليدوية</Button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">يتطلب «وضع النشر = ذاتي» أدناه. الإيقاف الطارئ والفحوص (الشعار، الأرقام، البصمة) تبقى فعّالة دائمًا.</p>
+          </div>
         </div>
       </div>
 
