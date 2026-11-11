@@ -47,7 +47,8 @@ Future Creative ◀──(API: Bearer token + Idempotency-Key)──────
    | `01-events-to-telegram.json` | All events → Arabic messages. A new design arrives with its image and ✅/❌ buttons. Daily digest at 21:05, pending-approval reminders, budget/video/quality alerts, weekly report |
    | `02-telegram-bot.json` | The approve/reject buttons plus commands: `/pending`, `/status`, `/report [week\|month]`, `/pause <account> [reason]`, `/resume <account>`. Only `TELEGRAM_ALLOWED_USER_IDS` can act |
    | `03-morning-health-check.json` | Diagnostics at 8:15, only when there is a problem |
-   | `04-ideas-sheet-to-designs.json` | Google Sheets ideas (tab `ideas`) → designs in the approval queue |
+   | `06-archive-to-google-drive-sheets.json` | Every confirmed publication → its files to Google Drive (`GDRIVE_FOLDER_ID`) + a row in the Sheets tab `published`. **Publish it**, because n8n 2.x requires that to call it from 01 |
+| `04-ideas-sheet-to-designs.json` | Google Sheets ideas (tab `ideas`) → designs in the approval queue |
 5. Credentials inside n8n (everything else is read from `.env`):
    - **Telegram FC bot** (Telegram API) for template 02.
    - **Google Sheets** for template 04. After importing, choose your sheet in both Sheets nodes.

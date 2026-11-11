@@ -227,8 +227,49 @@ w5 = wf(ERR_NAME, [
   node('Send to Telegram','n8n-nodes-base.code',2,[480,0],{'jsCode':SEND}),
 ], chain('On workflow error','Format error','Send to Telegram'), error=False)
 
+
+ARCHIVE_NAME = 'FC — Archive published posts to Google Drive & Sheets'
+FETCH = FC + r"""
+// Downloads the exact published files (signed links from the system) as binary items for Google Drive.
+const e = $input.first().json;
+const adId = e.data && e.data.adId;
+if (!adId) return [];
+const r = await fc('GET', `/ads/${adId}`);
+if (r.statusCode !== 200) throw new Error(`Future Creative API ${r.statusCode}`);
+const ad = r.body;
+const day = String(e.occurredAt || new Date().toISOString()).slice(0, 10);
+const safe = (x) => String(x || '').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
+const out = [];
+for (const [i, m] of (ad.media || []).entries()) {
+  const ext = /\.mp4($|\?)/.test(m.url) ? 'mp4' : 'jpg';
+  const buf = await this.helpers.httpRequest({ method: 'GET', url: m.url, encoding: 'arraybuffer', json: false });
+  const fileName = `${day} ${safe(ad.account)} — ${safe(ad.headline)}${ad.media.length > 1 ? ` (${i + 1})` : ''}.${ext}`;
+  const binary = await this.helpers.prepareBinaryData(Buffer.from(buf), fileName, ext === 'mp4' ? 'video/mp4' : 'image/jpeg');
+  out.push({ json: { adId, fileName, account: ad.account, headline: ad.headline, format: ad.format, publicUrl: ad.publication && ad.publication.publicUrl, publishedAt: day }, binary: { data: binary } });
+}
+return out;"""
+ROW = r"""// One log row per post (first file's Drive link)
+const first = $input.first().json;
+const src = $('Fetch published files').first().json;
+return [{ json: { date: src.publishedAt, account: src.account, format: src.format, headline: src.headline, instagram: src.publicUrl || '', drive: first.webViewLink || first.id || '', adId: src.adId } }];"""
+ONLY_PUB = r"""return $input.all().filter((i) => i.json.event === 'publication.published');"""
+
+w6 = wf(ARCHIVE_NAME, [
+  node('From events router','n8n-nodes-base.executeWorkflowTrigger',1.1,[0,0],{'inputSource':'passthrough'}),
+  node('Fetch published files','n8n-nodes-base.code',2,[240,0],{'jsCode':FETCH}),
+  node('Upload to Google Drive','n8n-nodes-base.googleDrive',3,[480,0],{'name':'={{ $json.fileName }}','driveId':{'__rl':True,'mode':'list','value':'My Drive'},'folderId':{'__rl':True,'mode':'id','value':'={{ $env.GDRIVE_FOLDER_ID }}'},'options':{}},creds={'googleDriveOAuth2Api':{'id':'','name':'Google Drive'}}),
+  node('Log row','n8n-nodes-base.code',2,[720,0],{'jsCode':ROW}),
+  node('Append to Google Sheet','n8n-nodes-base.googleSheets',4.5,[960,0],{'operation':'append','documentId':{'__rl':True,'mode':'url','value':''},'sheetName':{'__rl':True,'mode':'name','value':'published'},'columns':{'mappingMode':'autoMapInputData','value':{}},'options':{}},creds={'googleSheetsOAuth2Api':{'id':'','name':'Google Sheets'}}),
+], chain('From events router','Fetch published files','Upload to Google Drive','Log row','Append to Google Sheet'))
+
+# events router: also hand verified publications to the archive sub-workflow (fire-and-forget)
+w1['nodes'].append(node('Only published','n8n-nodes-base.code',2,[480,200],{'jsCode':ONLY_PUB}))
+w1['nodes'].append(node('Archive to Google','n8n-nodes-base.executeWorkflow',1.2,[720,200],{'workflowId':{'__rl':True,'value':wid(ARCHIVE_NAME),'mode':'id'},'options':{'waitForSubWorkflow':False}}))
+w1['connections']['Verify & de-duplicate'] = {'main':[[{'node':'Format message','type':'main','index':0},{'node':'Only published','type':'main','index':0}]]}
+w1['connections']['Only published'] = {'main':[[{'node':'Archive to Google','type':'main','index':0}]]}
+
 for f in os.listdir(OUT):
     if f.endswith('.json'): os.remove(os.path.join(OUT,f))
-for fn,w in [('01-events-to-telegram.json',w1),('02-telegram-bot.json',w2),('03-morning-health-check.json',w3),('04-ideas-sheet-to-designs.json',w4),('05-error-alerts.json',w5)]:
+for fn,w in [('01-events-to-telegram.json',w1),('02-telegram-bot.json',w2),('03-morning-health-check.json',w3),('04-ideas-sheet-to-designs.json',w4),('05-error-alerts.json',w5),('06-archive-to-google-drive-sheets.json',w6)]:
     json.dump(w, open(os.path.join(OUT,fn),'w'), ensure_ascii=False, indent=2)
 print('ok', [w['id'] for w in (w1,w2,w3,w4,w5)])

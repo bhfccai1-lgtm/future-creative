@@ -40,3 +40,24 @@ describe('Metricool body details (verified against real Metricool posts)', () =>
     expect(b.text).toBe('نص الإعلان'); expect(b.mediaAltText).toEqual(['كوب مطبوع']); expect(b.firstCommentText).toBe('#البحرين');
   });
 });
+
+describe('Google services', () => {
+  it('Google Business Profile text: no phone numbers, no hashtags, local branch line, ≤ 1500 chars', async () => {
+    const { gbpText } = await import('@/lib/publishing/caption');
+    const t = gbpText('كوبك بتصميمك ☕\nاتصل 33316319 أو +973 34315316\n📞 سار 33316319\n\n#البحرين #أكواب', '📍 مطبعة إبداع المستقبل — فرع سار وفرع سلماباد، البحرين');
+    expect(t).not.toMatch(/\d{8}/); expect(t).not.toContain('#');
+    expect(t.startsWith('كوبك بتصميمك')).toBe(true); expect(t.endsWith('البحرين')).toBe(true);
+    expect([...gbpText('ا'.repeat(3000), 'loc')].length).toBeLessThanOrEqual(1500);
+  });
+  it('Metricool body: GBP update vs gallery video; YouTube Short metadata', () => {
+    const a = new MetricoolAdapter({ token: 't', userId: '1', baseUrl: 'https://x', fetchImpl: fetch });
+    const base = { idempotencyKey: 'k', providerBrandId: '1', publishAt: new Date('2026-12-01T07:00:00Z'), timezone: 'Asia/Bahrain', text: 'نص', mediaUrls: ['https://a/final.jpg'], aiGenerated: true };
+    const upd = a.buildBody({ ...base, networks: ['gmb'], format: 'IMAGE_FEED' });
+    expect(upd).toMatchObject({ providers: [{ network: 'gmb' }], gmbData: { type: 'publication' }, text: 'نص' });
+    const vid = a.buildBody({ ...base, networks: ['gmb'], format: 'REEL_VIDEO', mediaUrls: ['https://a/reel.mp4'] });
+    expect(vid).toMatchObject({ gmbData: { type: 'photo' }, text: '' });
+    const yt = a.buildBody({ ...base, networks: ['youtube'], format: 'REEL_VIDEO', title: 'ع'.repeat(150), tags: ['طباعة أكواب', 'البحرين'] });
+    expect(yt.youtubeData).toMatchObject({ type: 'short', madeForKids: false, isAiGeneratedContent: true, tags: ['طباعة أكواب', 'البحرين'] });
+    expect([...(yt.youtubeData as { title: string }).title].length).toBe(100);
+  });
+});

@@ -1,5 +1,17 @@
 # Changelog
 
+## 8.7.0 — 2026-11-11 (Google services)
+- **Google Business Profile** (channel `gmb` via Metricool):
+  - an image design is sent as `publication` (text ≤ 1500 + cover image); a Reel is sent as `photo` (video to the gallery, no text).
+  - A separate **satellite job**: Google rejects posts containing phone numbers and ignores hashtags, so the Google copy has neither and adds a local line naming both branches.
+  - Satellite jobs never change the advertisement's state (`ad-state.ts`).
+  - `PublicationJob.networks` and `PublicationJob.primary` were added.
+- **YouTube Shorts:** title capped at 100 characters, tags taken from the hashtags, category, AI-content declaration.
+- **Google Drive + Sheets archive** (n8n template 06, called by 01 for every verified publication): the exact published files plus a log row. The file download and naming were verified in a real n8n 2.35.7. Live test finding: n8n 2.x requires the sub-workflow to be published.
+- Profile parsing detects a linked GBP. The posts log shows the networks per job and marks companion copies.
+- Docs: `docs/GOOGLE_SERVICES.md`.
+- 175 tests passing.
+
 ## 8.6.0 — 2026-11-11 (professional diagnostics and advisor)
 - **Advisor engine** (`src/lib/ops/advisor.ts`):
   - deterministic rules over real data, with no AI cost and no invented numbers;

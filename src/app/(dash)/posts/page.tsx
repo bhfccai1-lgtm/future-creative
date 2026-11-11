@@ -28,7 +28,7 @@ export default async function PostsPage({ searchParams }: { searchParams: Promis
             <tbody>{jobs.map((j) => (
               <tr key={j.id} className="border-t">
                 <td className="td text-xs">{fmtLocal(j.scheduledFor)}</td>
-                <td className="td">{j.account.name}<div className="text-xs text-slate-500">{PLATFORM_AR[j.account.platform]}</div></td>
+                <td className="td">{j.account.name}<div className="text-xs text-slate-500">{(j.networks.length ? j.networks : [j.account.platform]).map((n) => PLATFORM_AR[n] ?? n).join(' + ')}{!j.primary && ' · نسخة مرافقة'}</div></td>
                 <td className="td"><Link className="text-navy-700 hover:underline" href={`/ads/${j.advertisementId}`}>{j.advertisement.headline}</Link></td>
                 <td className="td"><StateBadge state={j.state} /></td>
                 <td className="td ltr text-xs">{j.result?.providerPostId ?? '—'}</td>

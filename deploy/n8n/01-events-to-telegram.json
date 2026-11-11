@@ -57,6 +57,39 @@
         720,
         0
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().filter((i) => i.json.event === 'publication.published');"
+      },
+      "id": "476a71fd-86a1-5282-ac0b-5cd35cd3f54c",
+      "name": "Only published",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "794edf9e95c86533",
+          "mode": "id"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "3ad598c5-bc11-52f1-b131-c65c38e28f7f",
+      "name": "Archive to Google",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        200
+      ]
     }
   ],
   "connections": {
@@ -78,6 +111,11 @@
             "node": "Format message",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Only published",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -87,6 +125,17 @@
         [
           {
             "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only published": {
+      "main": [
+        [
+          {
+            "node": "Archive to Google",
             "type": "main",
             "index": 0
           }

@@ -18,6 +18,8 @@ export interface PublishRequest {
   altText?: string;
   /** Optional first comment (e.g. hashtags kept out of the caption on Instagram/Facebook). */
   firstComment?: string;
+  /** YouTube tags (hashtags without #). */
+  tags?: string[];
 }
 
 export type SubmitOutcome =

@@ -6,6 +6,7 @@ import { enq } from '../queue/queues';
 import { getSettings } from '../settings';
 import { AppError } from '../errors';
 import { emitEvent } from '../integrations/events';
+import { adWrite } from './ad-state';
 
 export const MAX_PUBLISH_ATTEMPTS = 3;
 export const ABSENT_MSG = 'absent at provider — awaiting operator decision';
@@ -29,7 +30,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'SCHEDULED', nextCheckAt: new Date(Math.max(Date.now(), job.scheduledFor.getTime()) + 3 * 60_000) } }),
         prisma.publicationResult.upsert({ where: { jobId: job.id }, create: { jobId: job.id, providerPostId: found.providerPostId, providerStatus: 'PENDING' }, update: { providerPostId: found.providerPostId } }),
-        prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'SCHEDULED' } }),
+        adWrite(job.primary, job.advertisementId, { state: 'SCHEDULED' }),
       ]);
       await audit({ actorLabel: 'worker', action: 'publication.reconciled_found', targetType: 'publication_job', targetId: job.id, details: { providerPostId: found.providerPostId } });
       return 'FOUND';
@@ -54,14 +55,14 @@ export async function reconcileJob(jobId: string): Promise<string> {
     if (job.attemptCount >= MAX_PUBLISH_ATTEMPTS) {
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'FAILED', lastError: 'not found at provider after max attempts' } }),
-        prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'FAILED', errorMessage: 'لم يُعثر على المنشور لدى المزود بعد عدة محاولات.' } }),
+        adWrite(job.primary, job.advertisementId, { state: 'FAILED', errorMessage: 'لم يُعثر على المنشور لدى المزود بعد عدة محاولات.' }),
       ]);
       await notify('ERROR', 'PUBLISH_FAILED', 'فشل النشر بعد المطابقة', `المهمة ${job.id}`, job.accountId);
       return 'FAILED';
     }
     await prisma.$transaction([
       prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'QUEUED', nextCheckAt: null } }),
-      prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'QUEUED' } }),
+      adWrite(job.primary, job.advertisementId, { state: 'QUEUED' }),
     ]);
     await audit({ actorLabel: 'worker', action: 'publication.reconciled_absent_requeue', targetType: 'publication_job', targetId: job.id });
     await enq.publish(job.id);
@@ -78,7 +79,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'PUBLISHED', nextCheckAt: null } }),
         prisma.publicationResult.update({ where: { jobId: job.id }, data: { providerStatus: 'PUBLISHED', publicUrl: st.publicUrl ?? null, verifiedAt: new Date() } }),
-        prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'PUBLISHED' } }),
+        adWrite(job.primary, job.advertisementId, { state: 'PUBLISHED' }),
         prisma.socialAccount.update({ where: { id: job.accountId }, data: { lastPublishedAt: new Date() } }),
       ]);
       await audit({ actorLabel: 'worker', action: 'publication.verified_published', targetType: 'publication_job', targetId: job.id, details: { url: st.publicUrl ?? null } });
@@ -89,7 +90,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'FAILED', lastError: st.message } }),
         prisma.publicationResult.update({ where: { jobId: job.id }, data: { providerStatus: 'ERROR' } }),
-        prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'FAILED', errorMessage: st.message } }),
+        adWrite(job.primary, job.advertisementId, { state: 'FAILED', errorMessage: st.message }),
       ]);
       await notify('ERROR', 'PROVIDER_ERROR', 'المزود أبلغ عن فشل النشر', st.message, job.accountId);
       await emitEvent('publication.failed', { jobId: job.id, adId: job.advertisementId, accountId: job.accountId, account: job.account.name, reason: st.message, source: 'provider' });
@@ -98,7 +99,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
     if (st.kind === 'NOT_FOUND' || Date.now() > job.scheduledFor.getTime() + 6 * 3600_000) {
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'UNKNOWN', nextCheckAt: new Date(Date.now() + 30 * 60_000) } }),
-        prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'UNKNOWN' } }),
+        adWrite(job.primary, job.advertisementId, { state: 'UNKNOWN' }),
       ]);
       await notify('WARNING', 'PUBLISH_UNVERIFIED', 'تعذر تأكيد النشر', `المنشور ${postId} لم يُؤكد نشره من المزود.`, job.accountId);
       return 'UNVERIFIED';
@@ -119,7 +120,7 @@ export async function resolveUnknownJob(jobId: string, action: 'resubmit' | 'can
   if (action === 'cancel') {
     await prisma.$transaction([
       prisma.publicationJob.update({ where: { id: jobId }, data: { state: 'FAILED', lastError: `cancelled by ${actor}`, nextCheckAt: null } }),
-      prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'FAILED', errorMessage: 'ألغاه المشغّل بعد نتيجة غير مؤكدة' } }),
+      adWrite(job.primary, job.advertisementId, { state: 'FAILED', errorMessage: 'ألغاه المشغّل بعد نتيجة غير مؤكدة' }),
     ]);
     await audit({ actorLabel: actor, action: 'publication.operator_cancel', targetType: 'publication_job', targetId: jobId });
     return 'CANCELLED';
@@ -130,7 +131,7 @@ export async function resolveUnknownJob(jobId: string, action: 'resubmit' | 'can
     await prisma.$transaction([
       prisma.publicationJob.update({ where: { id: jobId }, data: { state: 'SCHEDULED', lastError: null, nextCheckAt: new Date(Math.max(Date.now(), job.scheduledFor.getTime()) + 3 * 60_000) } }),
       prisma.publicationResult.upsert({ where: { jobId }, create: { jobId, providerPostId: found.providerPostId, providerStatus: 'PENDING' }, update: { providerPostId: found.providerPostId } }),
-      prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'SCHEDULED' } }),
+      adWrite(job.primary, job.advertisementId, { state: 'SCHEDULED' }),
     ]);
     await audit({ actorLabel: actor, action: 'publication.operator_found', targetType: 'publication_job', targetId: jobId, details: { providerPostId: found.providerPostId } });
     return 'FOUND';
@@ -138,7 +139,7 @@ export async function resolveUnknownJob(jobId: string, action: 'resubmit' | 'can
   if (job.attemptCount >= MAX_PUBLISH_ATTEMPTS) throw new AppError('MAX_ATTEMPTS', `تجاوزت المهمة ${MAX_PUBLISH_ATTEMPTS} محاولات — أعد توليد الإعلان بدلًا من ذلك.`, 409);
   const moved = await prisma.publicationJob.updateMany({ where: { id: jobId, state: 'UNKNOWN' }, data: { state: 'QUEUED', nextCheckAt: null, lastError: null } });
   if (!moved.count) throw new AppError('CONFLICT', 'تغيّرت حالة المهمة.', 409);
-  await prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'QUEUED' } });
+  await adWrite(job.primary, job.advertisementId, { state: 'QUEUED' });
   await audit({ actorLabel: actor, action: 'publication.operator_resubmit', targetType: 'publication_job', targetId: jobId });
   await enq.publish(jobId);
   return 'REQUEUED';

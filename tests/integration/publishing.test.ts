@@ -386,3 +386,23 @@ describe('carousel publishing', () => {
     expect(adapter.submits).toHaveLength(1);
   }, 300_000);
 });
+
+describe('Google Business Profile publishing', () => {
+  it('Instagram + Google: two posts (Google copy without phones/hashtags); a Google failure never fails the Instagram ad', async () => {
+    const { accounts } = await setup();
+    await prisma.socialConnection.update({ where: { accountId: accounts[0].id }, data: { providerSnapshot: { networks: [{ network: 'instagram' }, { network: 'gmb' }] } } });
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'tester', direction: { channels: ['instagram', 'gmb'] } });
+    const job = await publishNow(r.advertisement.id, admin);
+    const jobs = await prisma.publicationJob.findMany({ where: { advertisementId: r.advertisement.id }, orderBy: { createdAt: 'asc' } });
+    expect(jobs.map((j) => [j.networks, j.primary])).toEqual([[['instagram'], true], [['gmb'], false]]);
+    expect(job.id).toBe(jobs[0].id);
+    adapter.outcomes.push({ kind: 'ACCEPTED', providerPostId: 'ig-1', providerStatus: 'PENDING', raw: {}, httpStatus: 200 });
+    adapter.outcomes.push({ kind: 'REJECTED', httpStatus: 400, message: 'gmb rejected' });
+    expect(await processPublishJob(jobs[0].id, 'w')).toBe('SCHEDULED');
+    expect(await processPublishJob(jobs[1].id, 'w')).toBe('FAILED');
+    const [ig, gbp] = adapter.submits;
+    expect(ig.networks).toEqual(['instagram']); expect(ig.text).toContain('33316319');
+    expect(gbp.networks).toEqual(['gmb']); expect(gbp.text).not.toMatch(/\d{8}/); expect(gbp.text).not.toContain('#'); expect(gbp.mediaUrls).toHaveLength(1);
+    expect((await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).state).toBe('SCHEDULED'); // satellite failure did not touch the ad
+  }, 300_000);
+});

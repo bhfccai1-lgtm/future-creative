@@ -10,19 +10,21 @@ import { getBusiness, locationsOf } from '../business';
 import type { QcReport } from '../qc';
 import { enq } from '../queue/queues';
 import type { SocialPlatform } from '@prisma/client';
-import { fitCaption } from './caption';
+import { fitCaption, gbpText, splitCaption } from './caption';
 import { getSettings } from '../settings';
 import { sha256 } from '../crypto';
 import { log } from '../ops/log';
 import { emitEvent } from '../integrations/events';
+import { adWrite, adWriteIf } from './ad-state';
 import { bundleSha, publishableMedia } from './media';
 
 export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'ACCOUNT_PAUSED' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
 
 async function fail(jobId: string, adId: string, reason: string, accountId: string) {
+  const primary = (await prisma.publicationJob.findUnique({ where: { id: jobId }, select: { primary: true } }))?.primary ?? true;
   await prisma.$transaction([
     prisma.publicationJob.update({ where: { id: jobId }, data: { state: 'FAILED', lastError: reason, lockedBy: null } }),
-    prisma.advertisement.update({ where: { id: adId }, data: { state: 'FAILED', errorMessage: reason } }),
+    adWrite(primary, adId, { state: 'FAILED', errorMessage: reason }),
   ]);
   await notify('ERROR', 'PUBLISH_FAILED', 'فشل النشر', reason, accountId);
   await audit({ actorLabel: 'worker', action: 'publication.failed', targetType: 'publication_job', targetId: jobId, details: { reason } });
@@ -62,12 +64,17 @@ export function unavailableChannels(networks: SocialPlatform[], snapshot: unknow
 export async function buildPublishRequest(jobId: string): Promise<PublishRequest> {
   const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId }, include: { advertisement: { include: { media: true, product: true } }, account: { include: { connection: true } } } });
   const ad = job.advertisement;
-  const list = publishableMedia(ad);
-  if (!list.length) throw new Error('Final media asset missing');
+  const all = publishableMedia(ad);
+  if (!all.length) throw new Error('Final media asset missing');
   const thumb = ad.media.find((m) => m.role === 'THUMBNAIL');
   const business = await getBusiness();
   const opts = (ad.options ?? {}) as { audio?: string | null; audioQuery?: string | null };
-  const networks = targetNetworks(job.account.platform, ad.channels);
+  const networks = job.networks.length ? job.networks : targetNetworks(job.account.platform, ad.channels);
+  const gbpOnly = networks.length === 1 && networks[0] === 'gmb';
+  // Google Business Profile: one image (cover) for an update, or the video for the gallery
+  const list = gbpOnly ? all.slice(0, 1) : all;
+  const locs = locationsOf(business);
+  const localLine = '📍 ' + (ad.language === 'ar' ? `${business.nameAr} — ${locs.map((l) => `فرع ${l.nameAr}`).join(' و')}، البحرين` : `${business.nameEn} — ${locs.map((l) => l.nameEn).join(' & ')}, Bahrain`);
   return {
     idempotencyKey: job.idempotencyKey,
     providerBrandId: job.account.connection!.providerBrandId!,
@@ -76,7 +83,8 @@ export async function buildPublishRequest(jobId: string): Promise<PublishRequest
     format: ad.format,
     publishAt: job.scheduledFor,
     timezone: job.account.timezone,
-    ...captionFor(ad.caption ?? '', contactFooter(ad.language, locationsOf(business)), networks, (await getSettings()).metricool.hashtagsInFirstComment),
+    ...(gbpOnly ? { text: gbpText(ad.caption ?? '', localLine) } : captionFor(ad.caption ?? '', contactFooter(ad.language, locs), networks, (await getSettings()).metricool.hashtagsInFirstComment)),
+    tags: splitCaption(ad.caption ?? '').hashtags.map((h) => h.replace(/^#/, '').replace(/_/g, ' ')),
     altText: [ad.headline, ad.product?.titleAr && ad.language === 'ar' ? ad.product.titleAr : ad.product?.titleEn, 'مطبعة إبداع المستقبل — Future Creative Printing'].filter(Boolean).join(' — '),
     mediaUrls: list.map((m) => signedMediaUrl(m.storageKey)),
     thumbnailUrl: thumb ? signedMediaUrl(thumb.storageKey) : undefined,
@@ -110,7 +118,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
     data: { state: 'PUBLISHING', lockedBy: workerId, lockedAt: new Date(), attemptCount: { increment: 1 } },
   });
   if (claim.count !== 1) return 'SKIPPED_LOCKED';
-  await prisma.advertisement.updateMany({ where: { id: pre.advertisementId, state: 'QUEUED' }, data: { state: 'PUBLISHING' } });
+  await adWriteIf(pre.primary, pre.advertisementId, 'QUEUED', { state: 'PUBLISHING' });
 
   const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId }, include: { advertisement: { include: { media: true } }, account: { include: { connection: true, business: true } } } });
   const ad = job.advertisement;
@@ -128,7 +136,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
     await prisma.socialConnection.update({ where: { id: conn.id }, data: { status: 'EXPIRED', canPublish: false } });
     await fail(job.id, ad.id, 'انتهت صلاحية رمز الوصول للحساب.', job.accountId); return 'FAILED';
   }
-  const bad = unavailableChannels(targetNetworks(job.account.platform, ad.channels), conn.providerSnapshot, ad.format);
+  const bad = unavailableChannels(job.networks.length ? job.networks : targetNetworks(job.account.platform, ad.channels), conn.providerSnapshot, ad.format);
   if (bad.length) { await fail(job.id, ad.id, `قنوات نشر غير متاحة: ${bad.join('؛ ')}`, job.accountId); return 'FAILED'; }
   const list = publishableMedia(ad);
   if (!list.length || (ad.format === 'IMAGE_CAROUSEL' && list.length < 4)) { await fail(job.id, ad.id, 'ملفات الوسائط النهائية غير مكتملة.', job.accountId); return 'FAILED'; }
@@ -152,7 +160,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
   const rl = await rateLimit(`provider:${job.provider}`, s.metricool.requestsPerMinute, 60);
   if (!rl.ok) {
     await prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'QUEUED', lockedBy: null, nextCheckAt: new Date(Date.now() + rl.retryAfterSec * 1000), attemptCount: { decrement: 1 } } });
-    await prisma.advertisement.updateMany({ where: { id: ad.id, state: 'PUBLISHING' }, data: { state: 'QUEUED' } });
+    await adWriteIf(job.primary, ad.id, 'PUBLISHING', { state: 'QUEUED' });
     await enq.publish(job.id, rl.retryAfterSec * 1000);
     return 'RATE_LIMITED';
   }
@@ -177,7 +185,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'SCHEDULED', lockedBy: null, nextCheckAt: new Date(req.publishAt.getTime() + 3 * 60_000), lastError: null } }),
         prisma.publicationResult.upsert({ where: { jobId: job.id }, create: { jobId: job.id, providerPostId: outcome.providerPostId, providerStatus: outcome.providerStatus, rawResponse: outcome.raw as Prisma.InputJsonValue }, update: { providerPostId: outcome.providerPostId, providerStatus: outcome.providerStatus } }),
-        prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'SCHEDULED' } }),
+        adWrite(job.primary, ad.id, { state: 'SCHEDULED' }),
       ]);
       await audit({ actorLabel: 'worker', action: 'publication.scheduled', targetType: 'publication_job', targetId: job.id, details: { providerPostId: outcome.providerPostId } });
       await emitEvent('publication.scheduled', { jobId: job.id, adId: ad.id, accountId: job.accountId, account: job.account.name, publishAt: req.publishAt.toISOString(), networks: req.networks, providerPostId: outcome.providerPostId });
@@ -190,13 +198,13 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
       return 'FAILED';
     case 'RATE_LIMITED':
       await prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'QUEUED', lockedBy: null, nextCheckAt: new Date(Date.now() + outcome.retryAfterSec * 1000), lastError: 'provider rate limit' } });
-      await prisma.advertisement.updateMany({ where: { id: ad.id, state: 'PUBLISHING' }, data: { state: 'QUEUED' } });
+      await adWriteIf(job.primary, ad.id, 'PUBLISHING', { state: 'QUEUED' });
       await enq.publish(job.id, outcome.retryAfterSec * 1000);
       return 'RATE_LIMITED';
     case 'UNCERTAIN':
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'UNKNOWN', lockedBy: null, nextCheckAt: new Date(Date.now() + 2 * 60_000), lastError: outcome.message } }),
-        prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'UNKNOWN' } }),
+        adWrite(job.primary, ad.id, { state: 'UNKNOWN' }),
       ]);
       await emitEvent('publication.unknown', { jobId: job.id, adId: ad.id, accountId: job.accountId, account: job.account.name, error: outcome.message, action: 'reconcile then operator decision in /posts' });
       await notify('WARNING', 'PUBLISH_UNKNOWN', 'نتيجة نشر غير مؤكدة', `لم يتأكد إنشاء المنشور لدى المزود (${outcome.message}). ستتم المطابقة قبل أي إعادة محاولة.`, job.accountId);

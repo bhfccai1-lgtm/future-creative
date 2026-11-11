@@ -83,6 +83,7 @@ export const CHANNELS = [
   { value: 'youtube', ar: 'يوتيوب شورتس (فيديو فقط)', video: true },
   { value: 'linkedin', ar: 'لينكدإن', video: false },
   { value: 'twitter', ar: 'X (تويتر)', video: false },
+  { value: 'gmb', ar: 'ملف Google التجاري (خرائط وبحث Google)', video: false },
 ] as const;
 export type Channel = (typeof CHANNELS)[number]['value'];
 

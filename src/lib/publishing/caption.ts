@@ -1,9 +1,9 @@
 import type { SocialPlatform } from '@prisma/client';
 
 /** Per-network text limits (characters) and hashtag caps used when one post targets several networks. */
-export const TEXT_LIMITS: Record<SocialPlatform, number> = { twitter: 280, threads: 500, instagram: 2200, tiktok: 2200, linkedin: 3000, facebook: 5000, youtube: 5000, pinterest: 500 };
+export const TEXT_LIMITS: Record<SocialPlatform, number> = { twitter: 280, threads: 500, instagram: 2200, tiktok: 2200, linkedin: 3000, facebook: 5000, youtube: 5000, pinterest: 500, gmb: 1500 };
 /** Instagram caps posts at 5 hashtags (2025+): more risk rejection and look spammy. */
-export const HASHTAG_LIMITS: Record<SocialPlatform, number> = { twitter: 2, threads: 1, instagram: 5, tiktok: 10, linkedin: 5, facebook: 10, youtube: 15, pinterest: 10 };
+export const HASHTAG_LIMITS: Record<SocialPlatform, number> = { twitter: 2, threads: 1, instagram: 5, tiktok: 10, linkedin: 5, facebook: 10, youtube: 15, pinterest: 10, gmb: 0 };
 
 /** Conservative length: emoji / astral symbols count double (X weights them as 2). */
 export const weightedLength = (s: string) => [...s].reduce((n, ch) => n + (ch.codePointAt(0)! > 0xffff ? 2 : 1), 0);
@@ -37,4 +37,21 @@ export function fitCaption(caption: string, contactLine: string, networks: Socia
     text = assemble([hook ? `${hook}…` : '']);
   }
   return { text, hashtags: opts.hashtagsSeparately ? tags : [], limit };
+}
+
+/**
+ * Google Business Profile post text. Google rejects profile posts that contain phone numbers (customers use the
+ * profile's Call button) and hashtags have no effect there — so both are removed, and a local line naming both
+ * branches is added for local search ("مطبعة في سار / سلماباد"). Max 1500 characters.
+ */
+export function gbpText(caption: string, localLine: string): string {
+  const { body } = splitCaption(caption);
+  const clean = body
+    .split('\n')
+    .map((l) => l.replace(/(?:\+?973[\s-]?)?\b\d{8}\b/g, '').replace(/#[^\s#]+/g, '').replace(/[📞☎️]\s*/gu, '').trim())
+    .filter((l) => l && !/^[\s:|·•-]*$/.test(l))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+  const out = `${clean}\n\n${localLine}`.trim();
+  return [...out].length <= 1500 ? out : [...clean].slice(0, 1500 - [...localLine].length - 3).join('').trimEnd() + '…\n\n' + localLine;
 }

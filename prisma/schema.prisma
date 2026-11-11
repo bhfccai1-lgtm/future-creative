@@ -24,6 +24,7 @@ enum SocialPlatform {
   pinterest
   linkedin
   twitter
+  gmb // Google Business Profile (Google Maps / Search) via Metricool
 }
 
 enum ConnectionStatus {
@@ -440,6 +441,10 @@ model PublicationJob {
   provider        String
   state           AdState        @default(QUEUED)
   scheduledFor    DateTime
+  /// Networks this job sends to (empty = legacy: the ad's channels). Google Business Profile gets its own job (different text rules).
+  networks        SocialPlatform[] @default([])
+  /// false = satellite job (e.g. Google Business Profile copy): never changes the advertisement's state
+  primary         Boolean        @default(true)
   lockedBy        String?
   lockedAt        DateTime?
   attemptCount    Int            @default(0)

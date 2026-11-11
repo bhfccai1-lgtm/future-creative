@@ -1,0 +1,164 @@
+{
+  "id": "794edf9e95c86533",
+  "name": "FC — Archive published posts to Google Drive & Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "98d116bd-731f-58bd-a04b-2f275f1d7320",
+      "name": "From events router",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fc = async (method, path, body, idem) => this.helpers.httpRequest({ method, url: `${$env.FC_API_BASE}/api/integrations/n8n${path}`, headers: { Authorization: `Bearer ${$env.FC_API_TOKEN}`, ...(idem ? { 'Idempotency-Key': idem } : {}) }, body, json: true, ignoreHttpStatusErrors: true, returnFullResponse: true });\n// Downloads the exact published files (signed links from the system) as binary items for Google Drive.\nconst e = $input.first().json;\nconst adId = e.data && e.data.adId;\nif (!adId) return [];\nconst r = await fc('GET', `/ads/${adId}`);\nif (r.statusCode !== 200) throw new Error(`Future Creative API ${r.statusCode}`);\nconst ad = r.body;\nconst day = String(e.occurredAt || new Date().toISOString()).slice(0, 10);\nconst safe = (x) => String(x || '').replace(/[\\\\/:*?\"<>|]+/g, ' ').trim().slice(0, 60);\nconst out = [];\nfor (const [i, m] of (ad.media || []).entries()) {\n  const ext = /\\.mp4($|\\?)/.test(m.url) ? 'mp4' : 'jpg';\n  const buf = await this.helpers.httpRequest({ method: 'GET', url: m.url, encoding: 'arraybuffer', json: false });\n  const fileName = `${day} ${safe(ad.account)} — ${safe(ad.headline)}${ad.media.length > 1 ? ` (${i + 1})` : ''}.${ext}`;\n  const binary = await this.helpers.prepareBinaryData(Buffer.from(buf), fileName, ext === 'mp4' ? 'video/mp4' : 'image/jpeg');\n  out.push({ json: { adId, fileName, account: ad.account, headline: ad.headline, format: ad.format, publicUrl: ad.publication && ad.publication.publicUrl, publishedAt: day }, binary: { data: binary } });\n}\nreturn out;"
+      },
+      "id": "280b21a0-3b8b-52db-9135-b657e4c258ea",
+      "name": "Fetch published files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.GDRIVE_FOLDER_ID }}"
+        },
+        "options": {}
+      },
+      "id": "cc6d5967-8448-5922-99db-61147cd555d3",
+      "name": "Upload to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": "Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One log row per post (first file's Drive link)\nconst first = $input.first().json;\nconst src = $('Fetch published files').first().json;\nreturn [{ json: { date: src.publishedAt, account: src.account, format: src.format, headline: src.headline, instagram: src.publicUrl || '', drive: first.webViewLink || first.id || '', adId: src.adId } }];"
+      },
+      "id": "778b0083-0fc4-5878-838c-cfe031b89081",
+      "name": "Log row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "published"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "badb57fb-3f1b-5045-a17c-93d8ab4c1511",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        960,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "From events router": {
+      "main": [
+        [
+          {
+            "node": "Fetch published files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch published files": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Log row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log row": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bahrain",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "errorWorkflow": "ee8f61980fec7152"
+  },
+  "tags": []
+}

@@ -69,7 +69,7 @@ export function parsePostMetrics(json: unknown, kind: ProviderPostMetrics['kind'
 
 const NETWORK: Record<SocialPlatform, string> = {
   instagram: 'instagram', facebook: 'facebook', tiktok: 'tiktok', threads: 'threads', youtube: 'youtube',
-  pinterest: 'pinterest', linkedin: 'linkedin', twitter: 'twitter',
+  pinterest: 'pinterest', linkedin: 'linkedin', twitter: 'twitter', gmb: 'gmb',
 };
 
 type FetchFn = typeof fetch;
@@ -135,6 +135,7 @@ export class MetricoolAdapter implements PublishingAdapter {
       };
       const add = (network: SocialPlatform, v: string | null, asId = false) => { if (v) networks.push(asId ? { network, id: v } : { network, handle: v }); };
       add('instagram', val('instagram'));
+      add('gmb', val('gmb', 'googleBusiness', 'googleMyBusiness'));
       add('facebook', val('facebookPageId', 'facebook'), true);
       add('tiktok', val('tiktok'));
       add('threads', val('threads'));
@@ -159,7 +160,8 @@ export class MetricoolAdapter implements PublishingAdapter {
     const storyOnly = req.format === 'IMAGE_STORY' && nets.every((n) => n === 'instagram' || n === 'facebook');
     const body: Record<string, unknown> = {
       publicationDate: { dateTime: localDateTime(req.publishAt, req.timezone), timezone: req.timezone },
-      text: storyOnly ? '' : req.text,
+      // GBP 'photo' (video to the profile gallery) carries no text of its own
+      text: storyOnly || (isVideo && nets.length === 1 && nets[0] === 'gmb') ? '' : req.text,
       providers: nets.map((network) => ({ network })),
       media: req.mediaUrls,
       autoPublish: true,
@@ -179,7 +181,9 @@ export class MetricoolAdapter implements PublishingAdapter {
       }
       if (net === 'facebook') body.facebookData = { type: isVideo ? 'REEL' : req.format === 'IMAGE_STORY' ? 'STORY' : 'POST' };
       if (net === 'tiktok') body.tiktokData = { privacyOption: 'PUBLIC_TO_EVERYONE', isAigc: req.aiGenerated && isVideo, commercialContentOwnBrand: true, title: title.slice(0, 90) };
-      if (net === 'youtube') body.youtubeData = { title, type: 'short', privacy: 'public', madeForKids: false, isAiGeneratedContent: req.aiGenerated };
+      if (net === 'youtube') body.youtubeData = { title: [...title].slice(0, 100).join(''), type: 'short', privacy: 'public', madeForKids: false, isAiGeneratedContent: req.aiGenerated, tags: (req.tags ?? []).slice(0, 15), category: 'PEOPLE_BLOGS' };
+      // Google Business Profile: "publication" = text update (+image); video can only go to the gallery as "photo" (no text)
+      if (net === 'gmb') body.gmbData = { type: isVideo ? 'photo' : 'publication' };
       if (net === 'pinterest') body.pinterestData = { pinTitle: title, isAiGenerated: req.aiGenerated };
       if (net === 'linkedin') body.linkedinData = { type: 'post' };
       if (net === 'threads') body.threadsData = {};

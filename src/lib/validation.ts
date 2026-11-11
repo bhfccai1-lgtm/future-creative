@@ -40,7 +40,7 @@ export const DirectionSchema = z.object({
   layout: z.enum(['gold-poster', 'navy-gold-classic', 'gold-frame-lower']).optional(),
   renderMode: z.enum(['layered', 'ai_full']).optional(),
   customPrompt: z.string().max(3000).optional(),
-  channels: z.array(z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'linkedin', 'twitter'])).max(7).optional(),
+  channels: z.array(z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'linkedin', 'twitter', 'gmb'])).max(8).optional(),
   reelStyle: z.enum(['standard', 'pro']).optional(),
   videoEngine: z.enum(['ffmpeg', 'veo']).optional(),
   reelDuration: z.number().int().min(6).max(60).optional(),

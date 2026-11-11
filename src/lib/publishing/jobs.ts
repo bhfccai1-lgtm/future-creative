@@ -8,6 +8,7 @@ import { enq } from '../queue/queues';
 import type { QcReport } from '../qc';
 import { emitEvent } from '../integrations/events';
 import { bundleSha, publishableMedia } from './media';
+import { targetNetworks } from './publisher';
 
 /** SHA-256 recorded at render time for the asset that will actually be published (video for Reels). */
 export async function primaryMediaSha(adId: string) {
@@ -99,13 +100,20 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
 
   const existing = await prisma.publicationJob.findUnique({ where: { idempotencyKey } });
   if (existing) return existing;
+  // Google Business Profile has different text rules (no phones/hashtags) -> its own satellite job.
+  const nets = targetNetworks(ad.account.platform, ad.channels);
+  const main = nets.filter((n) => n !== 'gmb');
+  const withGbp = nets.includes('gmb');
 
   let job: PublicationJob;
+  let satelliteId: string | null = null;
   try {
     job = await prisma.$transaction(async (tx) => {
       const moved = await tx.advertisement.updateMany({ where: { id: ad.id, state: 'APPROVED' }, data: { state: 'QUEUED' } });
       if (moved.count !== 1) throw new AppError('BAD_STATE', 'يجب أن يكون الإعلان معتمدًا قبل جدولته.', 409);
-      return tx.publicationJob.create({ data: { idempotencyKey, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: when } });
+      const primary = await tx.publicationJob.create({ data: { idempotencyKey, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: when, networks: main.length ? main : ['gmb'] } });
+      if (withGbp && main.length) satelliteId = (await tx.publicationJob.create({ data: { idempotencyKey: `${idempotencyKey}:gmb`, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: when, networks: ['gmb'], primary: false } })).id;
+      return primary;
     });
   } catch (e) {
     const again = await prisma.publicationJob.findUnique({ where: { idempotencyKey } });
@@ -114,6 +122,7 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
   }
   await audit({ actorLabel: actor, action: 'publication.queue', targetType: 'publication_job', targetId: job.id, details: { adId, scheduledFor: when.toISOString() } });
   await enq.publish(job.id);
+  if (satelliteId) await enq.publish(satelliteId);
   return job;
 }
 
