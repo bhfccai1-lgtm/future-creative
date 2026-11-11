@@ -120,6 +120,8 @@ export interface Direction {
   renderMode?: 'layered' | 'ai_full'; customPrompt?: string;
   channels?: Channel[];
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
+  /** Which fields the planner filled automatically (for analytics / transparency). */
+  autoPicked?: string[];
 }
 
 const find = (list: Opt[], v?: string) => (v ? list.find((o) => o.value === v) : undefined);

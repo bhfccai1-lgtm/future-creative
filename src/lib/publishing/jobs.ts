@@ -6,6 +6,7 @@ import { AppError, KillSwitchError } from '../errors';
 import { assertTransition } from './state-machine';
 import { enq } from '../queue/queues';
 import type { QcReport } from '../qc';
+import { emitEvent } from '../integrations/events';
 
 /** SHA-256 recorded at render time for the asset that will actually be published (video for Reels). */
 export async function primaryMediaSha(adId: string) {
@@ -32,6 +33,7 @@ export async function approveAdvertisement(adId: string, user: { id: string; ema
   const bound = await prisma.approvalRequest.updateMany({ where: { advertisementId: adId, status: 'PENDING' }, data: { status: 'APPROVED', decidedById: user.id, decidedAt: new Date(), note, mediaSha256 } });
   if (!bound.count) await prisma.approvalRequest.create({ data: { advertisementId: adId, reason: 'DIRECT_APPROVAL', status: 'APPROVED', decidedById: user.id, decidedAt: new Date(), note, mediaSha256 } });
   await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.approve', targetType: 'advertisement', targetId: adId, details: { note: note ?? null } });
+  await emitEvent('ad.approved', { adId, accountId: ad.accountId, by: user.email, mediaSha256 });
   // If the ad came from a scheduler slot that is still in the future, keep that slot.
   const sched = ad.scheduleId ? await prisma.publicationSchedule.findUnique({ where: { id: ad.scheduleId } }) : null;
   const s = await getSettings();

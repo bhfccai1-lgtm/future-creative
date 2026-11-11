@@ -5,6 +5,7 @@ import { buildPublishRequest } from './publisher';
 import { enq } from '../queue/queues';
 import { getSettings } from '../settings';
 import { AppError } from '../errors';
+import { emitEvent } from '../integrations/events';
 
 export const MAX_PUBLISH_ATTEMPTS = 3;
 export const ABSENT_MSG = 'absent at provider — awaiting operator decision';
@@ -43,6 +44,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
       // operator decides (resubmitUnknownJob) — a search miss must not create a duplicate post.
       if (job.lastError !== ABSENT_MSG) {
         await prisma.publicationJob.update({ where: { id: job.id }, data: { lastError: ABSENT_MSG, nextCheckAt: new Date(Date.now() + 30 * 60_000) } });
+        await emitEvent('publication.unknown', { jobId: job.id, adId: job.advertisementId, accountId: job.accountId, account: job.account.name, error: 'not found at provider', action: 'operator decision in /posts' });
         await notify('WARNING', 'PUBLISH_NEEDS_OPERATOR', 'نشر غير مؤكد بحاجة إلى قرارك', 'لم يُعثر على المنشور لدى Metricool. تحقق في Metricool ثم اضغط «إعادة الإرسال» أو «إلغاء» من صفحة المنشورات.', job.accountId);
       } else {
         await prisma.publicationJob.update({ where: { id: job.id }, data: { nextCheckAt: new Date(Date.now() + 30 * 60_000) } });
@@ -80,6 +82,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
         prisma.socialAccount.update({ where: { id: job.accountId }, data: { lastPublishedAt: new Date() } }),
       ]);
       await audit({ actorLabel: 'worker', action: 'publication.verified_published', targetType: 'publication_job', targetId: job.id, details: { url: st.publicUrl ?? null } });
+      await emitEvent('publication.published', { jobId: job.id, adId: job.advertisementId, accountId: job.accountId, account: job.account.name, publicUrl: st.publicUrl ?? null, verifiedAt: new Date().toISOString() });
       return 'PUBLISHED';
     }
     if (st.kind === 'ERROR') {
@@ -89,6 +92,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
         prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'FAILED', errorMessage: st.message } }),
       ]);
       await notify('ERROR', 'PROVIDER_ERROR', 'المزود أبلغ عن فشل النشر', st.message, job.accountId);
+      await emitEvent('publication.failed', { jobId: job.id, adId: job.advertisementId, accountId: job.accountId, account: job.account.name, reason: st.message, source: 'provider' });
       return 'FAILED';
     }
     if (st.kind === 'NOT_FOUND' || Date.now() > job.scheduledFor.getTime() + 6 * 3600_000) {

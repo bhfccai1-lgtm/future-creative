@@ -14,6 +14,7 @@ import { fitCaption } from './caption';
 import { getSettings } from '../settings';
 import { sha256 } from '../crypto';
 import { log } from '../ops/log';
+import { emitEvent } from '../integrations/events';
 
 export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'ACCOUNT_PAUSED' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
 
@@ -24,6 +25,7 @@ async function fail(jobId: string, adId: string, reason: string, accountId: stri
   ]);
   await notify('ERROR', 'PUBLISH_FAILED', 'فشل النشر', reason, accountId);
   await audit({ actorLabel: 'worker', action: 'publication.failed', targetType: 'publication_job', targetId: jobId, details: { reason } });
+  await emitEvent('publication.failed', { jobId, adId, accountId, reason });
 }
 
 export function contactFooter(lang: string, locs: { nameAr: string; nameEn: string; nameMl?: string; phone: string }[]) {
@@ -171,6 +173,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
         prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'SCHEDULED' } }),
       ]);
       await audit({ actorLabel: 'worker', action: 'publication.scheduled', targetType: 'publication_job', targetId: job.id, details: { providerPostId: outcome.providerPostId } });
+      await emitEvent('publication.scheduled', { jobId: job.id, adId: ad.id, accountId: job.accountId, account: job.account.name, publishAt: req.publishAt.toISOString(), networks: req.networks, providerPostId: outcome.providerPostId });
       return 'SCHEDULED';
     case 'REJECTED':
       await fail(job.id, ad.id, `رفض المزود الطلب (${outcome.httpStatus}): ${outcome.message}`, job.accountId);
@@ -188,6 +191,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'UNKNOWN', lockedBy: null, nextCheckAt: new Date(Date.now() + 2 * 60_000), lastError: outcome.message } }),
         prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'UNKNOWN' } }),
       ]);
+      await emitEvent('publication.unknown', { jobId: job.id, adId: ad.id, accountId: job.accountId, account: job.account.name, error: outcome.message, action: 'reconcile then operator decision in /posts' });
       await notify('WARNING', 'PUBLISH_UNKNOWN', 'نتيجة نشر غير مؤكدة', `لم يتأكد إنشاء المنشور لدى المزود (${outcome.message}). ستتم المطابقة قبل أي إعادة محاولة.`, job.accountId);
       return 'UNKNOWN';
   }

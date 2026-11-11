@@ -1,0 +1,185 @@
+{
+  "name": "FC — Ideas sheet → designs",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "aa54a097-b5c0-5e38-a38d-f9145ab3e321",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ideas"
+        },
+        "options": {}
+      },
+      "id": "e1496f52-b6d2-5f17-abb3-d4213fec5b63",
+      "name": "Read ideas sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Google Sheet columns: handle | idea | format | occasion | contentType | status\n// Takes up to 3 rows whose status is empty and turns them into generation requests.\nconst rows = $input.all().map((i) => i.json).filter((r) => !String(r.status || '').trim() && String(r.handle || '').trim() && String(r.idea || '').trim());\nreturn rows.slice(0, 3).map((r) => ({ json: {\n  row_number: r.row_number,\n  request: { handle: String(r.handle).trim(), format: r.format || undefined, direction: { idea: String(r.idea).slice(0, 500), occasion: r.occasion || undefined, contentType: r.contentType || undefined } },\n} }));"
+      },
+      "id": "316aebf6-788e-5f38-80bb-4e4a31c6e86a",
+      "name": "New rows only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.FC_API_BASE }}/api/integrations/n8n/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {}
+      },
+      "id": "a6351453-2e05-512a-ad7d-41afa4d10967",
+      "name": "Request design",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Future Creative API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ideas"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('New rows only').item.json.row_number }}",
+            "status": "=queued {{ $json.jobId }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ]
+        },
+        "options": {}
+      },
+      "id": "b8f5a1b6-b756-5116-ba77-0348c5c9c1f0",
+      "name": "Mark row queued",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        960,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Read ideas sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read ideas sheet": {
+      "main": [
+        [
+          {
+            "node": "New rows only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New rows only": {
+      "main": [
+        [
+          {
+            "node": "Request design",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request design": {
+      "main": [
+        [
+          {
+            "node": "Mark row queued",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bahrain"
+  },
+  "tags": []
+}

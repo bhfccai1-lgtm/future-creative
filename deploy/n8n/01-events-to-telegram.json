@@ -1,0 +1,102 @@
+{
+  "name": "FC — Events → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "future-creative",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "53646440-c698-5c7a-8626-f3f512a87680",
+      "name": "Future Creative events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "3d704aed-97ec-58a4-a5b0-7bc2226e1847"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verifies the HMAC signature sent by Future Creative (X-FC-Signature) and rejects replays older than 5 minutes.\nconst crypto = require('crypto');\nconst secret = $env.FC_WEBHOOK_SECRET;\nif (!secret) throw new Error('FC_WEBHOOK_SECRET is not set in the n8n environment');\nconst out = [];\nfor (const item of $input.all()) {\n  const h = item.json.headers || {};\n  const ts = h['x-fc-timestamp'];\n  const sig = h['x-fc-signature'] || '';\n  const body = JSON.stringify(item.json.body);\n  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');\n  const ok = sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));\n  if (!ok) throw new Error('Invalid signature — event rejected');\n  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) throw new Error('Stale event (replay protection)');\n  out.push({ json: { ...item.json.body, deliveryId: h['x-fc-delivery'] } });\n}\nreturn out;"
+      },
+      "id": "dc9dee73-c827-5ca1-9bf7-030a5af4dc86",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Builds an Arabic Telegram message (and photo + approve/reject buttons for new designs).\nconst e = $input.first().json;\nconst d = e.data || {};\nconst base = e.dashboard || '';\nconst link = (p) => (p ? base + p : base);\nlet text = `🔔 ${e.title}\\n`;\nlet photo = null, buttons = null;\nswitch (e.event) {\n  case 'ad.ready_for_review':\n    text += `الحساب: ${d.account?.name ?? ''}\\nالصيغة: ${d.format}\\nالعنوان: ${d.headline ?? ''}\\n${d.dryRun ? '⚠️ معاينة تجريبية — غير قابلة للنشر\\n' : ''}${d.qcPassed ? '✅ اجتاز فحص الجودة' : '❌ لم يجتز فحص الجودة'}\\n\\n${(d.caption || '').slice(0, 600)}\\n\\nمراجعة: ${link(d.reviewUrl)}`;\n    photo = d.imageUrl ? (d.imageUrl.startsWith('http') ? d.imageUrl : base + d.imageUrl) : null;\n    if (d.qcPassed && !d.dryRun) buttons = { inline_keyboard: [[{ text: '✅ اعتماد', callback_data: `a:${d.adId}` }, { text: '❌ رفض', callback_data: `r:${d.adId}` }]] };\n    break;\n  case 'publication.published': text += `الحساب: ${d.account}\\n${d.publicUrl ? 'الرابط: ' + d.publicUrl : ''}`; break;\n  case 'publication.scheduled': text += `الحساب: ${d.account}\\nموعد النشر: ${d.publishAt}`; break;\n  case 'publication.failed': text += `الحساب: ${d.account ?? d.accountId}\\nالسبب: ${d.reason}\\nسجل المنشورات: ${link('/posts?state=FAILED')}`; break;\n  case 'publication.unknown': text += `الحساب: ${d.account}\\n${d.error}\\nتحقق في Metricool ثم قرر من: ${link('/posts?state=UNKNOWN')}`; break;\n  case 'connection.lost': text += `الحساب: ${d.account}\\n${d.reason}\\nأعد الربط ثم «فحص كل الحسابات الآن».`; break;\n  case 'report.weekly': {\n    const m = d.metrics || {};\n    text += `منشورات مؤكدة: ${m.posts ?? 0} · بمقاييس: ${m.withMetrics ?? 0}\\nالوصول: ${m.reach ?? 0} · المشاهدات: ${m.views ?? 0}\\nالحفظ+المشاركة: ${(m.saves ?? 0) + (m.shares ?? 0)} · متوسط التفاعل: ${m.avgEngagement ?? '—'}%\\n${m.reelSkipRatePct != null ? `تخطي الريلز: ${m.reelSkipRatePct}%\\n` : ''}\\nالتوصيات:\\n• ${(d.recommendations || []).slice(0, 5).join('\\n• ')}\\n\\n${link('/reports')}`;\n    break;\n  }\n  default: text += JSON.stringify(d).slice(0, 800);\n}\nreturn [{ json: { text: text.slice(0, photo ? 1000 : 4000), photo, buttons } }];"
+      },
+      "id": "a8104326-5718-5b1b-9b33-e1356ff024ab",
+      "name": "Format message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sends to Telegram through the Bot API (token and chat come from the n8n environment).\nconst { text, photo, buttons } = $input.first().json;\nconst token = $env.TELEGRAM_BOT_TOKEN, chat = $env.TELEGRAM_CHAT_ID;\nif (!token || !chat) throw new Error('Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env');\nconst method = photo ? 'sendPhoto' : 'sendMessage';\nconst body = photo ? { chat_id: chat, photo, caption: text, reply_markup: buttons || undefined } : { chat_id: chat, text, reply_markup: buttons || undefined, disable_web_page_preview: true };\nconst res = await this.helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${token}/${method}`, body, json: true });\nreturn [{ json: { ok: res.ok, method } }];"
+      },
+      "id": "282736f4-f1e9-56e0-a6b7-48622b9ff34d",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Future Creative events": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Format message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format message": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bahrain"
+  },
+  "tags": []
+}

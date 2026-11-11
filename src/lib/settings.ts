@@ -48,6 +48,16 @@ export const SettingsSchema = z.object({
       imageHigh: z.number().default(0.25),
     }).default({}),
   }).default({}),
+  /** n8n / automation: signed outbound events + token-authenticated inbound API. Off by default. */
+  n8n: z.object({
+    enabled: z.boolean().default(false),
+    webhookUrl: z.string().default(''),
+    events: z.array(z.string()).default(['ad.ready_for_review', 'publication.published', 'publication.failed', 'publication.unknown', 'connection.lost', 'report.weekly']),
+    /** Allow approve/reject through the inbound API (e.g. Telegram buttons). Approval binding still applies. */
+    allowInboundApprovals: z.boolean().default(false),
+    /** Allow n8n to request new designs (they still go to the approval queue / normal publishing rules). */
+    allowInboundGeneration: z.boolean().default(true),
+  }).default({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
@@ -79,7 +89,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

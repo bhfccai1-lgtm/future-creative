@@ -1,3 +1,4 @@
+import { captionIssues } from '../creative/caption-quality';
 import sharp from 'sharp';
 import type { LayerManifest } from '../render/compose';
 import type { Lang } from '../render/fonts';
@@ -20,6 +21,7 @@ export interface QcInput {
   aiText?: { expected: string[]; transcript: string | null } | null;
   /** Admin setting: AI-drawn text needs a human approval (default true). */
   aiTextNeedsHuman?: boolean;
+  hashtags?: string[];
 }
 
 export interface QcReport { passed: boolean; publishable: boolean; checks: QcCheck[]; checkedAt: string; requiresHuman?: boolean }
@@ -75,6 +77,9 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
       detail: !t ? 'تعذرت القراءة الآلية — راجع النص بعينك قبل الاعتماد' : [missing.length ? `نص مطلوب لم يُقرأ مطابقًا: ${missing.join(' | ')}` : '', garbled ? `${garbled} كلمة غير واضحة` : ''].filter(Boolean).join('؛ ') || `قُرئ: ${t.replace(/\n/g, ' · ').slice(0, 200)}`,
     });
   }
+
+  const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
+  checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });
 
   // Dry-run media is a preview only: it may pass design QC but can never be published.
   checks.push({ id: 'real_ai_media', label: 'المحتوى مولد فعليًا (ليس معاينة تجريبية)', passed: !q.dryRun, severity: 'BLOCKER', detail: q.dryRun ? 'وضع التجربة (Dry-run) — غير قابل للنشر' : undefined });

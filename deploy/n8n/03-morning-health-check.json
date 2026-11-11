@@ -1,0 +1,115 @@
+{
+  "name": "FC — Morning health check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8,
+              "triggerAtMinute": 15
+            }
+          ]
+        }
+      },
+      "id": "b84d1043-413a-5904-be5e-25c57344dba4",
+      "name": "Every day 08:15",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.FC_API_BASE }}/api/integrations/n8n/diagnostics",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "f08135ba-ad85-58f1-a78e-6514cfb112f6",
+      "name": "Get diagnostics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Future Creative API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Alert only when something is wrong (WARN/FAIL) — quiet when healthy.\nconst d = $input.first().json;\nconst bad = (d.checks || []).filter((c) => c.status !== 'OK');\nif (d.overall === 'OK' || !bad.length) return [];\nconst text = `🩺 تشخيص النظام: ${d.overall}\\n` + bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}${c.action ? ' → ' + c.action : ''}`).join('\\n');\nreturn [{ json: { text: text.slice(0, 4000), photo: null, buttons: null } }];"
+      },
+      "id": "34c5e66b-2767-5573-a9a1-1451a8040836",
+      "name": "Only problems",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sends to Telegram through the Bot API (token and chat come from the n8n environment).\nconst { text, photo, buttons } = $input.first().json;\nconst token = $env.TELEGRAM_BOT_TOKEN, chat = $env.TELEGRAM_CHAT_ID;\nif (!token || !chat) throw new Error('Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env');\nconst method = photo ? 'sendPhoto' : 'sendMessage';\nconst body = photo ? { chat_id: chat, photo, caption: text, reply_markup: buttons || undefined } : { chat_id: chat, text, reply_markup: buttons || undefined, disable_web_page_preview: true };\nconst res = await this.helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${token}/${method}`, body, json: true });\nreturn [{ json: { ok: res.ok, method } }];"
+      },
+      "id": "282736f4-f1e9-56e0-a6b7-48622b9ff34d",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Every day 08:15": {
+      "main": [
+        [
+          {
+            "node": "Get diagnostics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get diagnostics": {
+      "main": [
+        [
+          {
+            "node": "Only problems",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only problems": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bahrain"
+  },
+  "tags": []
+}

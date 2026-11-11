@@ -21,6 +21,8 @@ import { env } from '../lib/env';
 import { TZ } from '../lib/time';
 import type { MediaFormat } from '@prisma/client';
 import { importMetrics } from '../lib/analytics/import';
+import { deliverPending, emitEvent } from '../lib/integrations/events';
+import { buildReport } from '../lib/analytics/report';
 import { sweepStuckJobs, HEARTBEAT_KEY } from '../lib/ops/diagnostics';
 import { redis } from '../lib/queue/connection';
 
@@ -42,6 +44,8 @@ async function main() {
   await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
   await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
+  await sched.upsertJobScheduler('webhooks', { every: 60_000 }, { name: 'webhooks' }); // n8n outbox delivery
+  await sched.upsertJobScheduler('weekly-report', { pattern: '40 8 * * 0', tz: TZ }, { name: 'weekly-report' }); // Sunday 08:40 Bahrain
   await sched.upsertJobScheduler('analytics', { pattern: '15 5,17 * * *', tz: TZ }, { name: 'analytics' }); // read-only metrics import twice a day
 
   const workers = [
@@ -53,6 +57,12 @@ async function main() {
       }
       if (job.name === 'reconcile') return { stuck: await sweepStuckJobs(), ...(await reconcileSweep()) };
       if (job.name === 'analytics') return importMetrics(await getAdapter('metricool'));
+      if (job.name === 'webhooks') return deliverPending();
+      if (job.name === 'weekly-report') {
+        const r = await buildReport('week');
+        await emitEvent('report.weekly', { period: 'week', from: r.from, to: r.to, publishing: r.publishing, metrics: r.metrics, top: r.top, failures: r.failures.slice(0, 5), recommendations: r.recommendations, reportUrl: '/reports' });
+        return { emitted: true };
+      }
       if (job.name === 'campaigns') return runCampaignCycle();
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };
       return undefined;

@@ -52,7 +52,8 @@ Bugs found **by the new tests** during V8 and fixed before commit:
 | Carousels | ❌ | — | — | — |
 | English dashboard UI | ❌ (Arabic only; English and Malayalam content generation exist) | — | — | — |
 | Voiceover, licensed music library, generative AI video | ❌ (Reels are FFmpeg motion from AI stills; synthesized ambient/upbeat audio; optional Instagram licensed audio passed through Metricool) | — | — | — |
-| Email/SMS notifications, Google Drive archive, n8n | ❌ | — | — | — |
+| n8n integration (events, inbound API, 4 templates) | ✅ | ✅ (incl. template signature compatibility) | ❌ | ❌ not run against a live n8n |
+| Email/SMS notifications (Telegram is available through n8n), Google Drive archive | ❌ | — | — | — |
 
 "Deployed ❌" means this session did not update the production server (it has no access to it). Follow §4.
 

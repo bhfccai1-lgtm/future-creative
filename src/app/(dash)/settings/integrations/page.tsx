@@ -3,16 +3,21 @@ import { requirePageUser } from '@/lib/auth/server';
 import { getSettings, secretStatus } from '@/lib/settings';
 import { Card, PageHeader, Badge } from '@/components/ui';
 import { IntegrationsForm } from '@/components/integrations-form';
+import { N8nForm } from '@/components/n8n-form';
+import { EVENTS } from '@/lib/integrations/events';
+import { env } from '@/lib/env';
 import { ConnBadge, PLATFORM_AR } from '@/components/state-badge';
 import { fmtLocal } from '@/lib/time';
 
 export default async function IntegrationsPage() {
   await requirePageUser('settings:integrations');
   const s = await getSettings();
-  const [token, conns, recon] = await Promise.all([
+  const [token, conns, recon, n8nSecret, n8nToken, deliveries] = await Promise.all([
     secretStatus('METRICOOL_API_TOKEN'),
     prisma.socialConnection.findMany({ include: { account: true }, orderBy: { updatedAt: 'desc' } }),
     prisma.publicationJob.groupBy({ by: ['state'], _count: true, where: { state: { in: ['UNKNOWN', 'SCHEDULED', 'FAILED'] } } }),
+    secretStatus('N8N_WEBHOOK_SECRET'), secretStatus('N8N_API_TOKEN'),
+    prisma.webhookDelivery.findMany({ orderBy: { createdAt: 'desc' }, take: 15 }),
   ]);
   return (
     <>
@@ -31,6 +36,17 @@ export default async function IntegrationsPage() {
           <p className="mt-2 text-xs text-slate-500">تُطابق المهام كل 5 دقائق مع المزود. لا يُعرض «منشور» إلا بعد تأكيد المزود.</p>
         </Card>
       </div>
+      <Card title="n8n — الأتمتة" className="mt-6" actions={<Badge tone={s.n8n.enabled ? 'green' : 'slate'}>{s.n8n.enabled ? 'مفعّل' : 'غير مفعّل'}</Badge>}>
+        <p className="mb-3 text-sm text-slate-600">يرسل النظام أحداثًا موقّعة (HMAC) إلى n8n مع إعادة المحاولة تلقائيًا، ويستقبل من n8n طلبات بمفتاح API. النشر يبقى دائمًا عبر مسار النظام المحمي. قوالب جاهزة: <span className="ltr">deploy/n8n/</span></p>
+        <N8nForm n8n={s.n8n} events={EVENTS} secret={n8nSecret.configured} token={n8nToken.configured} apiBase={env().PUBLIC_BASE_URL.replace(/\/$/, '')} />
+        <div className="mt-4 overflow-x-auto">
+          <div className="label">آخر الأحداث المرسلة</div>
+          <table className="w-full min-w-[600px] text-xs"><tbody>{deliveries.map((d) => (
+            <tr key={d.id} className="border-t"><td className="td ltr">{d.event}</td><td className="td"><Badge tone={d.status === 'DELIVERED' ? 'green' : d.status === 'DEAD' ? 'red' : 'amber'}>{d.status}</Badge></td><td className="td">{d.attempts} محاولة{d.lastStatus ? ` · HTTP ${d.lastStatus}` : ''}</td><td className="td">{fmtLocal(d.createdAt)}</td><td className="td text-red-700">{d.lastError}</td></tr>
+          ))}</tbody></table>
+          {!deliveries.length && <p className="text-sm text-slate-500">لا توجد أحداث بعد.</p>}
+        </div>
+      </Card>
       <Card title="مزودات أخرى" className="mt-6">
         <p className="text-sm text-slate-600">واجهة المحوّل (PublishingAdapter) جاهزة لإضافة الواجهات الرسمية مباشرة (Meta Graph API، TikTok Content Posting API، YouTube Data API …). غير مفعّلة في هذا الإصدار — راجع docs/FEATURES.md.</p>
       </Card>

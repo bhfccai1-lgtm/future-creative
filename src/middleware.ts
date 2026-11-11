@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { CSRF_COOKIE, SESSION_COOKIE, verifySession, cookieSecure } from './lib/auth/session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health', '/api/public-media', '/api/m/', '/api/webhooks/'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/health', '/api/public-media', '/api/m/', '/api/webhooks/', '/api/integrations/'];
 
 /**
  * Edge middleware:
@@ -16,7 +16,8 @@ export async function middleware(req: NextRequest) {
   const method = req.method.toUpperCase();
   const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
-  if (mutating && !pathname.startsWith('/api/webhooks/')) {
+  // webhooks (HMAC) and integrations (bearer token) carry no cookies → no CSRF surface; they authenticate themselves
+  if (mutating && !pathname.startsWith('/api/webhooks/') && !pathname.startsWith('/api/integrations/')) {
     const origin = req.headers.get('origin');
     const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
     if (origin && host && new URL(origin).host !== host) {

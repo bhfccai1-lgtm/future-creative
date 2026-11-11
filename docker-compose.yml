@@ -72,6 +72,33 @@ services:
     depends_on: [web]
     restart: unless-stopped
 
+  # Optional n8n automation on the SAME server (no extra server): docker compose --profile n8n up -d
+  # Editor: https://n8n.${DOMAIN}  ·  talks to the app internally at http://web:3000 (never leaves the server)
+  n8n:
+    image: n8nio/n8n:1.88.0
+    profiles: ["n8n"]
+    environment:
+      N8N_HOST: n8n.${DOMAIN}
+      N8N_PROTOCOL: https
+      N8N_PORT: "5678"
+      WEBHOOK_URL: https://n8n.${DOMAIN}/
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      GENERIC_TIMEZONE: Asia/Bahrain
+      TZ: Asia/Bahrain
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # values used by the templates in deploy/n8n (set them in .env)
+      FC_API_BASE: http://web:3000
+      FC_WEBHOOK_SECRET: ${FC_WEBHOOK_SECRET:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS:-}
+    volumes: [n8n_data:/home/node/.n8n]
+    depends_on: [web]
+    restart: unless-stopped
+
   # Optional S3-compatible storage (enable with: docker compose --profile s3 up -d)
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
@@ -83,4 +110,4 @@ services:
     volumes: [minio:/data]
     restart: unless-stopped
 
-volumes: { pgdata: {}, redisdata: {}, media: {}, caddy_data: {}, caddy_config: {}, minio: {} }
+volumes: { pgdata: {}, redisdata: {}, media: {}, caddy_data: {}, caddy_config: {}, minio: {}, n8n_data: {} }

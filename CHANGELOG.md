@@ -1,5 +1,38 @@
 # Changelog
 
+## 8.2.0 — 2026-11-11 (content engine + n8n)
+### Content generation
+- **Seasonal content planner:** when the occasion is left on automatic, the system picks a timely one:
+  - Bahrain National Day, New Year, Mother's Day, graduation, back to school and wedding season;
+  - Ramadan and both Eids, using astronomical dates for 2027–2029;
+  - Saudi National Day only for the KSA account;
+  - Diwali and Onam only for Malayalam/English accounts.
+  - Seasonal posts become more frequent near the peak (80% in the last 3 days), so feeds stay varied.
+- **Content-angle rotation:** never one of the last 3 angles used on the account. Automatic choices are recorded (`direction.autoPicked`), so analytics can compare them.
+- **Caption quality check** (QC WARNING, never blocks): hook ≤ 125 characters, short body, clear CTA, ≤ 5 hashtags, light emoji use. Stored captions keep at most 5 unique hashtags.
+### n8n
+- Durable, signed (HMAC-SHA256) event outbox with retries. Events:
+  - `ad.ready_for_review` (with a signed image link)
+  - `ad.approved`
+  - `publication.scheduled`
+  - `publication.published`
+  - `publication.failed`
+  - `publication.unknown`
+  - `connection.lost`
+  - `report.weekly` (Sunday 08:40)
+- Token-authenticated inbound API `/api/integrations/n8n/*`:
+  - accounts, generate, reports, diagnostics, events;
+  - decision (approve/reject), off by default. It uses the same guarded approval with SHA-256 binding.
+- Dashboard: n8n settings, one-time secret and token generation (stored encrypted), a test event, and the delivery log.
+- Optional `n8n` service in docker-compose on the same server (`--profile n8n`), plus a Caddy route `n8n.<DOMAIN>`.
+- 4 importable workflows in `deploy/n8n/`:
+  - events → Telegram, with approve/reject buttons;
+  - Telegram approvals, restricted to allowed users;
+  - morning health check;
+  - Google Sheets ideas → designs.
+- A test runs the template's own signature code against the server's signing.
+- 149 tests passing.
+
 ## 8.1.0 — 2026-11-11 (data-driven growth update)
 Based on a real Metricool audit of the 15 brands (`docs/ACCOUNT_AUDIT_2026-11.md`):
 - **Reel hook opening** (default on): headline, product badge and logo are visible on frame 0, and the first scene opens with a fast punch-in. Measured skip rates were 63–84% with the old slow opening. Covered by a first-frame test.

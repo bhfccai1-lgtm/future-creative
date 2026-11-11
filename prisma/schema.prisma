@@ -583,3 +583,21 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
+/// Durable outbox for signed outbound events (n8n / automation webhooks). Delivered by the worker with retries.
+model WebhookDelivery {
+  id            String    @id @default(cuid())
+  event         String
+  payload       Json
+  target        String // destination URL at enqueue time
+  status        String    @default("PENDING") // PENDING | DELIVERED | DEAD
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastStatus    Int?
+  lastError     String?
+  deliveredAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@map("webhook_deliveries")
+}

@@ -19,6 +19,9 @@ import { renderReel } from '../video/reel';
 import { runQualityChecks, type QcReport } from '../qc';
 import { sha256 } from '../crypto';
 import { nextFormatFor } from '../creative/format-mix';
+import { marketOf, pickContentType, pickOccasion } from '../creative/planner';
+import { emitEvent } from '../integrations/events';
+import { signedMediaUrl } from '../storage';
 import { storage } from '../storage';
 import { startOfDayInTz } from '../time';
 import { autoApproveAndQueue } from '../publishing/jobs';
@@ -83,6 +86,18 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const format = p.format ?? (await nextFormatFor(account)); // GROWTH_MIX rotates Reels / feed / stories
   const provider = await getAiProvider(s);
   // Design options chosen by the user
+  // Planner: fill "automatic" occasion / content angle (seasonal calendar + rotation) and record it.
+  if (!p.direction?.occasion || !p.direction?.contentType) {
+    const recent = await prisma.advertisement.findMany({ where: { accountId: account.id, state: { notIn: ['FAILED', 'REJECTED'] } }, orderBy: { createdAt: 'desc' }, take: 6, select: { options: true } });
+    const auto: string[] = [];
+    const dir: Direction = { ...(p.direction ?? {}) };
+    if (!dir.occasion) { const oc = pickOccasion(new Date(), { language: lang, market: marketOf(account) }); if (oc) { dir.occasion = oc; auto.push('occasion'); } }
+    if (!dir.contentType && !dir.idea?.trim()) {
+      dir.contentType = pickContentType(recent.map((r) => ((r.options ?? {}) as { direction?: Direction | null }).direction?.contentType));
+      auto.push('contentType');
+    }
+    if (auto.length) p = { ...p, direction: { ...dir, autoPicked: auto } };
+  }
   const d = p.direction ?? {};
   const style = styleOf(d.designStyle);
   const dtype = designTypeOf(d.designType);
@@ -228,7 +243,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // ── Step 10: automated quality control ──
     const dups = await findDuplicates(account.id, { sha256: primarySha, phash: finalHash, headline: brief.headline }, s.duplicateWindowDays, ad.id);
     const qc = await runQualityChecks({
-      lang, format, headline: brief.headline, badge: brief.badge, supportingCopy: brief.supportingCopy, cta, caption: brief.caption,
+      lang, format, headline: brief.headline, badge: brief.badge, supportingCopy: brief.supportingCopy, cta, caption: brief.caption, hashtags: brief.hashtags,
       manifest: composed.manifest, background: composed.background, finalImage: jpeg, logoPng: composed.layers.find((l) => l.id === 'logo')!.png,
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
@@ -261,6 +276,17 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const reason = !qc.passed ? 'QC_FAILED' : s.publishingMode === 'ASSISTED' ? 'ASSISTED_MODE' : 'MANUAL_MODE';
     const campaignNote = p.createdBy.startsWith('campaign:') ? 'من حملة مجدولة — يُنشر في موعد الحملة بعد الاعتماد' : null;
     await prisma.approvalRequest.create({ data: { advertisementId: ad.id, reason, note: provider.isDryRun ? 'معاينة تجريبية (Dry-run) — غير قابلة للنشر' : campaignNote } });
+    {
+      const media = await prisma.mediaAsset.findMany({ where: { advertisementId: ad.id, role: { in: ['FINAL', 'VIDEO'] } } });
+      const img = media.find((m) => m.role === 'FINAL'); const vid = media.find((m) => m.role === 'VIDEO');
+      await emitEvent('ad.ready_for_review', {
+        adId: ad.id, account: { id: account.id, name: account.name, handle: account.handle }, format, language: lang,
+        headline: updated.headline, caption: updated.caption, product: product.titleAr, reason, dryRun: provider.isDryRun,
+        qcPassed: qc.passed, publishable: qc.publishable, requiresHuman: !!qc.requiresHuman,
+        imageUrl: img ? signedMediaUrl(img.storageKey) : null, videoUrl: vid ? signedMediaUrl(vid.storageKey) : null,
+        reviewUrl: `/ads/${ad.id}`,
+      });
+    }
     if (!qc.passed) await notify('WARNING', 'QC_FAILED', 'إعلان لم يجتز فحص الجودة', `الإعلان ${ad.id} أُرسل إلى طابور المراجعة: ${qc.checks.filter((c) => !c.passed).map((c) => c.label).join('، ')}`, account.id);
     return { advertisement: updated, qc, queued: false };
   } catch (e) {
@@ -275,6 +301,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 }
 
 export function buildCaption(b: CreativeBriefOut) {
-  const tags = b.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '_')).join(' ');
+  // Instagram accepts at most 5 hashtags — keep the first 5 unique ones the model ranked highest
+  const tags = [...new Set(b.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '_')))].slice(0, 5).join(' ');
   return [b.caption.trim(), tags].filter(Boolean).join('\n\n');
 }

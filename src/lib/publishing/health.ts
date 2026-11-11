@@ -1,3 +1,4 @@
+import { emitEvent } from '../integrations/events';
 import { prisma } from '../db';
 import { notify } from '../audit';
 import type { PublishingAdapter } from './types';
@@ -22,7 +23,10 @@ export async function verifyConnections(adapter: PublishingAdapter) {
       else out.ok++;
     } else {
       const reason = !brand ? 'العلامة لم تعد موجودة في Metricool' : `شبكة ${c.account.platform} لم تعد مرتبطة بالعلامة في Metricool (أعد ربطها داخل Metricool)`;
-      if (c.status === 'CONNECTED') await notify('ERROR', 'CONNECTION_LOST', 'انقطع ربط حساب', `${c.account.name}: ${reason}`, c.accountId);
+      if (c.status === 'CONNECTED') {
+        await notify('ERROR', 'CONNECTION_LOST', 'انقطع ربط حساب', `${c.account.name}: ${reason}`, c.accountId);
+        await emitEvent('connection.lost', { accountId: c.accountId, account: c.account.name, reason });
+      }
       await prisma.socialConnection.update({ where: { id: c.id }, data: { status: brand ? 'INSUFFICIENT_PERMISSIONS' : 'ERROR', canPublish: false, lastVerifiedAt: new Date(), lastError: reason } });
       out.lost++;
     }
