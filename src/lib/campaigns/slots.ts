@@ -34,10 +34,11 @@ export function bestHoursFor(everyHours: number): number[] {
   if (everyHours >= 24) return [BEST_HOURS_RANKED[0]];
   const perDay = Math.max(1, Math.min(BEST_HOURS_RANKED.length, Math.floor(24 / Math.max(1, everyHours))));
   // pick the best-ranked hours while keeping them spread out (no 10:00, 11:00, 12:00 clusters)
-  const gap = Math.max(2, Math.floor((24 / perDay) * 0.5));
   const picked: number[] = [];
-  for (const h of BEST_HOURS_RANKED) if (picked.length < perDay && picked.every((p) => Math.abs(p - h) >= gap)) picked.push(h);
-  for (const h of BEST_HOURS_RANKED) if (picked.length < perDay && !picked.includes(h)) picked.push(h);
+  // widest spacing first, relaxing it only as much as needed to fill the day (keeps posts apart, e.g. every 5 h → 10,13,15,18 not 10,11,…)
+  for (let gap = Math.max(2, Math.floor((24 / perDay) * 0.5)); gap >= 1 && picked.length < perDay; gap--) {
+    for (const h of BEST_HOURS_RANKED) if (picked.length < perDay && !picked.includes(h) && picked.every((p) => Math.abs(p - h) >= gap)) picked.push(h);
+  }
   return picked.sort((a, b) => a - b);
 }
 

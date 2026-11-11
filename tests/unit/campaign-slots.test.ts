@@ -38,3 +38,20 @@ describe('campaign slot calculator (Asia/Bahrain)', () => {
     expect(nextSlot(base, now)!.getTime()).toBeGreaterThan(now.getTime());
   });
 });
+
+describe('campaign intervals 5 / 7 / 9 hours', () => {
+  it('best-time mode spreads the posts across the strongest hours', async () => {
+    const { bestHoursFor } = await import('@/lib/campaigns/slots');
+    const five = bestHoursFor(5);
+    expect(five).toHaveLength(4);
+    for (let i = 1; i < five.length; i++) expect(five[i] - five[i - 1]).toBeGreaterThanOrEqual(2); // no 10:00 + 11:00 cluster
+    expect(bestHoursFor(7)).toEqual([10, 14, 18]);
+    expect(bestHoursFor(9)).toEqual([10, 18]);
+  });
+  it('fixed-time mode repeats exactly every 7 hours', async () => {
+    const { previewSlots } = await import('@/lib/campaigns/slots');
+    const start = new Date('2026-11-12T06:00:00Z'); // 09:00 Bahrain
+    const s = previewSlots({ scheduleType: 'RECURRING', everyHours: 7, daysOfWeek: [], timeMode: 'FIXED', startAt: start, endAt: null, maxRuns: null }, new Date('2026-11-12T00:00:00Z'), 3);
+    expect(s.map((d) => (d.getTime() - start.getTime()) / 3600_000)).toEqual([0, 7, 14]);
+  });
+});

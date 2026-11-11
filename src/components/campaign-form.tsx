@@ -11,7 +11,7 @@ import { DesignFields, designDirection, EMPTY_DESIGN, type DesignValues } from '
 type Opt = { id: string; label: string };
 const TZ = 'Asia/Bahrain';
 const DAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-const INTERVALS = [1, 2, 3, 4, 6, 8, 12, 24, 48, 72, 168];
+const INTERVALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 24, 48, 72, 168];
 const intervalLabel = (h: number) => (h < 24 ? `كل ${h} ${h === 1 ? 'ساعة' : h <= 10 ? 'ساعات' : 'ساعة'}` : h === 24 ? 'كل يوم' : h === 168 ? 'كل أسبوع' : `كل ${h / 24} أيام`);
 const nowLocal = () => formatInTimeZone(new Date(Date.now() + 3600_000), TZ, "yyyy-MM-dd'T'HH:00");
 
