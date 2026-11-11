@@ -607,3 +607,17 @@ model WebhookDelivery {
   @@index([status, nextAttemptAt])
   @@map("webhook_deliveries")
 }
+
+/// Competitor data snapshot per Metricool brand (Instagram competitors configured in Metricool, or a Metricool CSV export).
+model CompetitorSnapshot {
+  id          String   @id @default(cuid())
+  brandId     String
+  takenAt     DateTime @default(now())
+  source      String // metricool | csv
+  competitors Json // CompetitorSummary[]
+  posts       Json // CompetitorPost[]
+  error       String?
+
+  @@index([brandId, takenAt])
+  @@map("competitor_snapshots")
+}

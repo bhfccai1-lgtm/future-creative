@@ -24,9 +24,9 @@ function Select({ name, label, value, onChange, children, hint }: { name: string
  * "إنشاء إعلان الآن": creative direction (content type, market, language, segment, occasion, idea)
  * → enqueues generation on the worker and polls until the worker reports the result.
  */
-export function GenerateForm({ accounts, products }: { accounts: Opt[]; products: Opt[] }) {
+export function GenerateForm({ accounts, products, initialIdea = '' }: { accounts: Opt[]; products: Opt[]; initialIdea?: string }) {
   const router = useRouter();
-  const [v, setV] = useState({ accountId: accounts[0]?.id ?? '', productId: '', format: '', language: '', contentType: '', market: '', segment: '', occasion: '', idea: '' });
+  const [v, setV] = useState({ accountId: accounts[0]?.id ?? '', productId: '', format: '', language: '', contentType: '', market: '', segment: '', occasion: '', idea: initialIdea });
   const set = (k: keyof typeof v) => (val: string) => setV((x) => ({ ...x, [k]: val }));
   const [status, setStatus] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);

@@ -191,6 +191,11 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
     if (dead) add({ id: 'n8n_dead', category: 'integration', severity: 'medium', title: 'أحداث n8n لم تصل', evidence: `${dead} حدث فشل نهائيًا خلال 24 ساعة`, why: 'تفوتك تنبيهات تيليجرام والموافقات.', steps: ['تأكد أن n8n يعمل والـWorkflow مفعّل', '«إعادة إرسال الأحداث الفاشلة» في إعدادات الربط'], link: '/settings/integrations' });
   }
 
+  // competitors
+  const lastComp = await prisma.competitorSnapshot.findFirst({ where: { error: null }, orderBy: { takenAt: 'desc' }, select: { takenAt: true } });
+  if (!lastComp) add({ id: 'no_competitors', category: 'growth', severity: 'info', title: 'لا توجد بيانات منافسين', evidence: 'لم يُستورد أي منافس بعد', why: 'مقارنة نفسك بالمنافسين المحليين تكشف وتيرة النشر والمواضيع والأوقات الناجحة في سوقك.', steps: ['في Metricool: Competitors ← أضف 5–10 حسابات منافسة على إنستغرام لكل علامة رئيسية', 'ثم «تحديث من Metricool» في صفحة تحليل المنافسين، أو استورد ملف CSV مُصدَّر من Metricool'], link: '/competitors' });
+  else if (now.getTime() - lastComp.takenAt.getTime() > 14 * 86400_000) add({ id: 'competitors_stale', category: 'growth', severity: 'low', title: 'بيانات المنافسين قديمة', evidence: `آخر تحديث قبل ${Math.round((now.getTime() - lastComp.takenAt.getTime()) / 86400_000)} يومًا`, why: 'السوق يتغير أسبوعيًا.', steps: ['حدّث من Metricool أو استورد CSV جديد'], link: '/competitors' });
+
   // ───────── security & configuration ─────────
   const base = env().PUBLIC_BASE_URL;
   if (env().NODE_ENV === 'production' && !base.startsWith('https://')) add({ id: 'no_https', category: 'security', severity: 'high', title: 'رابط الموقع ليس HTTPS', evidence: `PUBLIC_BASE_URL = ${base}`, why: 'روابط الوسائط الموقعة وملفات الكوكيز تتطلب HTTPS، وبعض المنصات ترفض روابط HTTP.', steps: ['في ملف الإعدادات على السيرفر اجعل رابط الموقع يبدأ بـ https (المتغيران DOMAIN و PUBLIC_BASE_URL)', 'docker compose up -d'], link: '/diagnostics' });

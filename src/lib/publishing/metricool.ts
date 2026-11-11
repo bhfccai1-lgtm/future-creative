@@ -18,6 +18,8 @@ export const ENDPOINTS = {
   post: (id: string) => `/v2/scheduler/posts/${encodeURIComponent(id)}`,
   /** Per-post analytics (Instagram posts / reels / stories). VERIFY on a live account — see docs. */
   analytics: (kind: 'posts' | 'reels' | 'stories', network = 'instagram') => `/v2/analytics/${kind}/${network}`,
+  /** Instagram competitors configured in Metricool (summary, posts, reels). VERIFY on a live account. */
+  competitors: (part: '' | '/posts' | '/reels' = '', network = 'instagram') => `/v2/analytics/competitors/${network}${part}`,
 };
 
 /** Normalised per-post metrics read from the provider (absent metrics stay undefined — never invented). */
@@ -107,6 +109,20 @@ export class MetricoolAdapter implements PublishingAdapter {
     if (r.status === 401 || r.status === 403) throw new Error(`Metricool رفض الوصول إلى التحليلات (${r.status}) — قد لا تتيح خطتك ذلك.`);
     if (r.status !== 200) throw new Error(`استجابة تحليلات غير متوقعة من Metricool (${r.status}).`);
     return parsePostMetrics(r.json, kind);
+  }
+
+  /** Read-only competitor analytics; returns raw rows for the tolerant parsers in lib/competitors. */
+  async listCompetitorRows(brandId: string, from: Date, to: Date, timezone = 'Asia/Bahrain') {
+    const q = { blogId: brandId, from: localDateTime(from, timezone).slice(0, 19), to: localDateTime(to, timezone).slice(0, 19), timezone };
+    const rows = (json: unknown) => (Array.isArray(json) ? json : ((json as { data?: unknown[] })?.data ?? [])) as Record<string, unknown>[];
+    const get = async (part: '' | '/posts' | '/reels') => {
+      const r = await this.req('GET', ENDPOINTS.competitors(part), q);
+      if (r.status === 401 || r.status === 403) throw new Error(`Metricool رفض الوصول لبيانات المنافسين (${r.status}) — قد لا تتيح خطتك ذلك.`);
+      if (r.status !== 200) throw new Error(`استجابة غير متوقعة لبيانات المنافسين (${r.status}).`);
+      return rows(r.json);
+    };
+    const [competitors, posts, reels] = [await get(''), await get('/posts').catch(() => []), await get('/reels').catch(() => [])];
+    return { competitors, posts, reels };
   }
 
   async verify() {

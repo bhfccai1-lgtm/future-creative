@@ -24,6 +24,7 @@ import { importMetrics } from '../lib/analytics/import';
 import { deliverPending, emitEvent } from '../lib/integrations/events';
 import { emitDailyDigest, runApprovalReminders } from '../lib/integrations/digest';
 import { recordHealthSnapshot } from '../lib/ops/advisor';
+import { importCompetitors } from '../lib/competitors/service';
 import { buildReport } from '../lib/analytics/report';
 import { sweepStuckJobs, HEARTBEAT_KEY } from '../lib/ops/diagnostics';
 import { redis } from '../lib/queue/connection';
@@ -48,6 +49,7 @@ async function main() {
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
   await sched.upsertJobScheduler('webhooks', { every: 60_000 }, { name: 'webhooks' }); // n8n outbox delivery
   await sched.upsertJobScheduler('approval-reminders', { pattern: '20 * * * *', tz: TZ }, { name: 'approval-reminders' });
+  await sched.upsertJobScheduler('competitors', { pattern: '20 6 * * *', tz: TZ }, { name: 'competitors' }); // daily read-only pull
   await sched.upsertJobScheduler('health-snapshot', { pattern: '50 6 * * *', tz: TZ }, { name: 'health-snapshot' });
   await sched.upsertJobScheduler('daily-digest', { pattern: '5 21 * * *', tz: TZ }, { name: 'daily-digest' }); // 21:05 Bahrain
   await sched.upsertJobScheduler('weekly-report', { pattern: '40 8 * * 0', tz: TZ }, { name: 'weekly-report' }); // Sunday 08:40 Bahrain
@@ -66,6 +68,7 @@ async function main() {
       if (job.name === 'approval-reminders') return runApprovalReminders();
       if (job.name === 'daily-digest') return emitDailyDigest();
       if (job.name === 'health-snapshot') return recordHealthSnapshot();
+      if (job.name === 'competitors') return importCompetitors();
       if (job.name === 'weekly-report') {
         const r = await buildReport('week');
         await emitEvent('report.weekly', { period: 'week', from: r.from, to: r.to, publishing: r.publishing, metrics: r.metrics, top: r.top, failures: r.failures.slice(0, 5), recommendations: r.recommendations, reportUrl: '/reports' });

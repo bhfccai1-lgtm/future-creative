@@ -1,5 +1,24 @@
 # Changelog
 
+## 8.8.0 — 2026-11-11 (competitor analysis)
+- **New تحليل المنافسين page:**
+  - benchmark: followers, growth, posts per week, Reel share, average interactions, engagement rate, sample size, and our own row;
+  - Reel vs feed interactions;
+  - best hour and best day (each needs at least 3 posts);
+  - top 10 posts;
+  - themes from the top quarter, hashtags, and **content gaps**;
+  - data-backed competitive recommendations;
+  - original ideas inspired by the market (no copying), with one click to the create page.
+- **Sources:**
+  - Metricool Instagram competitors: a daily read-only pull, with tolerant parsing and endpoints that still need live verification;
+  - **CSV export import**, with flexible English/Arabic headers, BOM and `;` support, and same-day merging.
+  - Instagram is never scraped.
+- **`CompetitorSnapshot` table** for growth trends.
+- **Advisor rules:** no competitor data; stale data.
+- **n8n:** `GET /competitors`.
+- A test caught a design flaw: the day×hour grid was too sparse for local accounts, so a "best time" could never appear. Hour and day are now analysed separately.
+- 184 tests passing.
+
 ## 8.7.0 — 2026-11-11 (Google services)
 - **Google Business Profile** (channel `gmb` via Metricool):
   - an image design is sent as `publication` (text ≤ 1500 + cover image); a Reel is sent as `photo` (video to the gallery, no text).
