@@ -1,5 +1,26 @@
 # Changelog
 
+## 8.12.0 — 2026-11-12 (professional reel video and sound)
+- **Video quality:**
+  - camera moves with cosine easing;
+  - lanczos upscaling;
+  - cinematic transitions only (fade, smooth, fade-black) and a new "slow rise" move;
+  - text slides in with cubic ease-out.
+- **Mastering:**
+  - BT.709 colour tagging and conversion, so colours are no longer washed out on phones;
+  - light sharpening, debanding and a fine temporal grain;
+  - x264 CRF 17 `slow`, aq-mode 3, capped at 8 Mb/s.
+- A short Veo clip is slowed gently (up to 1.25×) instead of freezing before the end card.
+- **Sound:**
+  - all audio is 48 kHz, 192 kb/s, normalised to −14 LUFS;
+  - **licensed music library:** upload with a required licence note and mood. Tracks rotate least-recently-used, and the mood follows the design style;
+  - **AI voice-over** (OpenAI TTS, 5 voices) reads only the verified headline, badge, line and CTA (no digits or links), with automatic music ducking;
+  - **sound design:** hook impact, whoosh before each transition, text pops, end-card chime.
+  - Silent and Instagram-audio reels stay silent.
+- The default reel audio is a setting (`ai.audio.defaultReelAudio`, default: upbeat).
+- Every reel records the track, its licence and the voice script.
+- Migration `20261112120000_audio_library` (additive).
+
 ## 8.11.0 — 2026-11-11 (varied professional designs, campaign category, «تلقائي»)
 - **Art-direction engine:** every design gets a professional recipe: composition × lighting × lens, plus the poster layout for full-AI posters.
   - The recipe rotates per account (least recently used of the last 12), so consecutive designs differ in angle, light, setting and layout.

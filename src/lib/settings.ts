@@ -60,6 +60,13 @@ export const SettingsSchema = z.object({
       /** If Veo fails, still deliver an FFmpeg reel (flagged in QC) instead of failing the design. */
       fallbackToFfmpeg: z.boolean().default(true),
     }).default({}),
+    /** Reel sound: voice-over voice, synthesised sound effects, music level under the voice, default audio for reels. */
+    audio: z.object({
+      voice: z.enum(['onyx', 'ash', 'coral', 'nova', 'sage']).default('onyx'),
+      sfx: z.boolean().default(true),
+      musicVolume: z.number().min(0.1).max(1).default(0.35),
+      defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']).default('upbeat'),
+    }).default({}),
     // USD estimates — editable because provider pricing changes. Verify against current OpenAI pricing.
     pricing: z.object({
       textInputPer1M: z.number().default(0.4),

@@ -6,7 +6,7 @@ export interface DesignValues {
   renderMode: string; customPrompt: string; layout: string; designType: string; designStyle: string; channels: string[];
   reelStyle: string; reelDuration: string; audio: string; audioQuery: string; videoEngine?: string;
 }
-export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: 'none', audioQuery: '', videoEngine: '' };
+export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: '', audioQuery: '', videoEngine: '' };
 
 /** Adds the design/channel/reel options of a DesignValues object to a direction payload. */
 export function designDirection(v: DesignValues, format: string) {
@@ -85,7 +85,7 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
         <Sel label="محرك الفيديو" value={v.videoEngine ?? ''} onChange={(x) => set({ videoEngine: x })}><option value="">حسب إعدادات الذكاء الاصطناعي</option><option value="ffmpeg">FFmpeg — حركة من الصورة (مجاني)</option><option value="veo">Gemini Veo — فيديو ذكاء اصطناعي حقيقي (مدفوع)</option></Sel>
         <Sel label="نوع الريلز" value={v.reelStyle} onChange={(x) => set({ reelStyle: x })}>{REEL_STYLES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="مدة الريلز" value={v.reelDuration} onChange={(x) => set({ reelDuration: x })}><option value="">حسب إعداد الحساب</option>{REEL_DURATIONS.map((d) => <option key={d} value={d}>{d} ثانية</option>)}</Sel>
-        <Sel label="نوع الصوت" value={v.audio} onChange={(x) => set({ audio: x })}>{AUDIO_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
+        <Sel label="نوع الصوت" value={v.audio} onChange={(x) => set({ audio: x })}><option value="">حسب الإعدادات (الافتراضي)</option>{AUDIO_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         {v.audio === 'instagram'
           ? <div><label className="label">اسم الأغنية أو الفنان</label><input className="input" maxLength={120} value={v.audioQuery} onChange={(e) => set({ audioQuery: e.target.value })} placeholder="مثال: اسم مقطع رائج" /><p className="mt-1 text-xs text-slate-500">لحسابات إنستغرام التجارية المربوطة بفيسبوك فقط.</p></div>
           : <div className="text-xs text-slate-500 md:pt-7">{v.reelStyle === 'pro' ? `الاحترافي: ${proSceneCount(dur)} مشاهد مولدة (${proSceneCount(dur)} صور ذكاء اصطناعي) بانتقالات سينمائية.` : 'العادي: مشهد واحد بحركة كاميرا ونصوص متحركة.'}</div>}

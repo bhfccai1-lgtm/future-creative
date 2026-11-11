@@ -350,6 +350,27 @@ model Advertisement {
   @@map("advertisements")
 }
 
+/// Music the owner uploaded and is licensed to use (e.g. bought stock music, YouTube Audio Library, Pixabay). Rotated per reel.
+model AudioTrack {
+  id          String   @id @default(cuid())
+  name        String
+  mood        String   @default("upbeat") // upbeat | calm | luxury | festive | corporate
+  storageKey  String   @unique
+  mimeType    String
+  durationSec Float
+  startSec    Float    @default(0) // where the usable part starts (e.g. skip a slow intro)
+  bpm         Int?
+  licenseNote String
+  active      Boolean  @default(true)
+  uses        Int      @default(0)
+  lastUsedAt  DateTime?
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  @@index([active, mood])
+  @@map("audio_tracks")
+}
+
 model MediaAsset {
   id              String        @id @default(cuid())
   advertisementId String?

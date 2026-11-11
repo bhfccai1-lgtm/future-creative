@@ -1,6 +1,8 @@
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
 import { prisma } from '../db';
-import { getSettings, type Settings } from '../settings';
+import { getSecret, getSettings, type Settings } from '../settings';
+import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
+import { fakeSpeech, openaiSpeak, voiceScript, estimateTtsCost } from '../audio/tts';
 import { audit, notify } from '../audit';
 import { AppError } from '../errors';
 import { getBusiness, contactLines, ctaFor, locationsOf } from '../business';
@@ -138,7 +140,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     data: {
       accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId,
       channels: d.channels ?? [],
-      options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? 'none') : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
+      options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? s.ai.audio.defaultReelAudio) : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
     },
   });
   await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.start', targetType: 'advertisement', targetId: ad.id, details: { product: product.slug, format, provider: provider.name, language: lang, direction: (p.direction ?? null) as Prisma.InputJsonValue } });
@@ -254,12 +256,36 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         await notify('WARNING', 'VEO_FALLBACK', 'تعذر توليد فيديو Gemini Veo', `استُخدم محرك FFmpeg بدلًا منه: ${aiVideoNote}`, account.id);
       }
     }
+    let audioNote: Record<string, unknown> | null = null;
     if (format === 'REEL_VIDEO') {
-      const audio = d.audio ?? 'none';
+      const audio = d.audio ?? s.ai.audio.defaultReelAudio;
       try {
+        // licensed music (rotated, mood follows the design style) and a voice-over of the VERIFIED copy only
+        const track = audio === 'library' || audio === 'voiceover' ? await pickTrack(MOOD_FOR_STYLE[d.designStyle ?? ''] ?? undefined) : null;
+        let voice: Buffer | undefined;
+        if (audio === 'voiceover') {
+          const script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });
+          try {
+            if (provider.isDryRun) voice = fakeSpeech(script);
+            else {
+              const key = await getSecret('OPENAI_API_KEY');
+              if (!key) throw new Error('مفتاح OpenAI غير مضبوط');
+              const v = await openaiSpeak(key, script, { voice: s.ai.audio.voice, lang });
+              voice = v.audio;
+              await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
+            }
+            audioNote = { voiceScript: script, voice: s.ai.audio.voice };
+          } catch (e) {
+            await notify('WARNING', 'VOICEOVER_FAILED', 'تعذر إنشاء التعليق الصوتي', `أُنتج الريلز بالموسيقى فقط: ${(e as Error).message}`, account.id);
+            audioNote = { voiceError: (e as Error).message };
+          }
+        }
+        if (track) audioNote = { ...audioNote, track: track.name, trackId: track.id, license: track.licenseNote };
         video = await renderReel(composed, veo ? veo.durationSec + 3 : reelDuration, {
           extraBackgrounds, audio, baseVideo: veo?.mp4,
-          nativeAudio: !!veo && s.ai.video.nativeAudio && audio === 'none', // explicit music choice wins; Instagram audio stays silent
+          nativeAudio: !!veo && s.ai.video.nativeAudio && (!d.audio || d.audio === 'none'), // an explicit music choice wins; Instagram audio stays silent
+          music: track ? { buf: track.buf, ext: track.ext, startSec: track.startSec } : undefined,
+          voice, sfx: s.ai.audio.sfx, musicVolume: s.ai.audio.musicVolume,
         });
       } catch (e) { videoError = (e as Error).message; }
     }
@@ -279,6 +305,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     if (video) {
       await put('VIDEO', 'reel.mp4', video.mp4, 'video/mp4', { width: video.probe.width, height: video.probe.height, durationSec: video.probe.durationSec, meta: video.probe as unknown as Prisma.InputJsonValue });
       await put('THUMBNAIL', 'thumb.jpg', video.thumbnail, 'image/jpeg');
+    }
+    if (video && audioNote) {
+      const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(o ?? {}), audioUsed: { ...audioNote, voiceOver: !!video.voiceOver, sfx: !!video.sfx, musicTrack: !!video.musicTrack } } as Prisma.InputJsonValue } });
     }
     if (veo) await put('SOURCE_VIDEO', 'veo.mp4', veo.mp4, 'video/mp4', { meta: { model: veo.model, operation: veo.operation, durationSec: veo.durationSec } });
     if (engine) {

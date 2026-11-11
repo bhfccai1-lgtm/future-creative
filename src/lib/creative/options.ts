@@ -138,6 +138,8 @@ export const AUDIO_TYPES = [
   { value: 'none', ar: 'بدون صوت (صامت)' },
   { value: 'ambient', ar: 'موسيقى هادئة (مولدة — خالية من الحقوق)' },
   { value: 'upbeat', ar: 'إيقاع حماسي (مولد — خالٍ من الحقوق)' },
+  { value: 'library', ar: 'موسيقى من مكتبتك المرخّصة (تتنوع تلقائيًا)' },
+  { value: 'voiceover', ar: 'تعليق صوتي احترافي + موسيقى' },
   { value: 'instagram', ar: 'صوت من مكتبة إنستغرام (عبر Metricool)' },
 ] as const;
 export type AudioType = (typeof AUDIO_TYPES)[number]['value'];

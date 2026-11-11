@@ -5,9 +5,10 @@ import sharp from 'sharp';
 import type { ComposeResult, PlacedLayer } from '../render/compose';
 import { THEMES } from '../render/compose';
 import { probeVideo, run, REEL_REQUIREMENTS, type VideoProbe } from './probe';
+import { sfxSource, sfxTimeline } from '../audio/sfx';
 
-export interface ReelResult { mp4: Buffer; probe: VideoProbe; thumbnail: Buffer; scenes: number; audio: ReelAudio; nativeAudio?: boolean; aiVideo?: boolean }
-export type ReelAudio = 'none' | 'ambient' | 'upbeat' | 'instagram';
+export interface ReelResult { mp4: Buffer; probe: VideoProbe; thumbnail: Buffer; scenes: number; audio: ReelAudio; nativeAudio?: boolean; aiVideo?: boolean; voiceOver?: boolean; sfx?: boolean; musicTrack?: boolean }
+export type ReelAudio = 'none' | 'ambient' | 'upbeat' | 'library' | 'voiceover' | 'instagram';
 export interface ReelOptions {
   /** Hook opening (default true): headline + badge on frame 0 and a fast punch-in on the first scene. */
   hook?: boolean;
@@ -19,6 +20,14 @@ export interface ReelOptions {
   extraBackgrounds?: Buffer[];
   /** none / instagram (licensed IG audio is attached by the publisher) → silent AAC track; ambient / upbeat → royalty-free audio synthesised by FFmpeg. */
   audio?: ReelAudio;
+  /** Licensed music track (from the owner's library) — used for 'library' and as the bed under a voice-over. */
+  music?: { buf: Buffer; ext: string; startSec: number };
+  /** Voice-over (WAV/MP3) — the music is ducked automatically while the voice speaks. */
+  voice?: Buffer;
+  /** Synthesised sound design (hook impact, whooshes, text pops, end chime). Never added to silent / Instagram-audio reels. */
+  sfx?: boolean;
+  /** Music level under a voice-over (0.1–1). */
+  musicVolume?: number;
 }
 
 export class VideoRenderError extends Error {}
@@ -169,16 +178,57 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     // finishing: light sharpening of the upscaled AI image, correct BT.709 conversion (no washed-out colours on phones),
     // debanding of smooth gradients and a very fine temporal grain so platform re-encoding doesn't band or smear
     filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})',unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
+    // ── Audio: music bed (native Veo / licensed track / synthesised) + voice-over with ducking + sound design, mastered to −14 LUFS ──
     const useNative = !!opts.baseVideo && !!opts.nativeAudio && baseHasAudio;
-    if (useNative) filters.push(`[0:a]aresample=${AUDIO_RATE},${LOUDNORM},aresample=${AUDIO_RATE},apad,atrim=duration=${D},afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5[aout]`);
-    else inputs.push('-f', 'lavfi', '-t', String(D), '-i', audioSource(audio, D));
-    const audioIdx = idx;
+    const silent = !useNative && (audio === 'none' || audio === 'instagram');
+    const tail = `atrim=duration=${D},afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5`;
+    if (useNative) filters.push(`[0:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,${LOUDNORM},aresample=${AUDIO_RATE},apad,atrim=duration=${D}[mus]`);
+    else if (opts.music && (audio === 'library' || audio === 'voiceover')) {
+      const mf = path.join(dir, `music.${opts.music.ext}`);
+      await fs.writeFile(mf, opts.music.buf);
+      inputs.push('-ss', opts.music.startSec.toFixed(2), '-t', String(D + 1), '-i', mf);
+      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,${LOUDNORM},aresample=${AUDIO_RATE},afade=t=in:d=0.4,apad,atrim=duration=${D}[mus]`);
+      idx++;
+    } else {
+      const kind: ReelAudio = audio === 'library' || audio === 'voiceover' ? 'upbeat' : audio; // no library track yet → royalty-free synth
+      inputs.push('-f', 'lavfi', '-t', String(D), '-i', audioSource(kind, D));
+      filters.push(`[${idx}:a]aformat=sample_rates=${AUDIO_RATE}:channel_layouts=stereo,apad,atrim=duration=${D}[mus]`);
+      idx++;
+    }
+    const mix: string[] = [];
+    if (!silent && opts.voice) {
+      const vf = path.join(dir, 'voice.audio');
+      await fs.writeFile(vf, opts.voice);
+      inputs.push('-i', vf);
+      const vol = Math.max(0.1, Math.min(1, opts.musicVolume ?? 0.35));
+      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},adelay=350|350,apad,atrim=duration=${Math.max(1, endStart - 0.2)},afade=t=out:st=${Math.max(0, endStart - 0.6)}:d=0.4,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
+      filters.push(`[mus]volume=${vol}[mbed]`, `[mbed][vo1]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[mduck]`);
+      mix.push('[mduck]', '[vo2]');
+      idx++;
+    } else mix.push('[mus]');
+    if (!silent && opts.sfx) {
+      const ev = sfxTimeline({
+        hook: opts.hook !== false && !opts.baseVideo,
+        transitions: n > 1 ? Array.from({ length: n - 1 }, (_, i) => (i + 1) * (L - XFADE)) : [],
+        textAt: timeline.filter((t) => t.start > 0).map((t) => t.start), endAt: endStart, duration: D,
+      });
+      for (const e of ev) {
+        inputs.push('-f', 'lavfi', '-i', sfxSource(e.kind));
+        const ms = Math.round(e.t * 1000);
+        filters.push(`[${idx}:a]aformat=sample_rates=${AUDIO_RATE}:channel_layouts=stereo,volume=${e.kind === 'pop' ? 0.5 : 0.8},adelay=${ms}|${ms},apad,atrim=duration=${D}[fx${idx}]`);
+        mix.push(`[fx${idx}]`);
+        idx++;
+      }
+    }
+    filters.push(silent
+      ? `${mix[0]}atrim=duration=${D}[aout]`
+      : `${mix.join('')}amix=inputs=${mix.length}:normalize=0:duration=first,${LOUDNORM},aresample=${AUDIO_RATE},alimiter=limit=0.89,${tail}[aout]`);
 
     const out = path.join(dir, 'reel.mp4');
     const args = [
       '-y', '-hide_banner', '-loglevel', 'error', ...inputs,
       '-filter_complex', filters.join(';'),
-      '-map', '[vout]', '-map', useNative ? '[aout]' : `${audioIdx}:a`,
+      '-map', '[vout]', '-map', '[aout]',
       // high-quality master: platforms re-encode, so a cleaner source survives better (capped at 8 Mb/s → a 60 s reel stays ≤ 60 MB)
       '-c:v', 'libx264', '-profile:v', 'high', '-level', '4.2', '-preset', process.env.REEL_X264_PRESET ?? 'slow', '-crf', '17', '-maxrate', '8M', '-bufsize', '16M',
       '-x264-params', 'aq-mode=3:aq-strength=0.9', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', String(FPS * 2),
@@ -191,7 +241,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     const probe = await probeVideo(out, { ...REEL_REQUIREMENTS, targetSec: D });
     const thumbFile = path.join(dir, 'thumb.jpg');
     await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(Math.min(4.5, D - 3.5)), '-i', out, '-frames:v', '1', '-q:v', '2', thumbFile], 60_000);
-    return { mp4: await fs.readFile(out), probe, thumbnail: await fs.readFile(thumbFile), scenes: n, audio, nativeAudio: useNative, aiVideo: !!opts.baseVideo };
+    return { mp4: await fs.readFile(out), probe, thumbnail: await fs.readFile(thumbFile), scenes: n, audio, nativeAudio: useNative, aiVideo: !!opts.baseVideo, voiceOver: !silent && !!opts.voice, sfx: !silent && !!opts.sfx, musicTrack: !useNative && !!opts.music && (audio === 'library' || audio === 'voiceover') };
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

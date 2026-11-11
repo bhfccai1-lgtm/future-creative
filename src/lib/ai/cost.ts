@@ -41,6 +41,6 @@ export async function assertBudget(s: Settings, estimate: number) {
   }
 }
 
-export async function recordUsage(p: { jobId?: string; provider: string; model: string; kind: 'text' | 'image' | 'video'; inputTokens?: number; outputTokens?: number; images?: number; costUsd: number }) {
+export async function recordUsage(p: { jobId?: string; provider: string; model: string; kind: 'text' | 'image' | 'video' | 'audio'; inputTokens?: number; outputTokens?: number; images?: number; costUsd: number }) {
   return prisma.aiUsage.create({ data: { jobId: p.jobId, provider: p.provider, model: p.model, kind: p.kind, inputTokens: p.inputTokens ?? 0, outputTokens: p.outputTokens ?? 0, images: p.images ?? 0, costUsd: p.costUsd.toFixed(6) } });
 }

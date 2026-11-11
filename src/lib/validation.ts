@@ -48,7 +48,7 @@ export const DirectionSchema = z.object({
   reelStyle: z.enum(['standard', 'pro']).optional(),
   videoEngine: z.enum(['ffmpeg', 'veo']).optional(),
   reelDuration: z.number().int().min(6).max(60).optional(),
-  audio: z.enum(['none', 'ambient', 'upbeat', 'instagram']).optional(),
+  audio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']).optional(),
   audioQuery: z.string().max(120).optional(),
 }).optional();
 
