@@ -82,6 +82,9 @@ export const SettingsSchema = z.object({
     allowInboundControl: z.boolean().default(false),
     /** Remind about designs waiting for approval longer than this (hours); 0 = off. */
     approvalReminderHours: z.number().int().min(0).max(72).default(6),
+    /** Telegram destination for the n8n templates (bot token is a secret; ids are not). */
+    telegramChatId: z.string().default(''),
+    telegramAllowedUserIds: z.string().default(''),
   }).default({}),
   metricool: z.object({
     userId: z.string().default(''),
@@ -114,7 +117,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY';
+export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

@@ -1,5 +1,18 @@
 # Changelog
 
+## 8.9.1 — 2026-11-11 (n8n one-command setup)
+- **Dashboard Telegram section:**
+  - bot token (encrypted), chat id and allowed user ids;
+  - **«اكتشاف تلقائي»** (auto-detect) reads the bot's updates to find the chat id and the user's id;
+  - the webhook URL is pre-filled with the internal address.
+- **`bash scripts/n8n-setup.sh`:**
+  - takes or creates the secrets from the encrypted settings, so nothing with `_` or `:` has to be typed in the console;
+  - updates `.env` safely and generates `N8N_ENCRYPTION_KEY`;
+  - starts n8n and reloads Caddy;
+  - imports the templates and the Telegram credential (fixed id), publishes 05/01/03/02, and sends a test event.
+- The templates are mounted in the n8n container at `/templates`. The archive branch runs only when `GDRIVE_FOLDER_ID` is set, so there are no error alerts before Google is connected.
+- Verified against n8n 2.35.7: credential import, import of all 6 templates, publishing 4 of them, the helper output and the `.env` merge.
+
 ## 8.9.0 — 2026-11-11 (quality per format, interval and no-approval publishing in bulk)
 - **Image quality per format** (`ai.qualityByFormat`):
   - Stories default to **low** (they live 24 h); every other format follows the global quality.

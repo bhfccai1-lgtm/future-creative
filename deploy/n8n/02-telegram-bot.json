@@ -20,7 +20,7 @@
       ],
       "credentials": {
         "telegramApi": {
-          "id": "",
+          "id": "fctelegrambot001",
           "name": "Telegram FC bot"
         }
       },

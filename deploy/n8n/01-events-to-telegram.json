@@ -60,7 +60,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return $input.all().filter((i) => i.json.event === 'publication.published');"
+        "jsCode": "// archive only when a Drive folder is configured (template 06 published with Google credentials)\nif (!$env.GDRIVE_FOLDER_ID) return [];\nreturn $input.all().filter((i) => i.json.event === 'publication.published');"
       },
       "id": "476a71fd-86a1-5282-ac0b-5cd35cd3f54c",
       "name": "Only published",

@@ -103,7 +103,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS:-}
-    volumes: [n8n_data:/home/node/.n8n]
+    volumes: [n8n_data:/home/node/.n8n, ./deploy/n8n:/templates:ro]
     depends_on: [web]
     restart: unless-stopped
 

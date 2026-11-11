@@ -13,12 +13,13 @@ import { fmtLocal } from '@/lib/time';
 export default async function IntegrationsPage() {
   await requirePageUser('settings:integrations');
   const s = await getSettings();
-  const [token, conns, recon, n8nSecret, n8nToken, deliveries] = await Promise.all([
+  const [token, conns, recon, n8nSecret, n8nToken, deliveries, tgStatus] = await Promise.all([
     secretStatus('METRICOOL_API_TOKEN'),
     prisma.socialConnection.findMany({ include: { account: true }, orderBy: { updatedAt: 'desc' } }),
     prisma.publicationJob.groupBy({ by: ['state'], _count: true, where: { state: { in: ['UNKNOWN', 'SCHEDULED', 'FAILED'] } } }),
     secretStatus('N8N_WEBHOOK_SECRET'), secretStatus('N8N_API_TOKEN'),
     prisma.webhookDelivery.findMany({ orderBy: { createdAt: 'desc' }, take: 15 }),
+    secretStatus('TELEGRAM_BOT_TOKEN'),
   ]);
   return (
     <>
@@ -39,7 +40,7 @@ export default async function IntegrationsPage() {
       </div>
       <Card title="n8n — الأتمتة" className="mt-6" actions={<Badge tone={s.n8n.enabled ? 'green' : 'slate'}>{s.n8n.enabled ? 'مفعّل' : 'غير مفعّل'}</Badge>}>
         <p className="mb-3 text-sm text-slate-600">يرسل النظام أحداثًا موقّعة (HMAC) إلى n8n مع إعادة المحاولة تلقائيًا، ويستقبل من n8n طلبات بمفتاح API. النشر يبقى دائمًا عبر مسار النظام المحمي. قوالب جاهزة: <span className="ltr">deploy/n8n/</span></p>
-        <N8nForm n8n={s.n8n} events={EVENTS} secret={n8nSecret.configured} token={n8nToken.configured} apiBase={env().PUBLIC_BASE_URL.replace(/\/$/, '')} />
+        <N8nForm n8n={s.n8n} events={EVENTS} secret={n8nSecret.configured} telegram={tgStatus.configured} token={n8nToken.configured} apiBase={env().PUBLIC_BASE_URL.replace(/\/$/, '')} />
         <div className="mt-4 overflow-x-auto">
           <div className="label">آخر الأحداث المرسلة</div>
           <table className="w-full min-w-[600px] text-xs"><tbody>{deliveries.map((d) => (

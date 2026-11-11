@@ -201,7 +201,7 @@ w1 = wf('FC — Events → Telegram', [
 ], chain('Future Creative events','Verify & de-duplicate','Format message','Send to Telegram'))
 
 w2 = wf('FC — Telegram bot (buttons + commands)', [
-  node('Telegram updates','n8n-nodes-base.telegramTrigger',1.1,[0,0],{'updates':['callback_query','message'],'additionalFields':{}},creds={'telegramApi':{'id':'','name':'Telegram FC bot'}},extra={'webhookId':str(uuid.uuid5(uuid.NAMESPACE_URL,'fc-tg'))}),
+  node('Telegram updates','n8n-nodes-base.telegramTrigger',1.1,[0,0],{'updates':['callback_query','message'],'additionalFields':{}},creds={'telegramApi':{'id':'fctelegrambot001','name':'Telegram FC bot'}},extra={'webhookId':str(uuid.uuid5(uuid.NAMESPACE_URL,'fc-tg'))}),
   node('Bot logic','n8n-nodes-base.code',2,[260,0],{'jsCode':BOT}),
 ], chain('Telegram updates','Bot logic'))
 
@@ -252,7 +252,9 @@ ROW = r"""// One log row per post (first file's Drive link)
 const first = $input.first().json;
 const src = $('Fetch published files').first().json;
 return [{ json: { date: src.publishedAt, account: src.account, format: src.format, headline: src.headline, instagram: src.publicUrl || '', drive: first.webViewLink || first.id || '', adId: src.adId } }];"""
-ONLY_PUB = r"""return $input.all().filter((i) => i.json.event === 'publication.published');"""
+ONLY_PUB = r"""// archive only when a Drive folder is configured (template 06 published with Google credentials)
+if (!$env.GDRIVE_FOLDER_ID) return [];
+return $input.all().filter((i) => i.json.event === 'publication.published');"""
 
 w6 = wf(ARCHIVE_NAME, [
   node('From events router','n8n-nodes-base.executeWorkflowTrigger',1.1,[0,0],{'inputSource':'passthrough'}),

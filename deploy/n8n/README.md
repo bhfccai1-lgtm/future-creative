@@ -20,7 +20,26 @@ Future Creative ◀──(API: Bearer token + Idempotency-Key)──────
   - Every request from n8n carries an `Idempotency-Key`, so a retry never creates a second design or decision.
 - Traffic between the two services is internal (`http://web:3000` and `http://n8n:5678`).
 
-## Setup (once)
+## Quick setup (recommended): one command, nothing typed by hand
+1. Dashboard ← **إعدادات الربط** (Integrations) ← **n8n** ← Telegram:
+   - paste the bot token from @BotFather and press **حفظ** (save);
+   - send any message to your bot;
+   - press **اكتشاف تلقائي** (auto-detect), then **حفظ** (save).
+2. In the server console:
+   ```
+   cd /opt/future-creative
+   bash scripts/n8n-setup.sh
+   ```
+   The script:
+   - creates the secrets and writes them to `.env` (`chmod 600`), together with `N8N_ENCRYPTION_KEY`;
+   - starts n8n;
+   - imports the 6 templates and the bot credential;
+   - publishes 05, 01, 03 and 02;
+   - sends a test event.
+3. Open `https://n8n.<DOMAIN>` and create the n8n owner account.
+4. Google Sheets and Drive (templates 04 and 06) are optional. Connect your Google account from the n8n editor, then publish those templates manually. The archive runs only when `GDRIVE_FOLDER_ID` is set.
+
+## Manual setup
 1. In the dashboard ← **إعدادات الربط** (Integrations) ← **n8n**:
    - Webhook URL: `http://n8n:5678/webhook/future-creative`.
    - **إنشاء سر توقيع الأحداث** (create event signing secret) → copy it.
