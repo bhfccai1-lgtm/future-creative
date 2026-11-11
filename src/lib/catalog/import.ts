@@ -123,6 +123,20 @@ export async function exportProductsCsv() {
   return '﻿' + [head.join(','), ...lines].join('\r\n') + '\r\n';
 }
 
+/** Ready-made catalogue files shipped with the app (deploy/catalog/*.csv) — importable from the dashboard without uploading. */
+export const PRESET_DIR = 'deploy/catalog';
+export async function listPresets(): Promise<string[]> {
+  const { readdir } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  try { return (await readdir(join(process.cwd(), PRESET_DIR))).filter((f) => /^[\w-]+\.csv$/.test(f)).sort(); } catch { return []; }
+}
+export async function readPreset(name: string): Promise<string | null> {
+  if (!(await listPresets()).includes(name)) return null; // whitelist: no path traversal
+  const { readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  return readFile(join(process.cwd(), PRESET_DIR, name), 'utf8');
+}
+
 /** Google Sheets share link → CSV export URL (sheet must be shared "anyone with the link"). */
 export function sheetsCsvUrl(url: string): string | null {
   const m = url.match(/docs\.google\.com\/spreadsheets\/d\/([\w-]{20,})/);

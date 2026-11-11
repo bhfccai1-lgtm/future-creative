@@ -5,6 +5,7 @@ import { requirePageUser } from '@/lib/auth/server';
 import { Card, PageHeader } from '@/components/ui';
 import { ProductForm } from '@/components/product-form';
 import { ProductImport, ProductTable } from '@/components/product-catalog';
+import { listPresets } from '@/lib/catalog/import';
 export const dynamic = 'force-dynamic';
 
 const PER = 50;
@@ -28,7 +29,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader title="المنتجات والخدمات" subtitle={`${totalAll} منتج/خدمة — ${activeAll} نشط · ${categories.length} فئة`} />
-      <Card title="استيراد جماعي (Excel / Google Sheets)" className="mb-6"><ProductImport /></Card>
+      <Card title="استيراد جماعي (Excel / Google Sheets)" className="mb-6"><ProductImport presets={await listPresets()} /></Card>
       <Card className="mb-6">
         <form className="mb-3 flex flex-wrap gap-2">
           <input name="q" defaultValue={q} className="input" style={{ width: '16rem' }} placeholder="بحث بالاسم…" />

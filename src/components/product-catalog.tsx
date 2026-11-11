@@ -7,16 +7,17 @@ import { Button, Badge } from './ui';
 
 type Summary = { dryRun: boolean; total: number; create: number; update: number; newCategories: string[]; errors: { line: number; message: string }[]; errorCount: number; sample: { line: number; titleAr: string; category: string }[] };
 
-export function ProductImport() {
+export function ProductImport({ presets = [] }: { presets?: string[] }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState('');
   const [res, setRes] = useState<Summary | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const send = async (dryRun: boolean) => {
+  const [preset, setPreset] = useState('');
+  const send = async (dryRun: boolean, p = preset) => {
     setBusy(true); setErr(null);
-    const fd = new FormData(); if (file) fd.set('file', file); if (url) fd.set('url', url); fd.set('dryRun', dryRun ? '1' : '0');
+    const fd = new FormData(); if (p) fd.set('preset', p); else { if (file) fd.set('file', file); if (url) fd.set('url', url); } fd.set('dryRun', dryRun ? '1' : '0');
     try {
       const j = await apiCall<Summary>('/api/products/import', { form: fd });
       setRes(j); if (!dryRun) router.refresh();
@@ -25,15 +26,21 @@ export function ProductImport() {
   };
   return (
     <div className="space-y-3">
+      {presets.length > 0 && (
+        <div className="rounded-lg border border-gold-500/50 bg-gold-300/10 p-3 text-sm">
+          <b>كتالوجات جاهزة على السيرفر</b> — بدون رفع ملف:
+          <div className="mt-2 flex flex-wrap gap-2">{presets.map((f) => (
+            <Button key={f} type="button" size="sm" variant={preset === f ? 'gold' : 'outline'} disabled={busy} onClick={() => { setPreset(f); setFile(null); setUrl(''); send(true, f); }}>معاينة {f.replace(/\.csv$/, '')}</Button>))}</div>
+        </div>)}
       <ol className="list-decimal space-y-0.5 pr-5 text-xs text-slate-600">
         <li>نزّل <a className="font-bold text-navy-700 underline" href="/api/products/export" download>القالب / المنتجات الحالية (CSV)</a> وافتحه في Excel أو Google Sheets.</li>
         <li>أضف منتجاتك صفًا لكل منتج. <b>الإلزامي فقط:</b> الفئة + الاسم بالعربية (أو الإنجليزية). الباقي يُعبَّأ تلقائيًا. القوائم تُفصل بـ <span className="ltr">|</span>.</li>
         <li>احفظ كـ «CSV UTF-8» وارفعه هنا، أو شارك جدول Google Sheets «لأي شخص لديه الرابط» والصق الرابط.</li>
       </ol>
       <div className="flex flex-wrap items-center gap-2">
-        <input type="file" accept=".csv,text/csv" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setRes(null); }} className="text-sm" />
+        <input type="file" accept=".csv,text/csv" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreset(''); setRes(null); }} className="text-sm" />
         <span className="text-xs text-slate-500">أو</span>
-        <input className="input ltr" style={{ width: '22rem' }} placeholder="https://docs.google.com/spreadsheets/d/…" value={url} onChange={(e) => { setUrl(e.target.value.trim()); setRes(null); }} />
+        <input className="input ltr" style={{ width: '22rem' }} placeholder="https://docs.google.com/spreadsheets/d/…" value={url} onChange={(e) => { setUrl(e.target.value.trim()); setPreset(''); setRes(null); }} />
         <Button type="button" size="sm" variant="outline" disabled={busy || (!file && !url)} onClick={() => send(true)}><Upload size={14} />{busy ? '…' : 'معاينة'}</Button>
         {res?.dryRun && res.total > 0 && <Button type="button" size="sm" variant="gold" disabled={busy} onClick={() => send(false)}>تأكيد الاستيراد ({res.total})</Button>}
         <a href="/api/products/export" download className="inline-flex items-center gap-1 text-xs text-navy-700 underline"><Download size={12} />تصدير</a>

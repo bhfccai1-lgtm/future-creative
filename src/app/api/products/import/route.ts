@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { api } from '@/lib/auth/server';
 import { audit } from '@/lib/audit';
 import { AppError } from '@/lib/errors';
-import { applyProductImport, parseProductCsv, sheetsCsvUrl } from '@/lib/catalog/import';
+import { applyProductImport, parseProductCsv, readPreset, sheetsCsvUrl } from '@/lib/catalog/import';
 
 /**
  * POST multipart: file (CSV) or url (Google Sheets link shared "anyone with the link"), dryRun=1 for a preview.
@@ -13,8 +13,13 @@ export const POST = api('products:manage', async (req, { user }) => {
   const dryRun = String(form.get('dryRun') ?? '') === '1';
   const file = form.get('file');
   const url = String(form.get('url') ?? '').trim();
+  const preset = String(form.get('preset') ?? '').trim();
   let text: string;
-  if (file instanceof File && file.size) {
+  if (preset) {
+    const t = await readPreset(preset);
+    if (t === null) throw new AppError('NOT_FOUND', 'ملف الكتالوج الجاهز غير موجود — حدّث النظام (git pull ثم docker compose up -d --build).', 404);
+    text = t;
+  } else if (file instanceof File && file.size) {
     if (file.size > 10 * 1024 * 1024) throw new AppError('VALIDATION', 'الملف أكبر من 10MB.', 413);
     text = await file.text();
   } else if (url) {
@@ -28,6 +33,6 @@ export const POST = api('products:manage', async (req, { user }) => {
   const { rows, errors } = parseProductCsv(text);
   if (rows.length > 5000) throw new AppError('VALIDATION', 'الحد الأقصى 5000 منتج في الاستيراد الواحد.', 422);
   const summary = await applyProductImport(rows, { dryRun, actor: user.email });
-  if (!dryRun) await audit({ actorId: user.sub, actorLabel: user.email, action: 'products.import', details: { ...summary, errors: errors.length, source: url ? 'google-sheets' : 'csv' } });
+  if (!dryRun) await audit({ actorId: user.sub, actorLabel: user.email, action: 'products.import', details: { ...summary, errors: errors.length, source: preset ? `preset:${preset}` : url ? 'google-sheets' : 'csv' } });
   return NextResponse.json({ dryRun, ...summary, errors: errors.slice(0, 50), errorCount: errors.length, sample: rows.slice(0, 5).map((r) => ({ line: r.line, slug: r.slug, category: r.category, titleAr: r.titleAr, titleEn: r.titleEn })) });
 });

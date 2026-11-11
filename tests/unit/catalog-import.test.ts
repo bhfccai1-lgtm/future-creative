@@ -64,3 +64,16 @@ describe('category allowance + rotation', () => {
     expect(chooseProduct(ps, ['a'], () => 0.5)!.id).toBe('b');
   });
 });
+
+describe('bundled catalogue presets', () => {
+  it('lists the shipped CSV, reads it, and refuses path traversal', async () => {
+    const { listPresets, readPreset } = await import('@/lib/catalog/import');
+    const list = await listPresets();
+    expect(list).toContain('additional-products-2026-11.csv');
+    const text = (await readPreset('additional-products-2026-11.csv'))!;
+    const { rows, errors } = parseProductCsv(text);
+    expect(errors).toEqual([]);
+    expect(rows.length).toBe(93);
+    expect(await readPreset('../../.env')).toBeNull();
+  });
+});
