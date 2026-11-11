@@ -4,6 +4,7 @@ import { getSettings, secretStatus } from '@/lib/settings';
 import { Card, PageHeader, Badge } from '@/components/ui';
 import { IntegrationsForm } from '@/components/integrations-form';
 import { N8nForm } from '@/components/n8n-form';
+import { ActionButton } from '@/components/action-button';
 import { EVENTS } from '@/lib/integrations/events';
 import { env } from '@/lib/env';
 import { ConnBadge, PLATFORM_AR } from '@/components/state-badge';
@@ -42,7 +43,7 @@ export default async function IntegrationsPage() {
         <div className="mt-4 overflow-x-auto">
           <div className="label">آخر الأحداث المرسلة</div>
           <table className="w-full min-w-[600px] text-xs"><tbody>{deliveries.map((d) => (
-            <tr key={d.id} className="border-t"><td className="td ltr">{d.event}</td><td className="td"><Badge tone={d.status === 'DELIVERED' ? 'green' : d.status === 'DEAD' ? 'red' : 'amber'}>{d.status}</Badge></td><td className="td">{d.attempts} محاولة{d.lastStatus ? ` · HTTP ${d.lastStatus}` : ''}</td><td className="td">{fmtLocal(d.createdAt)}</td><td className="td text-red-700">{d.lastError}</td></tr>
+            <tr key={d.id} className="border-t"><td className="td ltr">{d.event}</td><td className="td"><Badge tone={d.status === 'DELIVERED' ? 'green' : d.status === 'DEAD' ? 'red' : 'amber'}>{d.status}</Badge></td><td className="td">{d.attempts} محاولة{d.lastStatus ? ` · HTTP ${d.lastStatus}` : ''}</td><td className="td">{fmtLocal(d.createdAt)}</td><td className="td text-red-700">{d.lastError}</td><td className="td">{d.status === 'DEAD' && <ActionButton url="/api/settings/n8n/redeliver" body={{ id: d.id }} size="sm" variant="outline" label="إعادة إرسال" />}</td></tr>
           ))}</tbody></table>
           {!deliveries.length && <p className="text-sm text-slate-500">لا توجد أحداث بعد.</p>}
         </div>

@@ -1,0 +1,65 @@
+{
+  "id": "d710aa8879acde85",
+  "name": "FC — Telegram bot (buttons + commands)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "callback_query",
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "bfcc279b-d8aa-5f64-b197-4a45ea3e3264",
+      "name": "Telegram updates",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram FC bot"
+        }
+      },
+      "webhookId": "10e5bb53-4e45-5266-9c4c-3601d5abbcdf"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tg = async (method, body) => this.helpers.httpRequest({ method: 'POST', url: `${$env.TELEGRAM_API_BASE || 'https://api.telegram.org'}/bot${$env.TELEGRAM_BOT_TOKEN}/${method}`, body, json: true });\nconst fc = async (method, path, body, idem) => this.helpers.httpRequest({ method, url: `${$env.FC_API_BASE}/api/integrations/n8n${path}`, headers: { Authorization: `Bearer ${$env.FC_API_TOKEN}`, ...(idem ? { 'Idempotency-Key': idem } : {}) }, body, json: true, ignoreHttpStatusErrors: true, returnFullResponse: true });\n// Telegram bot: approve/reject buttons + commands. Only users in TELEGRAM_ALLOWED_USER_IDS may act.\nconst u = $input.first().json;\nconst allowed = ($env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);\nconst from = u.callback_query?.from || u.message?.from;\nconst chat_id = u.callback_query?.message?.chat?.id ?? u.message?.chat?.id;\nif (!from || !chat_id) return [];\nconst who = from.username || String(from.id);\nconst say = (text) => tg('sendMessage', { chat_id, text: text.slice(0, 4000), disable_web_page_preview: true });\nif (!allowed.includes(String(from.id))) {\n  if (u.callback_query) await tg('answerCallbackQuery', { callback_query_id: u.callback_query.id, text: 'غير مصرح لك', show_alert: true });\n  return [{ json: { ignored: 'not allowed', user: from.id } }];\n}\nconst msg = (r) => (r.body && (r.body.message || r.body.error)) || `HTTP ${r.statusCode}`;\n\n// ── buttons ──\nif (u.callback_query) {\n  const [kind, adId] = String(u.callback_query.data || '').split(':');\n  if (!adId || !['a', 'r'].includes(kind)) return [];\n  const decision = kind === 'a' ? 'approve' : 'reject';\n  const r = await fc('POST', `/ads/${adId}/decision`, { decision, by: who }, `tg-${u.callback_query.id}`);\n  const text = r.statusCode === 200 ? `تم ✓ الحالة الآن: ${r.body.state}` : `تعذر: ${msg(r)}`;\n  await tg('answerCallbackQuery', { callback_query_id: u.callback_query.id, text, show_alert: true });\n  if (r.statusCode === 200) await tg('editMessageReplyMarkup', { chat_id, message_id: u.callback_query.message.message_id, reply_markup: { inline_keyboard: [[{ text: decision === 'approve' ? `✅ اعتمده ${who}` : `❌ رفضه ${who}`, callback_data: 'done' }]] } }).catch(() => null);\n  return [{ json: { decision, adId, status: r.statusCode } }];\n}\n\n// ── commands ──\nconst [cmd, ...args] = String(u.message.text || '').trim().split(/\\s+/);\nconst findAccount = async (q) => {\n  const r = await fc('GET', '/accounts');\n  const list = Array.isArray(r.body) ? r.body : [];\n  const k = String(q || '').replace(/^@/, '').toLowerCase();\n  return list.find((a) => (a.handle || '').toLowerCase() === k || a.name.toLowerCase() === k);\n};\nswitch (cmd) {\n  case '/pending': {\n    const r = await fc('GET', '/ads?state=QUALITY_REVIEW&limit=10');\n    const ads = Array.isArray(r.body) ? r.body : [];\n    if (!ads.length) { await say('لا توجد تصاميم بانتظار الموافقة ✅'); break; }\n    for (const a of ads.slice(0, 5)) {\n      const buttons = a.qc !== 'REJECTED' && !a.dryRun ? { inline_keyboard: [[{ text: '✅ اعتماد', callback_data: `a:${a.id}` }, { text: '❌ رفض', callback_data: `r:${a.id}` }]] } : undefined;\n      const caption = `${a.account} · ${a.format}\\n${a.headline ?? ''}\\nفحص الجودة: ${a.qc}`;\n      if (a.imageUrl) await tg('sendPhoto', { chat_id, photo: a.imageUrl, caption, reply_markup: buttons }).catch(() => say(caption));\n      else await say(caption);\n    }\n    if (ads.length > 5) await say(`و${ads.length - 5} تصاميم أخرى في لوحة التحكم.`);\n    break;\n  }\n  case '/status': {\n    const r = await fc('GET', '/diagnostics');\n    const d = r.body || {};\n    const bad = (d.checks || []).filter((c) => c.status !== 'OK');\n    await say(`🩺 الحالة العامة: ${d.overall}\\n` + (bad.length ? bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}`).join('\\n') : 'كل الفحوص سليمة ✅'));\n    break;\n  }\n  case '/report': {\n    const r = await fc('GET', `/reports?period=${args[0] === 'month' ? 'month' : 'week'}`);\n    const m = r.body?.metrics || {};\n    await say(`📊 تقرير ${args[0] === 'month' ? 'الشهر' : 'الأسبوع'}\\nمنشورات مؤكدة: ${m.posts ?? 0}\\nالوصول: ${m.reach ?? 0} · المشاهدات: ${m.views ?? 0}\\nمتوسط التفاعل: ${m.avgEngagement ?? '—'}%\\n\\n• ${(r.body?.recommendations || []).slice(0, 4).join('\\n• ')}`);\n    break;\n  }\n  case '/pause': case '/resume': {\n    const acc = await findAccount(args[0]);\n    if (!acc) { await say(`لم أجد الحساب «${args[0] ?? ''}». استخدم المعرّف مثل: ${cmd} bhfcc.mugs`); break; }\n    const reason = args.slice(1).join(' ') || undefined;\n    const r = await fc('POST', `/accounts/${acc.id}/pause`, { paused: cmd === '/pause', by: who, reason }, `tg-${u.message.message_id}`);\n    await say(r.statusCode === 200 ? `${cmd === '/pause' ? '⏸ تم إيقاف' : '▶️ تم استئناف'} ${acc.name}` : `تعذر: ${msg(r)}`);\n    break;\n  }\n  default:\n    await say('الأوامر:\\n/pending — التصاميم المنتظرة مع أزرار الاعتماد\\n/status — تشخيص النظام\\n/report [week|month] — التقرير\\n/pause <الحساب> [السبب] — إيقاف طارئ\\n/resume <الحساب> — استئناف');\n}\nreturn [{ json: { command: cmd, by: who } }];"
+      },
+      "id": "f2511c4c-6ed2-5fc3-b64d-9ddcb88ceb19",
+      "name": "Bot logic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Telegram updates": {
+      "main": [
+        [
+          {
+            "node": "Bot logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bahrain",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "errorWorkflow": "ee8f61980fec7152"
+  },
+  "tags": []
+}

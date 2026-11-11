@@ -70,6 +70,10 @@ export const SettingsSchema = z.object({
     allowInboundApprovals: z.boolean().default(false),
     /** Allow n8n to request new designs (they still go to the approval queue / normal publishing rules). */
     allowInboundGeneration: z.boolean().default(true),
+    /** Allow n8n to pause/resume accounts (emergency stop from Telegram). */
+    allowInboundControl: z.boolean().default(false),
+    /** Remind about designs waiting for approval longer than this (hours); 0 = off. */
+    approvalReminderHours: z.number().int().min(0).max(72).default(6),
   }).default({}),
   metricool: z.object({
     userId: z.string().default(''),

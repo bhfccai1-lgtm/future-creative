@@ -11,6 +11,8 @@ const Body = z.object({
   events: z.array(z.enum(Object.keys(EVENTS) as [string, ...string[]])).max(20),
   allowInboundApprovals: z.boolean(),
   allowInboundGeneration: z.boolean(),
+  allowInboundControl: z.boolean().default(false),
+  approvalReminderHours: z.number().int().min(0).max(72).default(6),
 });
 const status = async () => ({ secret: (await secretStatus('N8N_WEBHOOK_SECRET')).configured, token: (await secretStatus('N8N_API_TOKEN')).configured });
 

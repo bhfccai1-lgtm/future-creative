@@ -15,6 +15,10 @@ export const EVENTS = {
   'publication.unknown': 'نتيجة نشر غير مؤكدة — تحتاج قرارًا',
   'connection.lost': 'انقطع ربط حساب',
   'report.weekly': 'التقرير الأسبوعي',
+  'ad.rejected': 'تم رفض تصميم',
+  'approvals.reminder': 'تصاميم تنتظر موافقتك منذ ساعات',
+  'daily.digest': 'ملخص اليوم',
+  'system.alert': 'تنبيه من النظام (ميزانية، فيديو، جودة، تشغيل…)',
   'test.ping': 'اختبار الربط',
 } as const;
 export type EventName = keyof typeof EVENTS;
@@ -65,7 +69,8 @@ export async function deliverPending(fetchImpl: typeof fetch = fetch, now = new 
       await prisma.webhookDelivery.update({ where: { id: d.id }, data: { status: 'DELIVERED', deliveredAt: new Date(), lastStatus: status, lastError: null } });
       delivered++;
     } else {
-      const dead = attempt >= MAX_ATTEMPTS || (status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429);
+      // n8n answers 404 while a workflow is inactive or still starting → transient, keep retrying.
+      const dead = attempt >= MAX_ATTEMPTS || (status !== null && [400, 401, 403, 410, 413, 422].includes(status));
       await prisma.webhookDelivery.update({ where: { id: d.id }, data: { status: dead ? 'DEAD' : 'PENDING', lastStatus: status, lastError: error, nextAttemptAt: new Date(now.getTime() + BACKOFF_MIN[Math.min(attempt - 1, BACKOFF_MIN.length - 1)] * 60_000) } });
       failed++;
       log.warn('n8n.delivery_failed', { deliveryId: d.id, event: d.event, attempt, status, error, dead });

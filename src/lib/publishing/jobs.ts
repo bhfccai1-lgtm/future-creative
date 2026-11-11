@@ -61,6 +61,7 @@ export async function rejectAdvertisement(adId: string, user: { id: string; emai
   if (!(await moveAd(adId, ad.state, 'REJECTED'))) throw new AppError('CONFLICT', 'تغيرت حالة الإعلان.', 409);
   await prisma.approvalRequest.updateMany({ where: { advertisementId: adId, status: 'PENDING' }, data: { status: 'REJECTED', decidedById: user.id, decidedAt: new Date(), note } });
   await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.reject', targetType: 'advertisement', targetId: adId, details: { note: note ?? null } });
+  await emitEvent('ad.rejected', { adId, accountId: ad.accountId, by: user.email, note: note ?? null });
 }
 
 /** Autonomous path: only for QC-publishable ads; records an audit entry attributed to the scheduler. */

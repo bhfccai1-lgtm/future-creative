@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { enq } from '@/lib/queue/queues';
 import { audit } from '@/lib/audit';
 import { AppError } from '@/lib/errors';
-import { integrationApi } from '@/lib/integrations/auth';
+import { integrationApi, withIdempotency } from '@/lib/integrations/auth';
 import { DirectionSchema } from '@/lib/validation';
 
 const Body = z.object({
@@ -16,7 +16,7 @@ const Body = z.object({
 }).refine((b) => b.accountId || b.handle, 'accountId or handle is required');
 
 /** POST — queue a new design (e.g. from a Google Sheet of ideas). It lands in the approval queue; nothing is published here. */
-export const POST = integrationApi(async (req, { settings }) => {
+export const POST = integrationApi(async (req, { settings }) => withIdempotency(req, 'generate', async () => {
   if (!settings.n8n.allowInboundGeneration) throw new AppError('FORBIDDEN', 'طلبات التوليد من n8n غير مسموحة في الإعدادات.', 403);
   const b = Body.parse(await req.json());
   const acc = await prisma.socialAccount.findFirstOrThrow({ where: b.accountId ? { id: b.accountId } : { handle: b.handle!.replace(/^@/, '') } });
@@ -25,4 +25,4 @@ export const POST = integrationApi(async (req, { settings }) => {
   await enq.generate({ accountId: acc.id, productId: product?.id, format: b.format, language: b.language, direction: b.direction, createdBy: 'n8n' }, jobId);
   await audit({ actorLabel: 'n8n', action: 'ad.generate.request', targetType: 'social_account', targetId: acc.id, details: { format: b.format ?? null, idea: b.direction?.idea ?? null } });
   return NextResponse.json({ jobId, accountId: acc.id, status: 'queued', note: 'التصميم سيصل إلى طابور الموافقات' }, { status: 202 });
-});
+}));

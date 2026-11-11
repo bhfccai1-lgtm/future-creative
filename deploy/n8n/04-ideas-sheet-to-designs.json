@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Google Sheet columns: handle | idea | format | occasion | contentType | status\n// Takes up to 3 rows whose status is empty and turns them into generation requests.\nconst rows = $input.all().map((i) => i.json).filter((r) => !String(r.status || '').trim() && String(r.handle || '').trim() && String(r.idea || '').trim());\nreturn rows.slice(0, 3).map((r) => ({ json: {\n  row_number: r.row_number,\n  request: { handle: String(r.handle).trim(), format: r.format || undefined, direction: { idea: String(r.idea).slice(0, 500), occasion: r.occasion || undefined, contentType: r.contentType || undefined } },\n} }));"
+        "jsCode": "// Google Sheet columns: handle | idea | format | occasion | contentType | status\n// Takes up to 3 rows whose status is empty; the row number is the idempotency key, so a retry never creates a duplicate design.\nconst rows = $input.all().map((i) => i.json).filter((r) => !String(r.status || '').trim() && String(r.handle || '').trim() && String(r.idea || '').trim());\nreturn rows.slice(0, 3).map((r) => ({ json: {\n  row_number: r.row_number,\n  idem: `sheet-${$workflow.id}-${r.row_number}-${String(r.idea).slice(0, 40)}`,\n  request: { handle: String(r.handle).trim(), format: r.format || undefined, direction: { idea: String(r.idea).slice(0, 500), occasion: r.occasion || undefined, contentType: r.contentType || undefined } },\n} }));"
       },
       "id": "316aebf6-788e-5f38-80bb-4e4a31c6e86a",
       "name": "New rows only",
@@ -68,8 +68,19 @@
       "parameters": {
         "method": "POST",
         "url": "={{ $env.FC_API_BASE }}/api/integrations/n8n/generate",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FC_API_TOKEN }}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.idem }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.request) }}",
@@ -82,13 +93,7 @@
       "position": [
         720,
         0
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "",
-          "name": "Future Creative API"
-        }
-      }
+      ]
     },
     {
       "parameters": {
@@ -180,7 +185,10 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Asia/Bahrain"
+    "timezone": "Asia/Bahrain",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "errorWorkflow": "ee8f61980fec7152"
   },
   "tags": []
 }

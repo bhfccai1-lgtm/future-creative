@@ -43,10 +43,11 @@ describe('caption quality (advisory)', () => {
 
 describe('n8n template ↔ server signature compatibility', () => {
   const wf = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../deploy/n8n/01-events-to-telegram.json'), 'utf8'));
-  const code: string = wf.nodes.find((n: { name: string }) => n.name === 'Verify signature').parameters.jsCode;
+  const code: string = wf.nodes.find((n: { name: string }) => n.name === 'Verify & de-duplicate').parameters.jsCode;
+  const staticData: Record<string, unknown> = {};
   const run = (headers: Record<string, string>, body: unknown, secret = 's3cret') => {
-    const fn = new Function('require', '$env', '$input', `return (async () => { ${code} })();`);
-    return fn(createRequire(__filename), { FC_WEBHOOK_SECRET: secret }, { all: () => [{ json: { headers, body } }] });
+    const fn = new Function('require', '$env', '$input', '$getWorkflowStaticData', `return (async () => { ${code} })();`);
+    return fn(createRequire(__filename), { FC_WEBHOOK_SECRET: secret }, { all: () => [{ json: { headers, body } }] }, () => staticData);
   };
   const payload = { id: 'x', event: 'ad.ready_for_review', title: 'تصميم جديد', data: { headline: 'كوبك بتصميمك', n: 1.5 } };
   const body = JSON.stringify(payload);
@@ -54,6 +55,8 @@ describe('n8n template ↔ server signature compatibility', () => {
   it('accepts a correctly signed event (Arabic payload)', async () => {
     const out = await run({ 'x-fc-timestamp': ts, 'x-fc-signature': sign('s3cret', ts, body), 'x-fc-delivery': 'd1' }, JSON.parse(body));
     expect(out[0].json).toMatchObject({ event: 'ad.ready_for_review', deliveryId: 'd1' });
+    // the same delivery again (redelivery/retry) is ignored
+    expect(await run({ 'x-fc-timestamp': ts, 'x-fc-signature': sign('s3cret', ts, body), 'x-fc-delivery': 'd1' }, JSON.parse(body))).toEqual([]);
   });
   it('rejects tampered, wrongly signed and replayed events', async () => {
     await expect(run({ 'x-fc-timestamp': ts, 'x-fc-signature': sign('s3cret', ts, body) }, { ...payload, event: 'publication.published' })).rejects.toThrow(/signature/);
@@ -64,10 +67,11 @@ describe('n8n template ↔ server signature compatibility', () => {
   it('all templates are valid n8n workflow JSON with connected nodes', () => {
     for (const f of fs.readdirSync(path.resolve(__dirname, '../../deploy/n8n')).filter((x) => x.endsWith('.json'))) {
       const w = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../deploy/n8n', f), 'utf8'));
-      expect(w.nodes.length).toBeGreaterThan(2);
+      expect(w.nodes.length).toBeGreaterThanOrEqual(2);
       const names = new Set(w.nodes.map((n: { name: string }) => n.name));
       for (const [from, c] of Object.entries(w.connections) as [string, { main: { node: string }[][] }][]) { expect(names.has(from)).toBe(true); expect(names.has(c.main[0][0].node)).toBe(true); }
       expect(JSON.stringify(w)).not.toMatch(/fcn8n_|fcwhs_|bot\d{6,}:/); // no secrets in templates
+      if (!w.name.startsWith('FC — Error')) expect(w.settings.errorWorkflow).toBe('ee8f61980fec7152'); // failures alert via the error workflow
     }
   });
 });

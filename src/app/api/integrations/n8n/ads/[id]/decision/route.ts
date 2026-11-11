@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { integrationApi } from '@/lib/integrations/auth';
+import { integrationApi, withIdempotency } from '@/lib/integrations/auth';
 import { approveAdvertisement, rejectAdvertisement } from '@/lib/publishing/jobs';
 import { AppError } from '@/lib/errors';
 
@@ -12,7 +12,7 @@ const Body = z.object({ decision: z.enum(['approve', 'reject']), by: z.string().
  * Uses the same guarded functions as the dashboard: QC gate, SHA-256 approval binding, kill switch, pause.
  * The decision is attributed to the system admin user with the actor label "n8n:<by>".
  */
-export const POST = integrationApi<{ params: Promise<{ id: string }> }>(async (req, { params, settings }) => {
+export const POST = integrationApi<{ params: Promise<{ id: string }> }>(async (req, { params, settings }) => withIdempotency(req, 'decision', async () => {
   if (!settings.n8n.allowInboundApprovals) throw new AppError('FORBIDDEN', 'الاعتماد عبر n8n غير مسموح في الإعدادات.', 403);
   const { id } = await params;
   const b = Body.parse(await req.json());
@@ -23,4 +23,4 @@ export const POST = integrationApi<{ params: Promise<{ id: string }> }>(async (r
   else await rejectAdvertisement(id, actor, b.note ?? 'rejected via n8n');
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id }, select: { state: true } });
   return NextResponse.json({ adId: id, state: ad.state });
-});
+}));

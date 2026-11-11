@@ -65,6 +65,14 @@ export async function runDiagnostics(now = new Date()): Promise<{ at: string; ov
   add({ id: 'overdue', label: 'مجدولة لم يُؤكد نشرها', status: overdue ? 'WARN' : 'OK', detail: overdue ? `${overdue} منشور تجاوز موعده بساعة دون تأكيد` : 'لا يوجد' });
   add({ id: 'failed', label: 'فشل خلال 24 ساعة', status: failed24 ? 'WARN' : 'OK', detail: `${failed24}` });
   add({ id: 'approvals', label: 'بانتظار الموافقة', status: 'OK', detail: `${pending}` });
+  if (s.n8n.enabled) {
+    const [dead, backlog, lastOk] = await Promise.all([
+      prisma.webhookDelivery.count({ where: { status: 'DEAD', createdAt: { gte: stale(24 * 60) } } }),
+      prisma.webhookDelivery.count({ where: { status: 'PENDING', createdAt: { lt: stale(15) } } }),
+      prisma.webhookDelivery.findFirst({ where: { status: 'DELIVERED' }, orderBy: { deliveredAt: 'desc' }, select: { deliveredAt: true } }),
+    ]);
+    add({ id: 'n8n', label: 'تكامل n8n', status: dead ? 'FAIL' : backlog ? 'WARN' : 'OK', detail: `${dead} حدث فشل نهائيًا (24 ساعة) · ${backlog} متأخر · آخر وصول ناجح: ${lastOk?.deliveredAt ? lastOk.deliveredAt.toISOString().slice(0, 16).replace('T', ' ') : '—'}`, action: dead || backlog ? 'تحقق أن n8n يعمل والـWorkflow مفعّل، ثم «إعادة إرسال الأحداث الفاشلة» من إعدادات الربط' : undefined, command: dead || backlog ? 'docker compose --profile n8n ps && docker compose logs --tail=50 n8n' : undefined });
+  }
 
   const overall: Status = checks.some((c) => c.status === 'FAIL') ? 'FAIL' : checks.some((c) => c.status === 'WARN') ? 'WARN' : 'OK';
   return { at: now.toISOString(), overall, checks };

@@ -1,0 +1,75 @@
+{
+  "id": "ee8f61980fec7152",
+  "name": "FC — Error alerts (any workflow failed)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "d984c6dd-2ac5-5050-bfae-51c8ca1668ee",
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nconst wfName = e.workflow?.name ?? 'workflow';\nconst node = e.execution?.lastNodeExecuted ?? e.trigger?.error?.node?.name ?? '';\nconst err = e.execution?.error?.message ?? e.trigger?.error?.message ?? 'unknown error';\nconst url = e.execution?.url ? `\\n${e.execution.url}` : '';\nreturn [{ json: { text: `🛑 فشل Workflow في n8n\\n${wfName}${node ? ` — العقدة: ${node}` : ''}\\n${String(err).slice(0, 600)}${url}`, photo: null, buttons: null } }];"
+      },
+      "id": "dc280101-a6e5-5fd0-8595-22c948e70390",
+      "name": "Format error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tg = async (method, body) => this.helpers.httpRequest({ method: 'POST', url: `${$env.TELEGRAM_API_BASE || 'https://api.telegram.org'}/bot${$env.TELEGRAM_BOT_TOKEN}/${method}`, body, json: true });\n// Sends to Telegram (token and chat from the n8n environment). Falls back to text if the photo cannot be fetched.\nconst { text, photo, buttons } = $input.first().json;\nif (!$env.TELEGRAM_BOT_TOKEN || !$env.TELEGRAM_CHAT_ID) throw new Error('Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env');\nconst chat_id = $env.TELEGRAM_CHAT_ID;\nlet res;\nif (photo) {\n  try { res = await tg('sendPhoto', { chat_id, photo, caption: text, reply_markup: buttons || undefined }); }\n  catch (err) { res = await tg('sendMessage', { chat_id, text: `${text}\\n\\n(تعذر إرفاق الصورة)`, reply_markup: buttons || undefined, disable_web_page_preview: true }); }\n} else res = await tg('sendMessage', { chat_id, text, reply_markup: buttons || undefined, disable_web_page_preview: true });\nreturn [{ json: { ok: !!res.ok } }];"
+      },
+      "id": "282736f4-f1e9-56e0-a6b7-48622b9ff34d",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "On workflow error": {
+      "main": [
+        [
+          {
+            "node": "Format error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format error": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bahrain",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all"
+  },
+  "tags": []
+}

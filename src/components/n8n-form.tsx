@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type N8n = { enabled: boolean; webhookUrl: string; events: string[]; allowInboundApprovals: boolean; allowInboundGeneration: boolean };
+type N8n = { enabled: boolean; webhookUrl: string; events: string[]; allowInboundApprovals: boolean; allowInboundGeneration: boolean; allowInboundControl: boolean; approvalReminderHours: number };
 
 export function N8nForm({ n8n, events, secret, token, apiBase }: { n8n: N8n; events: Record<string, string>; secret: boolean; token: boolean; apiBase: string }) {
   const router = useRouter();
@@ -33,6 +33,8 @@ export function N8nForm({ n8n, events, secret, token, apiBase }: { n8n: N8n; eve
         </div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.allowInboundGeneration} onChange={(e) => setV({ ...v, allowInboundGeneration: e.target.checked })} /> السماح لـ n8n بطلب تصاميم جديدة (تذهب لطابور الموافقات)</label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.allowInboundApprovals} onChange={(e) => setV({ ...v, allowInboundApprovals: e.target.checked })} /> السماح بالاعتماد/الرفض من n8n (مثل أزرار تيليجرام) — نفس فحوص الجودة والبصمة</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.allowInboundControl} onChange={(e) => setV({ ...v, allowInboundControl: e.target.checked })} /> السماح بإيقاف/استئناف حساب من n8n (إيقاف طارئ من تيليجرام)</label>
+        <div className="flex items-center gap-2 text-sm">تذكير بالتصاميم المنتظرة بعد <input type="number" min={0} max={72} className="input" style={{ width: '5rem' }} value={v.approvalReminderHours} onChange={(e) => setV({ ...v, approvalReminderHours: Number(e.target.value) })} /> ساعات (0 = إيقاف)</div>
         <div className="flex items-center gap-3"><Button>حفظ</Button>{msg && <span className={msg.ok ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>{msg.t}</span>}</div>
       </form>
       <div className="flex flex-wrap items-center gap-2 border-t pt-3">
@@ -43,6 +45,10 @@ export function N8nForm({ n8n, events, secret, token, apiBase }: { n8n: N8n; eve
             catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
           }}>{kind === 'secret' ? `${secret ? 'تجديد' : 'إنشاء'} سر توقيع الأحداث` : `${token ? 'تجديد' : 'إنشاء'} رمز API لـ n8n`}</Button>
         ))}
+        <Button type="button" variant="outline" size="sm" onClick={async () => {
+          try { const r = await apiCall<{ requeued: number; delivered: number; failed: number }>('/api/settings/n8n/redeliver', { body: { allDead: true } }); setMsg({ ok: r.failed === 0, t: `أعيد إرسال ${r.requeued} حدث — وصل ${r.delivered}، فشل ${r.failed}` }); router.refresh(); }
+          catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
+        }}>إعادة إرسال الأحداث الفاشلة</Button>
         <Button type="button" variant="gold" size="sm" onClick={async () => {
           try { const r = await apiCall<{ status: string; httpStatus: number | null; error: string | null }>('/api/settings/n8n/test', { body: {} }); setMsg({ ok: r.status === 'DELIVERED', t: r.status === 'DELIVERED' ? `وصل الاختبار إلى n8n ✓ (HTTP ${r.httpStatus})` : `لم يصل: ${r.error ?? r.httpStatus}` }); router.refresh(); }
           catch (x) { setMsg({ ok: false, t: (x as Error).message }); }

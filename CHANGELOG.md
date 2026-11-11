@@ -1,5 +1,32 @@
 # Changelog
 
+## 8.5.0 — 2026-11-11 (n8n, professional)
+- **Reliability:**
+  - `Idempotency-Key` on POST /generate and /decision: a replay returns the first response, and concurrent duplicates get 409.
+  - 404 from n8n (workflow inactive or starting) is retried instead of being marked dead. This was found in a live n8n test.
+  - Failed events can be resent per event or in bulk from the dashboard.
+  - `GET /deliveries?since=` for catch-up.
+- **Events:**
+  - `ad.rejected`
+  - `approvals.reminder`: hourly, once per design that waited longer than N hours
+  - `daily.digest`: 21:05 Bahrain
+  - `system.alert`: every new warning or error notification is bridged, except codes that have a dedicated event
+- **API:**
+  - `GET /ads` (signed previews)
+  - `GET /ads/{id}`
+  - `POST /accounts/{id}/pause` (off by default, audited as `n8n:<user>`)
+- **Templates** (regenerated from `deploy/n8n/generate_templates.py`):
+  - the events router now de-duplicates by delivery id and formats every event;
+  - one Telegram bot handles both buttons and commands (`/pending`, `/status`, `/report`, `/pause`, `/resume`), restricted to allowed users;
+  - a new error workflow, set as `errorWorkflow` on all the others;
+  - API auth now comes from `.env` (`FC_API_TOKEN`), so no n8n credential is needed for the API.
+- **Operations:**
+  - n8n execution pruning (14 days; failures kept), proxy hops and file-permission hardening in compose;
+  - `backup.sh` includes the n8n volume;
+  - diagnostics shows n8n health (dead or delayed deliveries, last success).
+- Verified live against n8n 2.35.7: the bot commands against the real API, event formatting, de-duplication of a redelivered event.
+- 166 tests passing.
+
 ## 8.4.0 — 2026-11-11 (Gemini Veo AI video for Reels)
 - **Gemini API / Veo connector** (`src/lib/ai/veo.ts`):
   - image-to-video at 9:16, 4/6/8 s, 720p or 1080p;

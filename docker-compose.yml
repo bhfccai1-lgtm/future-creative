@@ -89,9 +89,16 @@ services:
       N8N_PERSONALIZATION_ENABLED: "false"
       NODE_FUNCTION_ALLOW_BUILTIN: crypto
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_PROXY_HOPS: "1" # behind Caddy
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      # keep the n8n database small: failed runs are kept, old executions pruned after 14 days
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "336"
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
       # values used by the templates in deploy/n8n (set them in .env)
       FC_API_BASE: http://web:3000
       FC_WEBHOOK_SECRET: ${FC_WEBHOOK_SECRET:-}
+      FC_API_TOKEN: ${FC_API_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       TELEGRAM_ALLOWED_USER_IDS: ${TELEGRAM_ALLOWED_USER_IDS:-}

@@ -25,9 +25,17 @@
     },
     {
       "parameters": {
+        "method": "GET",
         "url": "={{ $env.FC_API_BASE }}/api/integrations/n8n/diagnostics",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FC_API_TOKEN }}"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "f08135ba-ad85-58f1-a78e-6514cfb112f6",
@@ -37,17 +45,11 @@
       "position": [
         240,
         0
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "",
-          "name": "Future Creative API"
-        }
-      }
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Alert only when something is wrong (WARN/FAIL) — quiet when healthy.\nconst d = $input.first().json;\nconst bad = (d.checks || []).filter((c) => c.status !== 'OK');\nif (d.overall === 'OK' || !bad.length) return [];\nconst text = `🩺 تشخيص النظام: ${d.overall}\\n` + bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}${c.action ? ' → ' + c.action : ''}`).join('\\n');\nreturn [{ json: { text: text.slice(0, 4000), photo: null, buttons: null } }];"
+        "jsCode": "const d = $input.first().json;\nconst bad = (d.checks || []).filter((c) => c.status !== 'OK');\nif (d.overall === 'OK' || !bad.length) return [];\nconst text = `🩺 تشخيص النظام: ${d.overall}\\n` + bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}${c.action ? ' → ' + c.action : ''}`).join('\\n');\nreturn [{ json: { text: text.slice(0, 4000), photo: null, buttons: null } }];"
       },
       "id": "34c5e66b-2767-5573-a9a1-1451a8040836",
       "name": "Only problems",
@@ -60,7 +62,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Sends to Telegram through the Bot API (token and chat come from the n8n environment).\nconst { text, photo, buttons } = $input.first().json;\nconst token = $env.TELEGRAM_BOT_TOKEN, chat = $env.TELEGRAM_CHAT_ID;\nif (!token || !chat) throw new Error('Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env');\nconst method = photo ? 'sendPhoto' : 'sendMessage';\nconst body = photo ? { chat_id: chat, photo, caption: text, reply_markup: buttons || undefined } : { chat_id: chat, text, reply_markup: buttons || undefined, disable_web_page_preview: true };\nconst res = await this.helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${token}/${method}`, body, json: true });\nreturn [{ json: { ok: res.ok, method } }];"
+        "jsCode": "const tg = async (method, body) => this.helpers.httpRequest({ method: 'POST', url: `${$env.TELEGRAM_API_BASE || 'https://api.telegram.org'}/bot${$env.TELEGRAM_BOT_TOKEN}/${method}`, body, json: true });\n// Sends to Telegram (token and chat from the n8n environment). Falls back to text if the photo cannot be fetched.\nconst { text, photo, buttons } = $input.first().json;\nif (!$env.TELEGRAM_BOT_TOKEN || !$env.TELEGRAM_CHAT_ID) throw new Error('Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env');\nconst chat_id = $env.TELEGRAM_CHAT_ID;\nlet res;\nif (photo) {\n  try { res = await tg('sendPhoto', { chat_id, photo, caption: text, reply_markup: buttons || undefined }); }\n  catch (err) { res = await tg('sendMessage', { chat_id, text: `${text}\\n\\n(تعذر إرفاق الصورة)`, reply_markup: buttons || undefined, disable_web_page_preview: true }); }\n} else res = await tg('sendMessage', { chat_id, text, reply_markup: buttons || undefined, disable_web_page_preview: true });\nreturn [{ json: { ok: !!res.ok } }];"
       },
       "id": "282736f4-f1e9-56e0-a6b7-48622b9ff34d",
       "name": "Send to Telegram",
@@ -110,7 +112,10 @@
   "active": false,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Asia/Bahrain"
+    "timezone": "Asia/Bahrain",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "errorWorkflow": "ee8f61980fec7152"
   },
   "tags": []
 }
