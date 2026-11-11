@@ -52,7 +52,7 @@ export function AutomationControls({ s, accounts }: { s: S; accounts: { id: stri
       <div>
         <h3 className="mb-2 font-bold">نمط المجدول (يستيقظ كل 60 دقيقة بتوقيت البحرين)</h3>
         <div className="flex flex-wrap gap-4 text-sm">
-          <label className="flex items-center gap-2"><input type="radio" checked={mode === 'A_PER_ACCOUNT_HOURLY'} onChange={() => setMode('A_PER_ACCOUNT_HOURLY')} /> النمط A — كل حساب مفعّل ينشر حسب فترته الخاصة (افتراضيًا كل ساعة)</label>
+          <label className="flex items-center gap-2"><input type="radio" checked={mode === 'A_PER_ACCOUNT_HOURLY'} onChange={() => setMode('A_PER_ACCOUNT_HOURLY')} /> النمط A — كل حساب مفعّل ينشر حسب فترته الخاصة (افتراضيًا كل 7 ساعات، ضمن نافذة النشر)</label>
           <label className="flex items-center gap-2"><input type="radio" checked={mode === 'B_FIXED_PER_HOUR'} onChange={() => setMode('B_FIXED_PER_HOUR')} /> النمط B — عدد محدد من الإعلانات كل ساعة عبر حسابات مختارة</label>
         </div>
         {mode === 'B_FIXED_PER_HOUR' && (
