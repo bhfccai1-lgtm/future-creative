@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type N8n = { enabled: boolean; webhookUrl: string; events: string[]; allowInboundApprovals: boolean; allowInboundGeneration: boolean; allowInboundControl: boolean; approvalReminderHours: number; telegramChatId: string; telegramAllowedUserIds: string };
+type N8n = { enabled: boolean; webhookUrl: string; events: string[]; allowInboundApprovals: boolean; allowInboundGeneration: boolean; allowInboundControl: boolean; approvalReminderHours: number; telegramChatId: string; telegramAllowedUserIds: string; gdriveFolderId?: string; gsheetId?: string };
 
 function n8nHint(err: string | null, http: number | null) {
   if (http === 404) return 'HTTP 404 — n8n يعمل لكن المسار خطأ أو القالب 01 غير منشور (Publish). صحّح الرابط أو أعد تشغيل bash scripts/n8n-setup.sh';
@@ -71,6 +71,14 @@ export function N8nForm({ n8n, events, secret, token, apiBase, telegram }: { n8n
             {!telegram && <span className="text-xs text-slate-500">احفظ رمز البوت أولًا.</span>}
             {found && <span className="text-xs text-slate-600">{found.hint ?? `محادثات: ${found.chats.map((c) => `${c.name || c.type} (${c.id})`).join('، ')} · مستخدمون: ${found.users.map((u) => `${u.name} (${u.id})`).join('، ')} — اضغط «حفظ»`}</span>}
           </div>
+        </fieldset>
+        <fieldset className="rounded-xl border p-3">
+          <legend className="px-1 text-sm font-extrabold text-navy-800">Google Drive و Sheets (أرشيف المنشورات + جدول الأفكار)</legend>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div><label className="label">رابط مجلد الأرشيف في Drive</label><input className="input ltr" placeholder="https://drive.google.com/drive/folders/…" value={v.gdriveFolderId ?? ''} onChange={(e) => setV({ ...v, gdriveFolderId: e.target.value.trim() })} /></div>
+            <div><label className="label">رابط جدول Google Sheets</label><input className="input ltr" placeholder="https://docs.google.com/spreadsheets/d/…" value={v.gsheetId ?? ''} onChange={(e) => setV({ ...v, gsheetId: e.target.value.trim() })} /></div>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">الجدول يحتاج ورقتين: «published» (الأرشيف) و«ideas» (الأفكار). بعد الحفظ شغّل bash scripts/n8n-setup.sh مرة واحدة، ثم اربط حساب Google داخل محرر n8n.</p>
         </fieldset>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={v.allowInboundControl} onChange={(e) => setV({ ...v, allowInboundControl: e.target.checked })} /> السماح بإيقاف/استئناف حساب من n8n (إيقاف طارئ من تيليجرام)</label>
         <div className="flex items-center gap-2 text-sm">تذكير بالتصاميم المنتظرة بعد <input type="number" min={0} max={72} className="input" style={{ width: '5rem' }} value={v.approvalReminderHours} onChange={(e) => setV({ ...v, approvalReminderHours: Number(e.target.value) })} /> ساعات (0 = إيقاف)</div>

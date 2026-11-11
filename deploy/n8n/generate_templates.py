@@ -214,10 +214,10 @@ w3 = wf('FC — Morning health check', [
 
 w4 = wf('FC — Ideas sheet → designs', [
   node('Every hour','n8n-nodes-base.scheduleTrigger',1.2,[0,0],{'rule':{'interval':[{'field':'hours','hoursInterval':1}]}}),
-  node('Read ideas sheet','n8n-nodes-base.googleSheets',4.5,[240,0],{'documentId':{'__rl':True,'mode':'url','value':''},'sheetName':{'__rl':True,'mode':'name','value':'ideas'},'options':{}},creds={'googleSheetsOAuth2Api':{'id':'','name':'Google Sheets'}}),
+  node('Read ideas sheet','n8n-nodes-base.googleSheets',4.5,[240,0],{'documentId':{'__rl':True,'mode':'id','value':'={{ $env.GSHEET_ID }}'},'sheetName':{'__rl':True,'mode':'name','value':'ideas'},'options':{}},creds={'googleSheetsOAuth2Api':{'id':'','name':'Google Sheets'}}),
   node('New rows only','n8n-nodes-base.code',2,[480,0],{'jsCode':PICK}),
   http_env('Request design',[720,0],'POST','/generate','={{ JSON.stringify($json.request) }}'),
-  node('Mark row queued','n8n-nodes-base.googleSheets',4.5,[960,0],{'operation':'update','documentId':{'__rl':True,'mode':'url','value':''},'sheetName':{'__rl':True,'mode':'name','value':'ideas'},
+  node('Mark row queued','n8n-nodes-base.googleSheets',4.5,[960,0],{'operation':'update','documentId':{'__rl':True,'mode':'id','value':'={{ $env.GSHEET_ID }}'},'sheetName':{'__rl':True,'mode':'name','value':'ideas'},
      'columns':{'mappingMode':'defineBelow','value':{'row_number':"={{ $('New rows only').item.json.row_number }}",'status':'=queued {{ $json.jobId }}'},'matchingColumns':['row_number']},'options':{}},creds={'googleSheetsOAuth2Api':{'id':'','name':'Google Sheets'}}),
 ], chain('Every hour','Read ideas sheet','New rows only','Request design','Mark row queued'))
 
@@ -261,7 +261,7 @@ w6 = wf(ARCHIVE_NAME, [
   node('Fetch published files','n8n-nodes-base.code',2,[240,0],{'jsCode':FETCH}),
   node('Upload to Google Drive','n8n-nodes-base.googleDrive',3,[480,0],{'name':'={{ $json.fileName }}','driveId':{'__rl':True,'mode':'list','value':'My Drive'},'folderId':{'__rl':True,'mode':'id','value':'={{ $env.GDRIVE_FOLDER_ID }}'},'options':{}},creds={'googleDriveOAuth2Api':{'id':'','name':'Google Drive'}}),
   node('Log row','n8n-nodes-base.code',2,[720,0],{'jsCode':ROW}),
-  node('Append to Google Sheet','n8n-nodes-base.googleSheets',4.5,[960,0],{'operation':'append','documentId':{'__rl':True,'mode':'url','value':''},'sheetName':{'__rl':True,'mode':'name','value':'published'},'columns':{'mappingMode':'autoMapInputData','value':{}},'options':{}},creds={'googleSheetsOAuth2Api':{'id':'','name':'Google Sheets'}}),
+  node('Append to Google Sheet','n8n-nodes-base.googleSheets',4.5,[960,0],{'operation':'append','documentId':{'__rl':True,'mode':'id','value':'={{ $env.GSHEET_ID }}'},'sheetName':{'__rl':True,'mode':'name','value':'published'},'columns':{'mappingMode':'autoMapInputData','value':{}},'options':{}},creds={'googleSheetsOAuth2Api':{'id':'','name':'Google Sheets'}}),
 ], chain('From events router','Fetch published files','Upload to Google Drive','Log row','Append to Google Sheet'))
 
 # events router: also hand verified publications to the archive sub-workflow (fire-and-forget)

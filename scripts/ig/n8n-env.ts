@@ -34,6 +34,8 @@ async function main() {
     ['TELEGRAM_BOT_TOKEN', (await getSecret('TELEGRAM_BOT_TOKEN')) ?? ''],
     ['TELEGRAM_CHAT_ID', s.n8n.telegramChatId],
     ['TELEGRAM_ALLOWED_USER_IDS', s.n8n.telegramAllowedUserIds],
+    ['GDRIVE_FOLDER_ID', s.n8n.gdriveFolderId],
+    ['GSHEET_ID', s.n8n.gsheetId],
   ];
   for (const [k, v] of lines) if (/^[\w:.,-]*$/.test(v)) console.log(`${k}=${v}`); // only safe characters ever reach .env
 }

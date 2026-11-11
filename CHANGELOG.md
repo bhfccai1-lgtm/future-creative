@@ -1,5 +1,10 @@
 # Changelog
 
+## 8.14.1 — 2026-11-12 (Google Drive and Sheets from the dashboard)
+- The n8n settings take the **Drive archive folder link** and the **Google Sheets link**, stored as their IDs.
+- `scripts/n8n-setup.sh` writes them to `.env` as `GDRIVE_FOLDER_ID` and `GSHEET_ID`, so nothing has to be typed in the console.
+- Templates 04 (ideas) and 06 (archive) read the sheet from `$env.GSHEET_ID`, so the sheet no longer has to be picked by hand in n8n.
+
 ## 8.14.0 — 2026-11-12 (occasions calendar)
 - New page **«تقويم المناسبات»** (occasions calendar).
   - It shows the Bahraini and Gulf occasions of the next 5 months, each with its peak date, a countdown, its publishing window and suggested categories.

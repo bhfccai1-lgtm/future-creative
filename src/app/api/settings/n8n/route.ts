@@ -16,6 +16,9 @@ const Body = z.object({
   approvalReminderHours: z.number().int().min(0).max(72).default(6),
   telegramChatId: z.string().regex(/^-?\d*$/).max(30).default(''),
   telegramAllowedUserIds: z.string().regex(/^[\d,\s]*$/).max(300).default(''),
+  /** a Drive folder / Google Sheets link or bare id — stored as the id */
+  gdriveFolderId: z.string().max(300).default('').transform((v) => (v.match(/folders\/([\w-]{10,})/)?.[1] ?? v.trim())).refine((v) => v === '' || /^[\w-]{10,}$/.test(v), 'رابط مجلد Drive غير صحيح'),
+  gsheetId: z.string().max(300).default('').transform((v) => (v.match(/spreadsheets\/d\/([\w-]{10,})/)?.[1] ?? v.trim())).refine((v) => v === '' || /^[\w-]{10,}$/.test(v), 'رابط Google Sheets غير صحيح'),
   telegramBotToken: z.string().max(200).optional(), // write-only; '__delete__' removes
 });
 const status = async () => ({ secret: (await secretStatus('N8N_WEBHOOK_SECRET')).configured, token: (await secretStatus('N8N_API_TOKEN')).configured, telegram: (await secretStatus('TELEGRAM_BOT_TOKEN')).configured });

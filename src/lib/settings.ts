@@ -97,6 +97,9 @@ export const SettingsSchema = z.object({
     /** Telegram destination for the n8n templates (bot token is a secret; ids are not). */
     telegramChatId: z.string().default(''),
     telegramAllowedUserIds: z.string().default(''),
+    /** Google Drive archive folder id and Google Sheets id for n8n templates 06 (archive) and 04 (ideas). Not secrets. */
+    gdriveFolderId: z.string().default(''),
+    gsheetId: z.string().default(''),
   }).default({}),
   metricool: z.object({
     userId: z.string().default(''),

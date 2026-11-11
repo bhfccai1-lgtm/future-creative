@@ -26,8 +26,8 @@
       "parameters": {
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": ""
+          "mode": "id",
+          "value": "={{ $env.GSHEET_ID }}"
         },
         "sheetName": {
           "__rl": true,
@@ -100,8 +100,8 @@
         "operation": "update",
         "documentId": {
           "__rl": true,
-          "mode": "url",
-          "value": ""
+          "mode": "id",
+          "value": "={{ $env.GSHEET_ID }}"
         },
         "sheetName": {
           "__rl": true,
