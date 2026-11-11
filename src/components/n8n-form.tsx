@@ -60,9 +60,14 @@ export function N8nForm({ n8n, events, secret, token, apiBase, telegram }: { n8n
               setMsg(null);
               try {
                 const r = await apiCall<NonNullable<typeof found>>('/api/settings/n8n/telegram-detect', { body: {} }); setFound(r);
-                if (r.chats[0]) setV((x) => ({ ...x, telegramChatId: x.telegramChatId || r.chats[r.chats.length - 1].id, telegramAllowedUserIds: x.telegramAllowedUserIds || r.users.map((u) => u.id).join(',') }));
+                if (r.chats[0]) setV((x) => ({ ...x, telegramChatId: r.chats[r.chats.length - 1].id, telegramAllowedUserIds: [...new Set([...x.telegramAllowedUserIds.split(',').map((t) => t.trim()).filter(Boolean), ...r.users.map((u) => u.id)])].join(',') }));
               } catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
             }}>اكتشاف تلقائي</Button>
+            <Button type="button" size="sm" variant="outline" disabled={!telegram} onClick={async () => {
+              setMsg(null);
+              try { await apiCall('/api/settings/n8n/telegram-test', { body: {} }); setMsg({ ok: true, t: 'وصلت رسالة الاختبار المباشر إلى تيليجرام ✓ — إن لم تصل رسائل n8n بعدها، أعد تشغيل: bash scripts/n8n-setup.sh ليأخذ n8n الأرقام المحفوظة.' }); }
+              catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
+            }}>اختبار تيليجرام مباشر</Button>
             {!telegram && <span className="text-xs text-slate-500">احفظ رمز البوت أولًا.</span>}
             {found && <span className="text-xs text-slate-600">{found.hint ?? `محادثات: ${found.chats.map((c) => `${c.name || c.type} (${c.id})`).join('، ')} · مستخدمون: ${found.users.map((u) => `${u.name} (${u.id})`).join('، ')} — اضغط «حفظ»`}</span>}
           </div>
