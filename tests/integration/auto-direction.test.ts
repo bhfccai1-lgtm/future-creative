@@ -43,4 +43,23 @@ describe('«تلقائي» format / design style / design method', () => {
     }
     await expect(generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { categoryId: 'missing' } })).rejects.toThrow(/فئة الحملة/);
   });
+  it('art direction rotates composition, lighting and lens across consecutive designs', async () => {
+    const { accounts } = await seedBase();
+    const arts: { composition: string; lighting: string; lens: string }[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED' });
+      arts.push(((await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { direction: { art: typeof arts[number] } }).direction.art);
+    }
+    expect(new Set(arts.map((a) => a.composition)).size).toBe(4);
+    expect(new Set(arts.map((a) => a.lighting)).size).toBe(4);
+    expect(new Set(arts.map((a) => `${a.composition}|${a.lens}`)).size).toBe(4);
+    for (const a of arts) if (a.composition === 'flat_lay') expect(a.lens).toBe('overhead');
+  });
+  it('a user-chosen composition is kept', async () => {
+    const { accounts } = await seedBase();
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { designType: 'macro_detail' } });
+    const art = ((await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { direction: { art: { composition: string; lens: string } } }).direction.art;
+    expect(art.composition).toBe('macro_detail');
+    expect(['85mm', '50mm']).toContain(art.lens);
+  });
 });

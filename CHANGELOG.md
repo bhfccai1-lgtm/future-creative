@@ -1,5 +1,19 @@
 # Changelog
 
+## 8.11.0 — 2026-11-11 (varied professional designs, campaign category, «تلقائي»)
+- **Art-direction engine:** every design gets a professional recipe: composition × lighting × lens, plus the poster layout for full-AI posters.
+  - The recipe rotates per account (least recently used of the last 12), so consecutive designs differ in angle, light, setting and layout.
+  - The recipe is recorded on the ad.
+- Full-AI posters now use **6 layout families**: centred badge, split, oversized type, framed card, diagonal, editorial.
+  - Their decoration follows the chosen colour theme instead of always navy.
+- The brief no longer forces the same table and bokeh. It asks for a specific setting and props each time, with stricter product-accuracy wording.
+- **Campaigns:**
+  - «تلقائي» (auto) for format (growth mix), idea, design style (rotation) and design method;
+  - a **product category** selector (auto = all categories).
+- **Catalogue:** bundled ready-made CSV (`deploy/catalog`): 93 products, services and bundles in 18 categories, importable with one tap.
+- **Telegram:** direct test button with clear reasons. Auto-detect now replaces a wrong chat id.
+- **n8n:** a wrong webhook path is flagged.
+
 ## 8.10.0 — 2026-11-11 (large catalogue: 500+ products and services)
 - **Bulk import** from CSV (Excel «CSV UTF-8») or a shared Google Sheets link:
   - Only the **category + name** are required. Arabic and English headers are both accepted (الفئة/الاسم/الاسم بالإنجليزية…, or category/titleAr/titleEn…). Lists are separated with `|`.

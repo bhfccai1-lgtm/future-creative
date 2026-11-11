@@ -29,7 +29,7 @@ import { signedMediaUrl } from '../storage';
 import { storage } from '../storage';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
-import { DESIGN_STYLES, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
+import { DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 
 export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null; revisionOf?: string }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
@@ -120,12 +120,17 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   }
   const d = p.direction ?? {};
   const style = styleOf(d.designStyle);
-  const dtype = designTypeOf(d.designType);
+  let dtype = designTypeOf(d.designType);
   const creativeStyle = style?.prompt ?? s.ai.creativeStyle;
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
   const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
   const aiFull = d.renderMode === 'ai_full' && (format === 'IMAGE_STORY' || format === 'REEL_VIDEO');
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
+  // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
+  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined });
+  if (!dtype) dtype = designTypeOf(art.composition);
+  const lightingP = LIGHTING.find((x) => x.value === art.lighting)?.prompt, lensP = LENSES.find((x) => x.value === art.lens)?.prompt;
+  p = { ...p, direction: { ...(p.direction ?? {}), art } };
   // Up-front budget check for the WHOLE advertisement (incl. extra pro-reel scenes), so a partial spend never happens near the cap.
   if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s, format) + (sceneCount - 1) * estimateImageCost(s, imgQuality));
 
@@ -178,8 +183,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     await assertBudget(s, estimateImageCost(s, imgQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt })
-        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle);
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: THEME_DECOR[style?.theme ?? 'navy_gold'], lighting: lightingP, lens: lensP })
+        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP });
       const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}` }));
       if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
       return img;
@@ -379,4 +384,22 @@ export function pickLeastRecent(options: string[], recent: (string | null)[]) {
     if (i > bestIdx) { bestIdx = i; best = o; }
   }
   return best;
+}
+
+/** Least-recently-used art recipe for this account (last 12 designs). A user-chosen composition is kept. */
+export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean }): Promise<Art> {
+  const recent = await prisma.advertisement.findMany({ where: { accountId }, orderBy: { createdAt: 'desc' }, take: 12, select: { options: true } });
+  const prev = recent.map((r) => ((r.options ?? {}) as { direction?: { art?: Art } | null }).direction?.art ?? {});
+  const comps = o.aiFull ? DESIGN_TYPES.map((x) => x.value) : LAYERED_COMPOSITIONS;
+  const lights = LIGHTING.filter((x) => o.light === undefined || x.light === o.light).map((x) => x.value);
+  let lenses = LENSES.map((x) => x.value) as string[];
+  const composition = o.composition ?? pickLeastRecent(comps, prev.map((a) => a.composition ?? null));
+  if (composition === 'flat_lay') lenses = ['overhead'];
+  else lenses = lenses.filter((l) => l !== 'overhead' && (composition !== 'macro_detail' || l === '85mm' || l === '50mm'));
+  return {
+    composition,
+    lighting: pickLeastRecent(lights, prev.map((a) => a.lighting ?? null)),
+    lens: pickLeastRecent(lenses, prev.map((a) => a.lens ?? null)),
+    ...(o.aiFull ? { poster: pickLeastRecent(POSTER_LAYOUTS.map((x) => x.value), prev.map((a) => a.poster ?? null)) } : {}),
+  };
 }

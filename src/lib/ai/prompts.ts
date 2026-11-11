@@ -10,7 +10,7 @@ export function briefSystemPrompt() {
     '- Never mention prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "cheapest", "#1") or any capability not stated in the product data.',
     '- Never include phone numbers, URLs or the company logo in any text: they are added by the layout engine.',
     '- The design is a premium Gulf-style advertising poster: a short kicker (headline, 2-4 words), the product keyword in a big gold badge (badge, 1-2 words), and one short line below (supportingCopy, 2-6 words). Example: headline "طباعة جميع أنواع", badge "الأكواب", supportingCopy "بتصاميمك الخاصة".',
-    '- The sceneDescription is a photo brief for an image model. ONE hero printing product, LARGE (about half the frame height), sharp, fully visible and centred, showing a beautiful printed ILLUSTRATION on its surface that fits the occasion and audience (artwork, motifs, characters or patterns — never letters). Add 2-4 tasteful props that tell the story (e.g. graduation cap, flowers, gift ribbon), warm bright commercial studio lighting, rich colours, shallow depth of field with golden bokeh. Specify materials, camera angle and lens.',
+    '- The sceneDescription is a photo brief for an image model. ONE hero printing product, LARGE (about half the frame height), sharp and fully visible, showing a beautiful printed ILLUSTRATION on its surface that fits the occasion and audience (artwork, motifs, characters or patterns — never letters). Choose a specific, believable SETTING and 2-4 tasteful props that tell the story (e.g. graduation cap, flowers, gift ribbon). Describe materials and surfaces precisely. Vary the setting, props and colour story from concept to concept — never default to the same table and bokeh. If `direction.art` is given, follow its composition, lighting and camera exactly.',
     '- The sceneDescription must explicitly say: no text, letters, numbers, logos, brand names or watermarks anywhere.',
     '- Proofread carefully; correct spelling and grammar are mandatory.',
     '- The concept must be clearly different from every idea in the avoid list (different angle, setting or audience — not a paraphrase).',
@@ -60,15 +60,18 @@ export function ideasSystemPrompt() {
   ].join('\n');
 }
 
-export function scenePrompt(sceneDescription: string, style: string) {
+export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string }) {
   return [
     sceneDescription,
     `Art direction: ${style}`,
+    art?.lighting ? `Lighting: ${art.lighting}.` : '',
+    art?.lens ? `Camera: ${art.lens}.` : '',
+    'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
     'Vertical 9:16 premium advertising product photograph, photorealistic, ultra sharp focus on the product, high dynamic range, rich true-to-life colours, professional retouching.',
     'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 30% and 72% of the height); the upper 28% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 25% is the table/surface in soft focus.',
     'The printed surface of the product shows a vivid, high-quality printed illustration or pattern that suits the occasion — artwork only.',
     'ABSOLUTELY NO text, letters, numbers, words, logos, brand marks, signatures or watermarks anywhere in the image, including on the product.',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
@@ -81,18 +84,21 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
+  layout?: string; decor?: string; lighting?: string; lens?: string;
 }) {
   const S = SCRIPT_NAME[p.lang];
   return [
     'Design a complete, finished, world-class vertical advertising poster for a premium print shop in Bahrain (portrait 2:3). Luxury Gulf commercial style, professional graphic design, social-media ready.',
     p.customPrompt?.trim() ? `Client brief (follow it closely): ${p.customPrompt.trim()}` : `Art direction: ${p.style}`,
+    p.layout ? `Layout: ${p.layout}.` : '',
     `Hero product photo: ${p.sceneDescription}`,
+    p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
     `Typography — render EXACTLY these words, perfectly spelled ${S} text${p.lang === 'ar' ? ' (correct right-to-left Arabic letter joining, bold modern Arabic display font)' : ''}, nothing else:`,
     `  • kicker line near the top: "${p.headline}"`,
     p.badge ? `  • big hero keyword inside a glossy 3D gold pill badge with small sparkle rays: "${p.badge}"` : '',
     p.support ? `  • tagline under the badge: "${p.support}"` : '',
     p.features.length ? `  • a row of ${p.features.length} elegant gold line icons in circles with these labels under them: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
-    'Decoration: elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background, high-end retouching.',
+    `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',
     '  • The TOP 14% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).',
     '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately below the poster).',

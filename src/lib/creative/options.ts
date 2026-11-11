@@ -75,6 +75,45 @@ export const DESIGN_STYLES: (Opt & { theme: 'navy_gold' | 'black_gold' | 'white_
   { value: 'vibrant', ar: 'ألوان زاهية وحيوية', en: 'Vibrant colourful', theme: 'navy_gold', prompt: 'vibrant colourful energetic photography, saturated complementary colours, playful props' },
 ];
 
+/**
+ * Art-direction engine: every design gets a professional photo/poster recipe (composition × lighting × lens × poster layout),
+ * rotated per account (least-recently-used) so consecutive designs never look alike. Recorded on the ad for reports.
+ */
+export interface Art { composition?: string; lighting?: string; lens?: string; poster?: string }
+export const LIGHTING = [
+  { value: 'softbox', light: true, prompt: 'large softbox studio lighting, gentle wrap-around shadows, clean highlights' },
+  { value: 'golden_hour', light: true, prompt: 'warm golden-hour window light with long soft shadows' },
+  { value: 'daylight', light: true, prompt: 'bright natural daylight, airy and fresh, soft bounce fill' },
+  { value: 'rim', light: false, prompt: 'low-key dramatic lighting with a crisp rim light outlining the product' },
+  { value: 'spotlight', light: false, prompt: 'single theatrical spotlight on the product with elegant dark falloff' },
+  { value: 'ambient_evening', light: false, prompt: 'evening ambience, soft warm practical lights glowing in the blurred background' },
+] as const;
+export const LENSES = [
+  { value: '85mm', prompt: '85mm lens at f/2.8, eye level, creamy background blur' },
+  { value: 'low_hero', prompt: 'low three-quarter hero angle, 70mm lens, the product feels premium and monumental' },
+  { value: '50mm', prompt: '50mm lens, natural perspective, slightly above eye level' },
+  { value: '35mm_context', prompt: '35mm lens, slightly wider, real environment visible around the product' },
+  { value: 'overhead', prompt: 'overhead 90-degree top-down camera, perfectly aligned' },
+] as const;
+export const POSTER_LAYOUTS = [
+  { value: 'center_badge', prompt: 'symmetrical luxury layout: kicker line on top, glossy gold badge, the hero product centred below' },
+  { value: 'split', prompt: 'asymmetric split layout: the product large on one side, the typography stacked on the other side with generous margins' },
+  { value: 'type_top', prompt: 'bold oversized kicker typography in the upper third, the product large in the lower half on an elegant pedestal' },
+  { value: 'framed_card', prompt: 'refined thin gold frame card layout, the product inside the frame and the typography above it' },
+  { value: 'diagonal', prompt: 'dynamic diagonal composition, a flowing ribbon leads the eye from the headline to the product' },
+  { value: 'editorial', prompt: 'minimal magazine-editorial layout with lots of negative space, refined typography and the gold badge' },
+] as const;
+/** Poster decoration that matches the colour theme (instead of always navy). */
+export const THEME_DECOR: Record<string, string> = {
+  navy_gold: 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background',
+  black_gold: 'black marble and brushed gold foil accents, warm gold rim highlights, deep black background',
+  white_minimal: 'clean white and soft warm-grey background, subtle natural shadows, thin gold accents',
+  emerald_gold: 'deep emerald velvet textures with fine gold filigree accents',
+  festive_red: 'festive deep red and gold ornaments, soft sparkles and warm glowing lights',
+};
+/** Compositions safe for the layered templates (text zones top and bottom). */
+export const LAYERED_COMPOSITIONS = ['hero_product', 'in_context', 'flat_lay', 'lifestyle'];
+
 export const CHANNELS = [
   { value: 'instagram', ar: 'إنستغرام', video: false },
   { value: 'facebook', ar: 'فيسبوك', video: false },
@@ -121,6 +160,8 @@ export interface Direction {
   renderMode?: 'layered' | 'ai_full' | 'auto'; customPrompt?: string; autoFormat?: boolean;
   /** campaign: auto-pick products only from this category */
   categoryId?: string;
+  /** resolved art recipe (system-picked) */
+  art?: Art;
   channels?: Channel[];
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
   /** Reel engine for this design (default from AI settings): ffmpeg = motion from stills, veo = Gemini AI video. */
@@ -143,6 +184,11 @@ export function directionForPrompt(d?: Direction) {
   const dt = find(DESIGN_TYPES, d.designType); if (dt) out.designType = dt.prompt;
   const ds = find(DESIGN_STYLES, d.designStyle); if (ds) out.visualStyle = ds.prompt;
   if (d.idea?.trim()) out.userIdea = d.idea.trim().slice(0, 500);
+  if (d.art) {
+    const c = find(DESIGN_TYPES, d.art.composition), l = LIGHTING.find((x) => x.value === d.art!.lighting), n = LENSES.find((x) => x.value === d.art!.lens);
+    const parts = [c && `composition: ${c.prompt}`, l && `lighting: ${l.prompt}`, n && `camera: ${n.prompt}`].filter(Boolean);
+    if (parts.length) out.art = parts.join('; ');
+  }
   return Object.keys(out).length ? out : undefined;
 }
 
