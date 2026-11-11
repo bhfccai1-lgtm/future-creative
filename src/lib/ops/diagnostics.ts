@@ -43,6 +43,18 @@ export async function runDiagnostics(now = new Date()): Promise<{ at: string; ov
     catch (e) { add({ id: 'logo', label: 'الشعار الرسمي المعتمد', status: 'FAIL', detail: (e as Error).message, action: 'إعدادات الهوية ← ارفع الشعار الأصلي واعتمده' }); }
   }
 
+  try {
+    const { statfs } = await import('node:fs/promises');
+    const { existingDir } = await import('./advisor');
+    const st = await statfs(await existingDir(env().LOCAL_STORAGE_DIR));
+    const freeGb = (Number(st.bavail) * Number(st.bsize)) / 1e9, freePct = (Number(st.bavail) / Number(st.blocks)) * 100;
+    add({ id: 'disk', label: 'مساحة القرص (الوسائط)', status: freePct < 5 ? 'FAIL' : freePct < 10 || freeGb < 5 ? 'WARN' : 'OK', detail: `المتاح ${freeGb.toFixed(1)} GB (${freePct.toFixed(0)}%)`, action: freePct < 10 ? 'احذف النسخ الاحتياطية القديمة وصور Docker غير المستخدمة' : undefined, command: freePct < 10 ? 'docker system prune -f && ls -lh backups/' : undefined });
+  } catch { /* storage not local */ }
+  try {
+    const [{ size }] = await prisma.$queryRaw<{ size: bigint }[]>`SELECT pg_database_size(current_database()) AS size`;
+    const mb = Number(size) / 1e6;
+    add({ id: 'db_size', label: 'حجم قاعدة البيانات', status: mb > 20_000 ? 'WARN' : 'OK', detail: `${mb >= 1000 ? (mb / 1000).toFixed(1) + ' GB' : mb.toFixed(0) + ' MB'}` });
+  } catch { /* ignore */ }
   try { const r = await run(env().FFMPEG_PATH, ['-hide_banner', '-version'], 10_000); add({ id: 'ffmpeg', label: 'FFmpeg (إنتاج الريلز)', status: r.code === 0 ? 'OK' : 'FAIL', detail: r.stdout.split('\n')[0].slice(0, 80) }); }
   catch { add({ id: 'ffmpeg', label: 'FFmpeg (إنتاج الريلز)', status: 'FAIL', detail: 'غير مثبت', action: 'ثبّت ffmpeg في صورة Docker' }); }
 

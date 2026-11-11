@@ -162,10 +162,14 @@ switch (cmd) {
 }
 return [{ json: { command: cmd, by: who } }];"""
 
-HEALTH = r"""const d = $input.first().json;
+HEALTH = r"""// Alert only when something needs attention: failing checks or critical/high advisor recommendations.
+const d = $input.first().json;
 const bad = (d.checks || []).filter((c) => c.status !== 'OK');
-if (d.overall === 'OK' || !bad.length) return [];
-const text = `🩺 تشخيص النظام: ${d.overall}\n` + bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}${c.action ? ' → ' + c.action : ''}`).join('\n');
+const top = ((d.advisor && d.advisor.advice) || []).filter((a) => a.severity === 'critical' || a.severity === 'high').slice(0, 4);
+if (!bad.length && !top.length) return [];
+let text = `🩺 تشخيص النظام: ${d.overall}` + (d.advisor ? ` · درجة الصحة ${d.advisor.score}/100 (${d.advisor.grade})` : '') + '\n';
+text += bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}`).join('\n');
+if (top.length) text += '\n\n🧭 أولويات اليوم:\n' + top.map((a, i) => `${i + 1}. ${a.title}\n   ${a.evidence}\n   ← ${a.steps[0]}`).join('\n');
 return [{ json: { text: text.slice(0, 4000), photo: null, buttons: null } }];"""
 
 PICK = r"""// Google Sheet columns: handle | idea | format | occasion | contentType | status

@@ -49,7 +49,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const d = $input.first().json;\nconst bad = (d.checks || []).filter((c) => c.status !== 'OK');\nif (d.overall === 'OK' || !bad.length) return [];\nconst text = `🩺 تشخيص النظام: ${d.overall}\\n` + bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}${c.action ? ' → ' + c.action : ''}`).join('\\n');\nreturn [{ json: { text: text.slice(0, 4000), photo: null, buttons: null } }];"
+        "jsCode": "// Alert only when something needs attention: failing checks or critical/high advisor recommendations.\nconst d = $input.first().json;\nconst bad = (d.checks || []).filter((c) => c.status !== 'OK');\nconst top = ((d.advisor && d.advisor.advice) || []).filter((a) => a.severity === 'critical' || a.severity === 'high').slice(0, 4);\nif (!bad.length && !top.length) return [];\nlet text = `🩺 تشخيص النظام: ${d.overall}` + (d.advisor ? ` · درجة الصحة ${d.advisor.score}/100 (${d.advisor.grade})` : '') + '\\n';\ntext += bad.map((c) => `${c.status === 'FAIL' ? '🔴' : '🟡'} ${c.label}: ${c.detail}`).join('\\n');\nif (top.length) text += '\\n\\n🧭 أولويات اليوم:\\n' + top.map((a, i) => `${i + 1}. ${a.title}\\n   ${a.evidence}\\n   ← ${a.steps[0]}`).join('\\n');\nreturn [{ json: { text: text.slice(0, 4000), photo: null, buttons: null } }];"
       },
       "id": "34c5e66b-2767-5573-a9a1-1451a8040836",
       "name": "Only problems",

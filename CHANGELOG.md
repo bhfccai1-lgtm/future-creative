@@ -1,5 +1,32 @@
 # Changelog
 
+## 8.6.0 — 2026-11-11 (professional diagnostics and advisor)
+- **Advisor engine** (`src/lib/ops/advisor.ts`):
+  - deterministic rules over real data, with no AI cost and no invented numbers;
+  - every recommendation has a severity, a category, the evidence (real counts), why it matters, ordered fix steps and a link to the screen where it is fixed.
+- **Rules:**
+  - Reliability: worker down; disk space (nearest existing folder).
+  - Publishing: stalled despite automation; UNKNOWN jobs; failure rate with the top 3 error reasons; kill switch.
+  - Content: recurring QC failures mapped to concrete fixes for 16 checks; dry-run; approval backlog; low approval rate; product repetition per account.
+  - Growth: story-only accounts; missing metrics; weak Reel hooks (skip rate); zero saves and shares; statistically confirmed patterns; small samples.
+  - Cost: month-end budget projection; cost per verified post.
+  - Integrations: Veo selected without a key; broken connections; failed Metricool check; dead n8n deliveries.
+  - Security: HTTP in production; many admins; autonomous publishing.
+- **Health score** 0–100 with grades A–F (critical −25, high −10, medium −4, low −1) and a daily snapshot (06:50) for a 60-day trend.
+- **Performance indicators:**
+  - designs, QC pass rate, approval rate and publish success rate;
+  - verified posts, pending approvals and average engagement;
+  - cost per design, cost per verified post, and month spend vs projection.
+  - A KPI with no data shows "—", never 0 or 100.
+- **New technical checks:** disk free space and database size.
+- **Redesigned diagnostics page:**
+  - score gauge, severity counts and trend line;
+  - KPI tiles;
+  - recommendations grouped by category, with high and critical ones open by default;
+  - the technical checks table.
+- **Elsewhere:** `/api/diagnostics` and the n8n diagnostics endpoint include `advisor`. The n8n morning check adds "today's priorities". `ig-health` / `cli health` print the score and recommendations.
+- 172 tests passing.
+
 ## 8.5.0 — 2026-11-11 (n8n, professional)
 - **Reliability:**
   - `Idempotency-Key` on POST /generate and /decision: a replay returns the first response, and concurrent duplicates get 409.

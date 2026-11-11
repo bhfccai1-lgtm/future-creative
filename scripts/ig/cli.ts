@@ -24,6 +24,7 @@ import { prisma } from '../../src/lib/db';
 import { closeRedis } from '../../src/lib/queue/connection';
 import { closeQueues, enq } from '../../src/lib/queue/queues';
 import { runDiagnostics, sweepStuckJobs } from '../../src/lib/ops/diagnostics';
+import { runAdvisor, SEVERITY_AR, CATEGORY_AR } from '../../src/lib/ops/advisor';
 import { buildReport } from '../../src/lib/analytics/report';
 import { analyse, loadSamples, labelOf } from '../../src/lib/analytics/insights';
 import { resolveUnknownJob } from '../../src/lib/publishing/reconcile';
@@ -79,6 +80,9 @@ async function main() {
       const d = await runDiagnostics();
       out(`overall: ${d.overall}  (${fmtLocal(new Date(d.at))} Asia/Bahrain)`);
       for (const c of d.checks) out(`${c.status.padEnd(4)}  ${c.label} — ${c.detail}${c.action ? `  → ${c.action}` : ''}${c.command ? `  $ ${c.command}` : ''}`);
+      const adv = await runAdvisor();
+      out(`\nhealth score: ${adv.score}/100 (${adv.grade}) — ${adv.advice.length} recommendations`);
+      for (const a of adv.advice.filter((x) => x.severity !== 'info')) out(`[${SEVERITY_AR[a.severity]}] ${CATEGORY_AR[a.category]}: ${a.title}\n   evidence: ${a.evidence}\n   steps: ${a.steps.join(' → ')}`);
       process.exitCode = d.overall === 'FAIL' ? 1 : 0; return;
     }
     case 'accounts': {

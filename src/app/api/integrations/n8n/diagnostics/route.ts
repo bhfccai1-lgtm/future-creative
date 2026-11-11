@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { integrationApi } from '@/lib/integrations/auth';
 import { runDiagnostics } from '@/lib/ops/diagnostics';
+import { runAdvisor } from '@/lib/ops/advisor';
 export const dynamic = 'force-dynamic';
 /** GET — system diagnostics (no secret values) for monitoring workflows. */
-export const GET = integrationApi(async () => NextResponse.json(await runDiagnostics()));
+export const GET = integrationApi(async () => NextResponse.json({ ...(await runDiagnostics()), advisor: await runAdvisor() }));
