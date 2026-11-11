@@ -5,7 +5,8 @@ import { Card, PageHeader, Badge } from '@/components/ui';
 import { StateBadge, FORMAT_AR, LANG_AR } from '@/components/state-badge';
 import { ActionButton } from '@/components/action-button';
 import { fmtLocal } from '@/lib/time';
-import type { QcReport } from '@/lib/qc';
+import { qcVerdict, QC_VERDICT_AR, type QcReport } from '@/lib/qc';
+import Link from 'next/link';
 import { directionSummaryAr, type Direction } from '@/lib/creative/options';
 
 export default async function AdPage({ params }: { params: Promise<{ id: string }> }) {
@@ -17,12 +18,20 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
   const video = ad.media.find((m) => m.role === 'VIDEO');
   const qc = ad.qcReport as unknown as QcReport | null;
   const canDecide = ad.state === 'QUALITY_REVIEW';
+  const verdict = qcVerdict(qc);
+  const opts = (ad.options ?? {}) as { revisionOf?: string | null };
+  const [parent, children] = await Promise.all([
+    opts.revisionOf ? prisma.advertisement.findUnique({ where: { id: opts.revisionOf }, select: { id: true, headline: true, state: true, createdAt: true } }) : null,
+    prisma.advertisement.findMany({ where: { options: { path: ['revisionOf'], equals: id } }, select: { id: true, headline: true, state: true, createdAt: true }, orderBy: { createdAt: 'asc' } }),
+  ]);
   return (
     <>
       <PageHeader title={ad.headline ?? ad.product.titleAr} subtitle={`${ad.account.name} · ${ad.product.titleAr} · ${FORMAT_AR[ad.format]} · ${LANG_AR[ad.language]}`}
         actions={<>
           <StateBadge state={ad.state} />
           {ad.dryRun && <Badge tone="amber">معاينة تجريبية — غير قابلة للنشر</Badge>}
+          <Badge tone={verdict === 'PASS' ? 'green' : verdict === 'NEEDS_REVIEW' ? 'blue' : verdict === 'NEEDS_ASSET' ? 'amber' : 'red'}>QC: {QC_VERDICT_AR[verdict]}</Badge>
+          {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/request-changes`} label="طلب تعديل" variant="outline" prompt="ما التعديل المطلوب؟ (سيُنشأ تصميم جديد بنفس الإعدادات مع ملاحظتك)" promptKey="note" />}
           {canDecide && ad.qcPassed && <ActionButton url={`/api/ads/${id}/approve`} label="اعتماد" variant="success" />}
           {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && qc?.publishable && <ActionButton url={`/api/ads/${id}/publish-now`} label="نشر الآن" variant="gold" confirm="سيتم إرسال الإعلان إلى المزود لأقرب موعد آمن. متابعة؟" />}
           {['QUALITY_REVIEW', 'APPROVED', 'QUEUED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/reject`} label="رفض" variant="danger" prompt="سبب الرفض (اختياري)" promptKey="note" />}
@@ -57,6 +66,15 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
                 <div><dt className="text-slate-500">المزوّد</dt><dd>{ad.brief.provider}</dd></div>
                 <div><dt className="text-slate-500">بصمة الشعار</dt><dd className="ltr text-xs">{ad.logoSha256?.slice(0, 24)}…</dd></div>
               </dl>
+            </Card>
+          )}
+          {(parent || children.length > 0) && (
+            <Card title="سجل النسخ والتعديلات">
+              <ul className="space-y-1 text-sm">
+                {parent && <li>⬅ النسخة السابقة: <Link className="text-navy-700 underline" href={`/ads/${parent.id}`}>{parent.headline ?? parent.id}</Link> <StateBadge state={parent.state} /> <span className="text-xs text-slate-500">{fmtLocal(parent.createdAt)}</span></li>}
+                <li className="font-bold">● هذه النسخة <StateBadge state={ad.state} /></li>
+                {children.map((c) => <li key={c.id}>➡ نسخة معدّلة: <Link className="text-navy-700 underline" href={`/ads/${c.id}`}>{c.headline ?? c.id}</Link> <StateBadge state={c.state} /> <span className="text-xs text-slate-500">{fmtLocal(c.createdAt)}</span></li>)}
+              </ul>
             </Card>
           )}
           <Card title="محاولات النشر">

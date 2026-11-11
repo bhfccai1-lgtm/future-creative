@@ -24,7 +24,7 @@ import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
 import { designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 
-export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null }
+export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null; revisionOf?: string }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
 
 async function withAiJob<T>(adId: string, kind: string, provider: AiProvider, model: string, fn: (jobId: string) => Promise<T>): Promise<T> {
@@ -96,7 +96,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     data: {
       accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId,
       channels: d.channels ?? [],
-      options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? 'none') : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null },
+      options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? 'none') : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
     },
   });
   await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.start', targetType: 'advertisement', targetId: ad.id, details: { product: product.slug, format, provider: provider.name, language: lang, direction: (p.direction ?? null) as Prisma.InputJsonValue } });

@@ -3,8 +3,11 @@ import { audit, notify } from '../audit';
 import { getAdapter } from './registry';
 import { buildPublishRequest } from './publisher';
 import { enq } from '../queue/queues';
+import { getSettings } from '../settings';
+import { AppError } from '../errors';
 
 export const MAX_PUBLISH_ATTEMPTS = 3;
+export const ABSENT_MSG = 'absent at provider — awaiting operator decision';
 const ABSENCE_GRACE_MS = 5 * 60_000;
 
 /**
@@ -34,6 +37,17 @@ export async function reconcileJob(jobId: string): Promise<string> {
     if (Date.now() - lastAt.getTime() < ABSENCE_GRACE_MS) {
       await prisma.publicationJob.update({ where: { id: job.id }, data: { nextCheckAt: new Date(lastAt.getTime() + ABSENCE_GRACE_MS + 1000) } });
       return 'WAIT_GRACE';
+    }
+    if (!(await getSettings()).publishing.autoResubmitAfterAbsence) {
+      // V8 default: an UNKNOWN submission is never re-sent automatically. Absence is recorded and an
+      // operator decides (resubmitUnknownJob) — a search miss must not create a duplicate post.
+      if (job.lastError !== ABSENT_MSG) {
+        await prisma.publicationJob.update({ where: { id: job.id }, data: { lastError: ABSENT_MSG, nextCheckAt: new Date(Date.now() + 30 * 60_000) } });
+        await notify('WARNING', 'PUBLISH_NEEDS_OPERATOR', 'نشر غير مؤكد بحاجة إلى قرارك', 'لم يُعثر على المنشور لدى Metricool. تحقق في Metricool ثم اضغط «إعادة الإرسال» أو «إلغاء» من صفحة المنشورات.', job.accountId);
+      } else {
+        await prisma.publicationJob.update({ where: { id: job.id }, data: { nextCheckAt: new Date(Date.now() + 30 * 60_000) } });
+      }
+      return 'NEEDS_OPERATOR';
     }
     if (job.attemptCount >= MAX_PUBLISH_ATTEMPTS) {
       await prisma.$transaction([
@@ -89,6 +103,41 @@ export async function reconcileJob(jobId: string): Promise<string> {
     return 'PENDING';
   }
   return 'NOOP';
+}
+
+/**
+ * Operator decision for an UNKNOWN job. A fresh provider lookup runs first: if the post exists it is
+ * adopted (no resubmission); only proven absence re-queues. `cancel` closes the job without sending.
+ */
+export async function resolveUnknownJob(jobId: string, action: 'resubmit' | 'cancel', actor: string) {
+  const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId } });
+  if (job.state !== 'UNKNOWN') throw new AppError('BAD_STATE', `المهمة ليست في حالة غير مؤكدة (${job.state}).`, 409);
+  if (action === 'cancel') {
+    await prisma.$transaction([
+      prisma.publicationJob.update({ where: { id: jobId }, data: { state: 'FAILED', lastError: `cancelled by ${actor}`, nextCheckAt: null } }),
+      prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'FAILED', errorMessage: 'ألغاه المشغّل بعد نتيجة غير مؤكدة' } }),
+    ]);
+    await audit({ actorLabel: actor, action: 'publication.operator_cancel', targetType: 'publication_job', targetId: jobId });
+    return 'CANCELLED';
+  }
+  const adapter = await getAdapter(job.provider);
+  const found = await adapter.findExisting(await buildPublishRequest(jobId)); // throws → caller sees the error, nothing re-sent
+  if (found) {
+    await prisma.$transaction([
+      prisma.publicationJob.update({ where: { id: jobId }, data: { state: 'SCHEDULED', lastError: null, nextCheckAt: new Date(Math.max(Date.now(), job.scheduledFor.getTime()) + 3 * 60_000) } }),
+      prisma.publicationResult.upsert({ where: { jobId }, create: { jobId, providerPostId: found.providerPostId, providerStatus: 'PENDING' }, update: { providerPostId: found.providerPostId } }),
+      prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'SCHEDULED' } }),
+    ]);
+    await audit({ actorLabel: actor, action: 'publication.operator_found', targetType: 'publication_job', targetId: jobId, details: { providerPostId: found.providerPostId } });
+    return 'FOUND';
+  }
+  if (job.attemptCount >= MAX_PUBLISH_ATTEMPTS) throw new AppError('MAX_ATTEMPTS', `تجاوزت المهمة ${MAX_PUBLISH_ATTEMPTS} محاولات — أعد توليد الإعلان بدلًا من ذلك.`, 409);
+  const moved = await prisma.publicationJob.updateMany({ where: { id: jobId, state: 'UNKNOWN' }, data: { state: 'QUEUED', nextCheckAt: null, lastError: null } });
+  if (!moved.count) throw new AppError('CONFLICT', 'تغيّرت حالة المهمة.', 409);
+  await prisma.advertisement.update({ where: { id: job.advertisementId }, data: { state: 'QUEUED' } });
+  await audit({ actorLabel: actor, action: 'publication.operator_resubmit', targetType: 'publication_job', targetId: jobId });
+  await enq.publish(jobId);
+  return 'REQUEUED';
 }
 
 /** Periodic sweep: due reconciliations + re-enqueue QUEUED jobs whose retry time arrived. */

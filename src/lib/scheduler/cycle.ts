@@ -21,7 +21,7 @@ export async function runSchedulerCycle(now = new Date()): Promise<CycleSummary>
   if (s.killSwitch) return { ...base, skipped: 'KILL_SWITCH' };
   if (!s.autoPublishGlobal) return { ...base, skipped: 'AUTOPUBLISH_OFF' };
 
-  let accounts = await prisma.socialAccount.findMany({ where: { autoPublishEnabled: true }, include: { connection: true }, orderBy: [{ lastPublishedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }] });
+  let accounts = await prisma.socialAccount.findMany({ where: { autoPublishEnabled: true, paused: false }, include: { connection: true }, orderBy: [{ lastPublishedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }] });
   if (s.schedulerMode === 'B_FIXED_PER_HOUR') accounts = accounts.filter((a) => s.modeBAccountIds.includes(a.id));
 
   const eligible: SocialAccount[] = [];

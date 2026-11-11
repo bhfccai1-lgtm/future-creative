@@ -7,6 +7,14 @@ import { assertTransition } from './state-machine';
 import { enq } from '../queue/queues';
 import type { QcReport } from '../qc';
 
+/** SHA-256 recorded at render time for the asset that will actually be published (video for Reels). */
+export async function primaryMediaSha(adId: string) {
+  const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId }, include: { media: true } });
+  const main = ad.media.find((m) => m.role === (ad.format === 'REEL_VIDEO' ? 'VIDEO' : 'FINAL'));
+  if (!main) throw new AppError('NEEDS_ASSET', 'ملف التصميم النهائي غير موجود — لا يمكن الاعتماد.', 409);
+  return main.sha256;
+}
+
 /** Optimistic state change: only succeeds if the row is still in `from`. Returns false if someone else moved it. */
 export async function moveAd(adId: string, from: AdState, to: AdState, data: Record<string, unknown> = {}) {
   assertTransition(from, to);
@@ -18,8 +26,11 @@ export async function approveAdvertisement(adId: string, user: { id: string; ema
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId } });
   if (ad.state !== 'QUALITY_REVIEW') throw new AppError('BAD_STATE', `لا يمكن اعتماد إعلان في الحالة ${ad.state}.`, 409);
   if (!ad.qcPassed) throw new AppError('QC_FAILED', 'لا يمكن اعتماد إعلان لم يجتز فحص الجودة. أعد التوليد أو ارفضه.', 409);
+  const mediaSha256 = await primaryMediaSha(adId);
   if (!(await moveAd(adId, 'QUALITY_REVIEW', 'APPROVED'))) throw new AppError('CONFLICT', 'تغيرت حالة الإعلان، حدّث الصفحة.', 409);
-  await prisma.approvalRequest.updateMany({ where: { advertisementId: adId, status: 'PENDING' }, data: { status: 'APPROVED', decidedById: user.id, decidedAt: new Date(), note } });
+  // approval is bound to the exact bytes the human saw (SHA-256); publisher refuses anything else
+  const bound = await prisma.approvalRequest.updateMany({ where: { advertisementId: adId, status: 'PENDING' }, data: { status: 'APPROVED', decidedById: user.id, decidedAt: new Date(), note, mediaSha256 } });
+  if (!bound.count) await prisma.approvalRequest.create({ data: { advertisementId: adId, reason: 'DIRECT_APPROVAL', status: 'APPROVED', decidedById: user.id, decidedAt: new Date(), note, mediaSha256 } });
   await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.approve', targetType: 'advertisement', targetId: adId, details: { note: note ?? null } });
   // If the ad came from a scheduler slot that is still in the future, keep that slot.
   const sched = ad.scheduleId ? await prisma.publicationSchedule.findUnique({ where: { id: ad.scheduleId } }) : null;
@@ -29,7 +40,7 @@ export async function approveAdvertisement(adId: string, user: { id: string; ema
     try { return await createPublicationJob(adId, sched.slotAt, user.email); }
     catch (e) {
       // approved, but the account is not connected / design not publishable (e.g. dry-run): keep it approved
-      if (e instanceof AppError && ['NOT_CONNECTED', 'DRY_RUN', 'QC_FAILED'].includes(e.code)) return null;
+      if (e instanceof AppError && ['NOT_CONNECTED', 'DRY_RUN', 'QC_FAILED', 'ACCOUNT_PAUSED'].includes(e.code)) return null;
       throw e;
     }
   }
@@ -54,8 +65,10 @@ export async function autoApproveAndQueue(adId: string) {
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId }, include: { schedule: true } });
   const qc = ad.qcReport as unknown as QcReport | null;
   if (!qc?.publishable || qc.requiresHuman || ad.dryRun) return null; // AI-drawn text always needs a human
+  const mediaSha256 = await primaryMediaSha(adId);
   if (!(await moveAd(adId, 'QUALITY_REVIEW', 'APPROVED'))) return null;
-  await audit({ actorLabel: 'scheduler', action: 'ad.auto_approve', targetType: 'advertisement', targetId: adId });
+  await prisma.approvalRequest.create({ data: { advertisementId: adId, reason: 'AUTONOMOUS', status: 'APPROVED', decidedAt: new Date(), note: 'scheduler auto-approval (account authorised)', mediaSha256 } });
+  await audit({ actorLabel: 'scheduler', action: 'ad.auto_approve', targetType: 'advertisement', targetId: adId, details: { mediaSha256 } });
   const when = ad.schedule?.slotAt ?? new Date();
   return createPublicationJob(adId, when, 'scheduler');
 }
@@ -71,6 +84,7 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
   const qc = ad.qcReport as unknown as QcReport | null;
   if (ad.dryRun) throw new AppError('DRY_RUN', 'هذا الإعلان معاينة تجريبية (Dry-run) ولا يمكن نشره. فعّل OpenAI وأعد التوليد.', 409);
   if (!qc?.publishable) throw new AppError('QC_FAILED', 'الإعلان غير صالح للنشر وفق فحص الجودة.', 409);
+  if (ad.account.paused) throw new AppError('ACCOUNT_PAUSED', `الحساب موقوف مؤقتًا${ad.account.pausedReason ? ` (${ad.account.pausedReason})` : ''} — ألغِ الإيقاف أولًا.`, 409);
   const conn = ad.account.connection;
   if (!conn || conn.status !== 'CONNECTED' || !conn.canPublish || !conn.providerBrandId) {
     throw new AppError('NOT_CONNECTED', 'الحساب غير مرتبط بمزود نشر مؤكد أو لا يملك صلاحية النشر.', 412);

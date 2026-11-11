@@ -83,3 +83,21 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
   const designBlockers = blockers.filter((c) => c.id !== 'real_ai_media');
   return { passed: designBlockers.length === 0, publishable: blockers.length === 0, checks, checkedAt: new Date().toISOString(), requiresHuman: !!q.aiText && q.aiTextNeedsHuman !== false };
 }
+
+/**
+ * V8 explicit QC verdict.
+ *  PASS         — every blocker passed and nothing needs a human
+ *  NEEDS_REVIEW — publishable, but a WARNING / AI-drawn text needs a human look
+ *  NEEDS_ASSET  — blocked only because a required asset is missing or invalid (logo, media, real AI output)
+ *  REJECTED     — content/brand/duplicate violation; regenerate instead of approving
+ */
+export type QcVerdict = 'PASS' | 'NEEDS_REVIEW' | 'NEEDS_ASSET' | 'REJECTED';
+const ASSET_CHECKS = new Set(['logo_present', 'logo_fingerprint', 'image_dimensions', 'image_format', 'video_valid', 'real_ai_media']);
+export function qcVerdict(r: QcReport | null | undefined): QcVerdict {
+  if (!r) return 'NEEDS_ASSET';
+  const failed = r.checks.filter((c) => c.severity === 'BLOCKER' && !c.passed);
+  if (failed.length) return failed.every((c) => ASSET_CHECKS.has(c.id)) ? 'NEEDS_ASSET' : 'REJECTED';
+  if (r.requiresHuman || r.checks.some((c) => c.severity === 'WARNING' && !c.passed)) return 'NEEDS_REVIEW';
+  return 'PASS';
+}
+export const QC_VERDICT_AR: Record<QcVerdict, string> = { PASS: 'ناجح', NEEDS_REVIEW: 'يحتاج مراجعة', NEEDS_ASSET: 'ينقصه ملف/أصل', REJECTED: 'مرفوض' };

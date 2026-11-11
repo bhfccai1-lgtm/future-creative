@@ -139,3 +139,45 @@ Screenshots: `docs/evidence/01-dashboard.jpg` … `06-library.jpg`. Design previ
 * Live OpenAI and Metricool calls (no credentials).
 * **Docker image build:** `docker compose config` validated. `docker build` reached `npm ci`, which failed inside the build container because this sandbox's egress proxy isn't available to Docker builds. This is an environment limitation, not a Dockerfile error, but the image has therefore **not** been built and run here. Build it on the target server (`docker compose up -d --build`).
 * HTTPS through Caddy with a real domain, and the backup/restore scripts.
+
+## V8 (2026-11-11): actually executed
+- `npx tsc --noEmit`: no errors. `npx next lint`: ✔ No ESLint warnings or errors. `npx next build`: ✓ Compiled successfully.
+- `npx vitest run`: **15 files, 129 tests passed** (71 unit + 58 integration) against PostgreSQL 16 and Redis.
+- New tests:
+  - `tests/integration/publishing.test.ts`
+    - UNKNOWN → NEEDS_OPERATOR with no automatic resend;
+    - operator resubmit, plus adoption when the post is found;
+    - cancel;
+    - the legacy opt-in;
+    - media SHA-256 binding (tampered file never sent);
+    - account pause holds and refuses;
+    - stuck lease → UNKNOWN.
+  - `tests/integration/scheduler.test.ts`
+    - paused accounts are not planned;
+    - the 7-hour default interval.
+  - `tests/integration/analytics.test.ts`
+    - URL match, unique time match, ambiguous match skipped;
+    - manual entries never overwritten;
+    - verified-only report with the small-sample warning.
+  - `tests/unit/v8-analytics-qc.test.ts`
+    - Student-t and Welch reference values;
+    - CONFIRMED vs TREND logic;
+    - tolerant metrics parser;
+    - no score without reach;
+    - QC verdicts;
+    - log redaction.
+- HTTP smoke test against `next start` (test database):
+  - login with CSRF;
+  - `/reports`, `/diagnostics`, `/posts` and `/accounts` return 200;
+  - `/api/diagnostics` and `/api/reports` return JSON;
+  - pause/resume returns 200;
+  - resolving a missing job returns 404.
+  - Screenshots of the reports and diagnostics pages were reviewed (RTL layout).
+- Operator CLI run against the test database:
+  - `health`, `accounts`, `experiments`, `recover list`, `report week`, `preflight` (correctly BLOCKED: media missing in the temporary test storage), `probe` (correctly "no MP4 — still image").
+  - `generate` without `--confirm` was refused.
+- **Not executed:**
+  - a live Metricool analytics call;
+  - a live publish;
+  - the production Docker build of V8;
+  - the deployment on Hetzner.

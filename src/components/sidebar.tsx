@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Repeat, LayoutDashboard, Users, PlusCircle, Sparkles, Package, Images, CalendarClock, CheckSquare, CalendarDays, History, BarChart3, AlertTriangle, BadgeCheck, Bot, PlugZap, LogOut } from 'lucide-react';
+import { Repeat, LayoutDashboard, Users, PlusCircle, Sparkles, Package, Images, CalendarClock, CheckSquare, CalendarDays, History, BarChart3, AlertTriangle, BadgeCheck, Bot, PlugZap, LogOut, FileBarChart, Stethoscope } from 'lucide-react';
 import { cn } from './ui';
 import { apiCall } from '@/lib/client/api';
 
@@ -9,7 +9,7 @@ const NAV = [
   ['/', 'لوحة التحكم', LayoutDashboard], ['/accounts', 'الحسابات الاجتماعية', Users], ['/create', 'إنشاء تصميم جديد', PlusCircle],
   ['/ai-designer', 'مصمم الإعلانات AI', Sparkles], ['/products', 'المنتجات والخدمات', Package], ['/library', 'مكتبة التصاميم', Images],
   ['/campaigns', 'الحملات المتكررة', Repeat], ['/schedule', 'جدول النشر الآلي', CalendarClock], ['/approvals', 'طابور الموافقات', CheckSquare], ['/calendar', 'التقويم', CalendarDays],
-  ['/posts', 'سجل المنشورات', History], ['/analytics', 'تحليلات الأداء', BarChart3], ['/alerts', 'الأخطاء والتنبيهات', AlertTriangle],
+  ['/posts', 'سجل المنشورات', History], ['/analytics', 'تحليلات الأداء', BarChart3], ['/reports', 'التقارير والتجارب', FileBarChart], ['/alerts', 'الأخطاء والتنبيهات', AlertTriangle], ['/diagnostics', 'تشخيص النظام', Stethoscope],
   ['/settings/brand', 'إعدادات الهوية', BadgeCheck], ['/settings/ai', 'إعدادات الذكاء الاصطناعي', Bot], ['/settings/integrations', 'إعدادات الربط', PlugZap],
 ] as const;
 

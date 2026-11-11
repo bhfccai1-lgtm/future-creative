@@ -10,7 +10,7 @@ type Account = {
   publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number;
 };
 
-const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 60, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 12, maxDailyAds: 24 };
+const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 12, maxDailyAds: 4 };
 
 export function AccountForm({ account, products }: { account?: Account; products: Product[] }) {
   const router = useRouter();

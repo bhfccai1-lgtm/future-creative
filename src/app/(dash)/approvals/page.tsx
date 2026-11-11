@@ -4,7 +4,7 @@ import { requirePageUser } from '@/lib/auth/server';
 import { Card, PageHeader, Badge, Empty } from '@/components/ui';
 import { ActionButton } from '@/components/action-button';
 import { fmtLocal } from '@/lib/time';
-import type { QcReport } from '@/lib/qc';
+import { qcVerdict, QC_VERDICT_AR, type QcReport } from '@/lib/qc';
 
 const REASON = { MANUAL_MODE: 'الوضع اليدوي', ASSISTED_MODE: 'الوضع المساعد', QC_FAILED: 'فشل فحص الجودة' } as Record<string, string>;
 
@@ -24,7 +24,7 @@ export default async function ApprovalsPage() {
           return (
             <Card key={r.id} className="p-3">
               <Link href={`/ads/${ad.id}`}>{img && <img className="mb-3 aspect-[9/16] w-full rounded-lg object-cover" src={`/api/media/${img.storageKey}`} alt="" />}</Link>
-              <div className="mb-1 flex flex-wrap gap-1"><Badge tone={r.reason === 'QC_FAILED' ? 'red' : 'blue'}>{REASON[r.reason] ?? r.reason}</Badge>{ad.dryRun && <Badge tone="amber">تجريبي</Badge>}{ad.format === 'REEL_VIDEO' && <Badge tone="navy">Reel</Badge>}</div>
+              <div className="mb-1 flex flex-wrap gap-1"><Badge tone={r.reason === 'QC_FAILED' ? 'red' : 'blue'}>{REASON[r.reason] ?? r.reason}</Badge>{ad.dryRun && <Badge tone="amber">تجريبي</Badge>}{ad.format === 'REEL_VIDEO' && <Badge tone="navy">Reel</Badge>}<Badge tone={qcVerdict(qc) === 'PASS' ? 'green' : qcVerdict(qc) === 'REJECTED' ? 'red' : 'amber'}>QC: {QC_VERDICT_AR[qcVerdict(qc)]}</Badge></div>
               <div className="font-bold">{ad.headline}</div>
               <div className="text-xs text-slate-500">{ad.account.name} · {ad.product.titleAr} · {fmtLocal(r.createdAt)}</div>
               <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-xs text-slate-600">{ad.caption}</p>

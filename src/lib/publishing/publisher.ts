@@ -12,8 +12,10 @@ import { enq } from '../queue/queues';
 import type { SocialPlatform } from '@prisma/client';
 import { fitCaption } from './caption';
 import { getSettings } from '../settings';
+import { sha256 } from '../crypto';
+import { log } from '../ops/log';
 
-export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
+export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'ACCOUNT_PAUSED' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
 
 async function fail(jobId: string, adId: string, reason: string, accountId: string) {
   await prisma.$transaction([
@@ -93,6 +95,12 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
   const pre = await prisma.publicationJob.findUnique({ where: { id: jobId } });
   if (!pre || pre.state !== 'QUEUED') return 'SKIPPED_LOCKED';
   if (pre.nextCheckAt && pre.nextCheckAt.getTime() > Date.now()) return 'NOT_DUE';
+  const acc = await prisma.socialAccount.findUnique({ where: { id: pre.accountId }, select: { paused: true } });
+  if (acc?.paused) {
+    // hold — nothing is sent while the account is paused; re-checked by the reconcile sweep
+    await prisma.publicationJob.update({ where: { id: jobId }, data: { nextCheckAt: new Date(Date.now() + 15 * 60_000), lastError: 'account paused' } });
+    return 'ACCOUNT_PAUSED';
+  }
 
   const claim = await prisma.publicationJob.updateMany({
     where: { id: jobId, state: 'QUEUED' },
@@ -121,6 +129,11 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
   if (bad.length) { await fail(job.id, ad.id, `قنوات نشر غير متاحة: ${bad.join('؛ ')}`, job.accountId); return 'FAILED'; }
   const main = ad.media.find((m) => m.role === (ad.format === 'REEL_VIDEO' ? 'VIDEO' : 'FINAL'));
   if (!main || !(await storage().exists(main.storageKey))) { await fail(job.id, ad.id, 'ملف الوسائط النهائي غير متاح.', job.accountId); return 'FAILED'; }
+  // Integrity: the bytes on disk must be exactly the bytes rendered AND the bytes approved.
+  const actual = sha256(await storage().get(main.storageKey));
+  if (actual !== main.sha256) { await fail(job.id, ad.id, 'ملف التصميم تغيّر بعد إنشائه (بصمة SHA-256 غير مطابقة) — أعد التوليد والاعتماد.', job.accountId); return 'FAILED'; }
+  const approval = await prisma.approvalRequest.findFirst({ where: { advertisementId: ad.id, status: 'APPROVED' }, orderBy: { decidedAt: 'desc' } });
+  if (approval?.mediaSha256 && approval.mediaSha256 !== actual) { await fail(job.id, ad.id, 'الملف الحالي ليس الملف الذي تم اعتماده — أعد الاعتماد.', job.accountId); return 'FAILED'; }
   if (job.scheduledFor.getTime() < Date.now() + 2 * 60_000) {
     const newTime = new Date(Date.now() + s.scheduleLeadMinutes * 60_000);
     await prisma.publicationJob.update({ where: { id: job.id }, data: { scheduledFor: newTime } });
@@ -140,6 +153,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
   const attempt = await prisma.publicationAttempt.create({ data: { jobId: job.id, attemptNo, requestSummary: { networks: req.networks, format: req.format, publishAt: req.publishAt.toISOString(), brandId: req.providerBrandId, media: req.mediaUrls.map((u) => u.split('?')[0]) } } });
 
   let outcome;
+  log.info('publish.submit', { correlationId: job.idempotencyKey, jobId: job.id, accountId: job.accountId, attemptNo, networks: req.networks });
   try { outcome = await (await getAdapter(job.provider)).submit(req); }
   catch (e) { outcome = { kind: 'UNCERTAIN' as const, message: (e as Error).message }; }
 
@@ -148,6 +162,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
     data: { outcome: outcome.kind, httpStatus: 'httpStatus' in outcome ? outcome.httpStatus ?? null : null, finishedAt: new Date(), responseSummary: (('raw' in outcome ? outcome.raw : null) ?? null) as Prisma.InputJsonValue, error: 'message' in outcome ? outcome.message : null },
   });
 
+  log.info('publish.outcome', { correlationId: job.idempotencyKey, jobId: job.id, outcome: outcome.kind, httpStatus: 'httpStatus' in outcome ? outcome.httpStatus : undefined });
   switch (outcome.kind) {
     case 'ACCEPTED':
       await prisma.$transaction([

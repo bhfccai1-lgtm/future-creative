@@ -20,14 +20,21 @@ import { notify } from '../lib/audit';
 import { env } from '../lib/env';
 import { TZ } from '../lib/time';
 import type { MediaFormat } from '@prisma/client';
+import { importMetrics } from '../lib/analytics/import';
+import { sweepStuckJobs, HEARTBEAT_KEY } from '../lib/ops/diagnostics';
+import { redis } from '../lib/queue/connection';
 
 const workerId = `${os.hostname()}-${process.pid}`;
-const log = (...a: unknown[]) => console.log(new Date().toISOString(), '[worker]', ...a);
+const log = (...a: unknown[]) => console.log(JSON.stringify({ ts: new Date().toISOString(), level: 'info', event: 'worker', msg: a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ').slice(0, 1000) }));
 
 async function main() {
   env(); // fail fast on bad configuration
   log('starting', workerId);
   log('recovery', await recoverAfterRestart());
+
+  // liveness heartbeat for diagnostics (/api/diagnostics, /ig-health)
+  const beat = () => redis().set(HEARTBEAT_KEY, String(Date.now()), 'EX', 600).catch(() => undefined);
+  await beat(); setInterval(beat, 60_000).unref();
 
   const sched = queue(QUEUE.scheduler);
   // Repeatable jobs (idempotent upsert): hourly cycle at minute 0 Bahrain time; reconcile every 5 minutes; nightly maintenance.
@@ -35,6 +42,7 @@ async function main() {
   await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
   await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
+  await sched.upsertJobScheduler('analytics', { pattern: '15 5,17 * * *', tz: TZ }, { name: 'analytics' }); // read-only metrics import twice a day
 
   const workers = [
     new Worker(QUEUE.scheduler, async (job: Job) => {
@@ -43,9 +51,11 @@ async function main() {
         const health = await getAdapter('metricool').then(verifyConnections).catch((e) => ({ error: (e as Error).message }));
         return { health, cycle: await runSchedulerCycle() };
       }
-      if (job.name === 'reconcile') return reconcileSweep();
+      if (job.name === 'reconcile') return { stuck: await sweepStuckJobs(), ...(await reconcileSweep()) };
+      if (job.name === 'analytics') return importMetrics(await getAdapter('metricool'));
       if (job.name === 'campaigns') return runCampaignCycle();
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };
+      return undefined;
     }, { connection: newRedisConnection(), concurrency: 1 }),
     new Worker(QUEUE.generate, async (job: Job<GenerateJobData>) => {
       try {

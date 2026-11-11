@@ -5,7 +5,7 @@ import { setAiProviderOverride } from '@/lib/ai';
 import { setPublishingAdapterOverride } from '@/lib/publishing/registry';
 import { approveAdvertisement, createPublicationJob, publishNow, rejectAdvertisement } from '@/lib/publishing/jobs';
 import { processPublishJob } from '@/lib/publishing/publisher';
-import { reconcileJob } from '@/lib/publishing/reconcile';
+import { reconcileJob, resolveUnknownJob } from '@/lib/publishing/reconcile';
 import { recoverAfterRestart } from '@/lib/ops/recovery';
 import { updateSettings } from '@/lib/settings';
 import { KillSwitchError } from '@/lib/errors';
@@ -194,17 +194,96 @@ describe('unknown publication states and reconciliation', () => {
     expect(j.result?.providerPostId).toBe('found-77');
   });
 
-  it('absent at provider: waits for the grace period, then re-queues (bounded)', async () => {
+  it('absent at provider: waits for grace, then STOPS for an operator (no automatic resubmission)', async () => {
     const { accounts } = await setup();
     const job = await publishNow((await readyAd(accounts[0].id)).id, admin);
     adapter.outcomes.push({ kind: 'UNCERTAIN', message: 'ECONNRESET' });
     await processPublishJob(job.id, 'w');
     expect(await reconcileJob(job.id)).toBe('WAIT_GRACE');
     await prisma.publicationAttempt.updateMany({ data: { startedAt: new Date(Date.now() - 10 * 60_000) } });
-    expect(await reconcileJob(job.id)).toBe('REQUEUED');
-    expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: job.id } })).state).toBe('QUEUED');
+    expect(await reconcileJob(job.id)).toBe('NEEDS_OPERATOR');
+    expect(await reconcileJob(job.id)).toBe('NEEDS_OPERATOR');
+    expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: job.id } })).state).toBe('UNKNOWN');
+    expect(await prisma.notification.count({ where: { code: 'PUBLISH_NEEDS_OPERATOR' } })).toBe(1);
+    expect(adapter.submits).toHaveLength(1);
+    // operator decides: a fresh lookup runs first; proven absence → re-queued → sent once more
+    expect(await resolveUnknownJob(job.id, 'resubmit', 'op@test.bh')).toBe('REQUEUED');
     expect(await processPublishJob(job.id, 'w')).toBe('SCHEDULED');
     expect(adapter.submits).toHaveLength(2);
+    expect(await prisma.auditLog.count({ where: { action: 'publication.operator_resubmit' } })).toBe(1);
+  });
+
+  it('operator resubmit adopts the post if the provider has it (no duplicate); cancel closes without sending', async () => {
+    const { accounts } = await setup();
+    const j1 = await publishNow((await readyAd(accounts[0].id)).id, admin);
+    adapter.outcomes.push({ kind: 'UNCERTAIN', message: 'timeout' });
+    await processPublishJob(j1.id, 'w');
+    adapter.existing = { providerPostId: 'late-1' };
+    expect(await resolveUnknownJob(j1.id, 'resubmit', 'op')).toBe('FOUND');
+    expect(adapter.submits).toHaveLength(1);
+    adapter.existing = null;
+    const j2 = await publishNow((await readyAd(accounts[1].id)).id, admin);
+    adapter.outcomes.push({ kind: 'UNCERTAIN', message: 'timeout' });
+    await processPublishJob(j2.id, 'w');
+    expect(await resolveUnknownJob(j2.id, 'cancel', 'op')).toBe('CANCELLED');
+    expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: j2.id } })).state).toBe('FAILED');
+    await expect(resolveUnknownJob(j2.id, 'resubmit', 'op')).rejects.toThrow();
+    expect(adapter.submits).toHaveLength(2);
+  });
+
+  it('legacy behaviour is available only when explicitly enabled', async () => {
+    const { accounts } = await setup();
+    await updateSettings((s) => ({ ...s, publishing: { autoResubmitAfterAbsence: true } }));
+    const job = await publishNow((await readyAd(accounts[0].id)).id, admin);
+    adapter.outcomes.push({ kind: 'UNCERTAIN', message: 'x' });
+    await processPublishJob(job.id, 'w');
+    await prisma.publicationAttempt.updateMany({ data: { startedAt: new Date(Date.now() - 10 * 60_000) } });
+    expect(await reconcileJob(job.id)).toBe('REQUEUED');
+  });
+});
+
+describe('V8 integrity and per-account pause', () => {
+  it('approval is bound to the media SHA-256; a file modified after approval is never sent', async () => {
+    const { accounts } = await setup();
+    const ad = await readyAd(accounts[0].id);
+    await approveAdvertisement(ad.id, admin);
+    const appr = await prisma.approvalRequest.findFirstOrThrow({ where: { advertisementId: ad.id, status: 'APPROVED' } });
+    const final = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: ad.id, role: 'FINAL' } });
+    expect(appr.mediaSha256).toBe(final.sha256);
+    const job = await createPublicationJob(ad.id, new Date(), 't');
+    const { storage } = await import('@/lib/storage');
+    await storage().put(final.storageKey, Buffer.concat([await storage().get(final.storageKey), Buffer.from('tamper')]), 'image/jpeg');
+    expect(await processPublishJob(job.id, 'w')).toBe('FAILED');
+    expect(adapter.submits).toHaveLength(0);
+    expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: job.id } })).lastError).toMatch(/SHA-256/);
+  });
+
+  it('paused account: queued jobs are held (nothing sent), new jobs refused; resume releases them', async () => {
+    const { accounts } = await setup();
+    const ad = await readyAd(accounts[0].id);
+    const job = await publishNow(ad.id, admin);
+    await prisma.socialAccount.update({ where: { id: accounts[0].id }, data: { paused: true, pausedReason: 'test' } });
+    expect(await processPublishJob(job.id, 'w')).toBe('ACCOUNT_PAUSED');
+    expect(adapter.submits).toHaveLength(0);
+    expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: job.id } })).state).toBe('QUEUED');
+    const ad2 = await readyAd(accounts[0].id);
+    await approveAdvertisement(ad2.id, admin);
+    await expect(createPublicationJob(ad2.id, new Date(), 't')).rejects.toThrow(/موقوف/);
+    await prisma.socialAccount.update({ where: { id: accounts[0].id }, data: { paused: false } });
+    await prisma.publicationJob.update({ where: { id: job.id }, data: { nextCheckAt: null } });
+    expect(await processPublishJob(job.id, 'w')).toBe('SCHEDULED');
+    expect(adapter.submits).toHaveLength(1);
+  });
+
+  it('stuck submission lease → UNKNOWN (reconcile), never resent blindly', async () => {
+    const { sweepStuckJobs } = await import('@/lib/ops/diagnostics');
+    const { accounts } = await setup();
+    const job = await publishNow((await readyAd(accounts[0].id)).id, admin);
+    await prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'PUBLISHING', lockedBy: 'dead', lockedAt: new Date(Date.now() - 20 * 60_000) } });
+    expect(await sweepStuckJobs()).toBe(1);
+    expect((await prisma.publicationJob.findUniqueOrThrow({ where: { id: job.id } })).state).toBe('UNKNOWN');
+    expect(await processPublishJob(job.id, 'w')).toBe('SKIPPED_LOCKED');
+    expect(adapter.submits).toHaveLength(0);
   });
 });
 

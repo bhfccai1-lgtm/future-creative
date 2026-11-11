@@ -27,6 +27,9 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
       <PageHeader title={a.name} subtitle={`${PLATFORM_AR[a.platform]} · ${a.handle ? '@' + a.handle : 'بدون معرّف'}`}
         actions={<>
           <ConnBadge status={c?.status} />
+          {a.paused
+            ? <><Badge tone="red">⏸ موقوف{a.pausedReason ? `: ${a.pausedReason}` : ''}</Badge><ActionButton url={`/api/accounts/${id}/pause`} body={{ paused: false }} label="استئناف الحساب" variant="success" /></>
+            : <ActionButton url={`/api/accounts/${id}/pause`} body={{ paused: true }} label="⏸ إيقاف طارئ لهذا الحساب" variant="danger" prompt="سبب الإيقاف (اختياري):" promptKey="reason" />}
           {a.autoPublishEnabled
             ? <ActionButton url={`/api/accounts/${id}`} method="PATCH" body={{ autoPublishEnabled: false }} label="إيقاف النشر الآلي لهذا الحساب" variant="outline" />
             : <ActionButton url={`/api/accounts/${id}`} method="PATCH" body={{ autoPublishEnabled: true }} label="السماح بالنشر الآلي لهذا الحساب" variant="success" />}

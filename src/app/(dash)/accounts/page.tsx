@@ -24,7 +24,7 @@ export default async function AccountsPage() {
                 <td className="td"><Link href={`/accounts/${a.id}`} className="font-bold text-navy-700 hover:underline">{a.name}</Link>{a.handle && <div className="text-xs text-slate-500 ltr">@{a.handle}</div>}</td>
                 <td className="td">{PLATFORM_AR[a.platform]}</td><td className="td">{LANG_AR[a.language]}</td><td className="td text-xs">{FORMAT_AR[a.publishFormat]}</td>
                 <td className="td"><ConnBadge status={a.connection?.status} /></td>
-                <td className="td"><Badge tone={a.autoPublishEnabled ? 'green' : 'slate'}>{a.autoPublishEnabled ? 'مفعّل' : 'متوقف'}</Badge></td>
+                <td className="td">{a.paused ? <Badge tone="red">⏸ موقوف طارئًا</Badge> : <Badge tone={a.autoPublishEnabled ? 'green' : 'slate'}>{a.autoPublishEnabled ? 'مفعّل' : 'متوقف'}</Badge>}<div className="text-[10px] text-slate-500">كل {Math.round(a.publishIntervalMinutes / 60 * 10) / 10} س</div></td>
                 <td className="td"><Badge tone={a.autonomousAuthorized ? 'red' : 'slate'}>{a.autonomousAuthorized ? 'مفوّض' : 'غير مفوّض'}</Badge></td>
                 <td className="td text-xs">{fmtLocal(a.nextPublishAt)}</td><td className="td">{a._count.advertisements}</td>
               </tr>

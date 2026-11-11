@@ -12,7 +12,7 @@ export const PUT = api<{ params: Promise<{ id: string }> }>('ads:approve', async
   const r = await prisma.publicationResult.findUniqueOrThrow({ where: { id } });
   if (!r.verifiedAt) throw new AppError('NOT_VERIFIED', 'لا يمكن إدخال أداء لمنشور غير مؤكد النشر.', 409);
   const score = ((m.likes + 2 * m.comments + 3 * m.saves + 3 * m.shares) / m.reach) * 100;
-  const u = await prisma.publicationResult.update({ where: { id }, data: { metrics: m, engagementScore: score } });
+  const u = await prisma.publicationResult.update({ where: { id }, data: { metrics: m, engagementScore: score, metricsSource: 'manual', metricsFetchedAt: new Date() } });
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'result.metrics', targetType: 'publication_result', targetId: id, details: m });
   return NextResponse.json(u);
 });

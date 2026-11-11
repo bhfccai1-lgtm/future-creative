@@ -181,7 +181,7 @@ model SocialAccount {
   businessCategory      String?
   allowedProductIds     String[]
   publishFormat         MediaFormat      @default(IMAGE_STORY)
-  publishIntervalMinutes Int             @default(60)
+  publishIntervalMinutes Int             @default(420) // V8: every 7 hours per account by default
   publishWindowStart    String           @default("09:00") // local HH:mm
   publishWindowEnd      String           @default("22:00")
   timezone              String           @default("Asia/Bahrain")
@@ -192,7 +192,10 @@ model SocialAccount {
   autonomousAuthorizedBy String?
   nextPublishAt         DateTime?
   lastPublishedAt       DateTime?
-  maxDailyAds           Int              @default(24)
+  maxDailyAds           Int              @default(4)
+  paused                Boolean          @default(false) // V8: per-account emergency pause (blocks generation AND submission)
+  pausedReason          String?
+  pausedAt              DateTime?
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
   connection            SocialConnection?
@@ -474,6 +477,8 @@ model PublicationResult {
   verifiedAt      DateTime? // only set when provider confirmed PUBLISHED
   metrics         Json?
   engagementScore Float?
+  metricsFetchedAt DateTime? // V8: last authorised analytics import from the provider
+  metricsSource   String? // "metricool" | "manual"
   rawResponse     Json?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -491,6 +496,7 @@ model ApprovalRequest {
   decidedBy       User?          @relation("decider", fields: [decidedById], references: [id])
   decidedAt       DateTime?
   note            String?
+  mediaSha256     String? // V8: SHA-256 of the exact final media the human approved (approval binding)
   createdAt       DateTime       @default(now())
 
   @@index([status, createdAt])

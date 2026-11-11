@@ -16,7 +16,50 @@ export const ENDPOINTS = {
   profiles: '/admin/simpleProfiles',
   posts: '/v2/scheduler/posts',
   post: (id: string) => `/v2/scheduler/posts/${encodeURIComponent(id)}`,
+  /** Per-post analytics (Instagram posts / reels / stories). VERIFY on a live account — see docs. */
+  analytics: (kind: 'posts' | 'reels' | 'stories', network = 'instagram') => `/v2/analytics/${kind}/${network}`,
 };
+
+/** Normalised per-post metrics read from the provider (absent metrics stay undefined — never invented). */
+export interface ProviderPostMetrics {
+  url?: string; postId?: string; publishedAt?: Date; kind: 'posts' | 'reels' | 'stories';
+  reach?: number; views?: number; likes?: number; comments?: number; saves?: number; shares?: number; watchTimeSec?: number; profileVisits?: number;
+  raw: unknown;
+}
+
+function num(o: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const k of keys) {
+    const v = k.split('.').reduce<unknown>((x, part) => (x && typeof x === 'object' ? (x as Record<string, unknown>)[part] : undefined), o);
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+  }
+  return undefined;
+}
+
+/** Tolerant parser: Metricool field names differ between post types and API versions. */
+export function parsePostMetrics(json: unknown, kind: ProviderPostMetrics['kind']): ProviderPostMetrics[] {
+  const arr = Array.isArray(json) ? json : ((json as { data?: unknown })?.data as unknown[]) ?? [];
+  if (!Array.isArray(arr)) return [];
+  return (arr as Record<string, unknown>[]).map((p) => {
+    const pub = (p.publishedAt ?? p.published ?? p.date ?? p.created) as unknown;
+    const dt = typeof pub === 'string' ? pub : (pub as { dateTime?: string } | null)?.dateTime;
+    const d = dt ? new Date(dt) : undefined;
+    return {
+      kind, raw: p,
+      url: (p.url ?? p.permalink ?? p.link) as string | undefined,
+      postId: (p.postId ?? p.id ?? p.mediaId)?.toString(),
+      publishedAt: d && !Number.isNaN(d.getTime()) ? d : undefined,
+      reach: num(p, 'reach', 'reachTotal'),
+      views: num(p, 'views', 'videoViews', 'plays', 'impressions', 'impressionsTotal'),
+      likes: num(p, 'likes', 'likeCount'),
+      comments: num(p, 'comments', 'commentsCount'),
+      saves: num(p, 'saved', 'saves'),
+      shares: num(p, 'shares', 'sharesCount'),
+      watchTimeSec: num(p, 'averageWatchTime', 'avgWatchTime', 'watchTime'),
+      profileVisits: num(p, 'profileVisits', 'profile_visits'),
+    };
+  });
+}
 
 const NETWORK: Record<SocialPlatform, string> = {
   instagram: 'instagram', facebook: 'facebook', tiktok: 'tiktok', threads: 'threads', youtube: 'youtube',
@@ -49,6 +92,15 @@ export class MetricoolAdapter implements PublishingAdapter {
       let json: unknown = null; try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text.slice(0, 2000) }; }
       return { status: res.status, json, headers: res.headers };
     } finally { clearTimeout(t); }
+  }
+
+  /** Read-only analytics for one brand and time range (Bahrain local dates). */
+  async listPostMetrics(brandId: string, kind: ProviderPostMetrics['kind'], from: Date, to: Date, timezone = 'Asia/Bahrain'): Promise<ProviderPostMetrics[]> {
+    const fmt = (d: Date) => localDateTime(d, timezone).slice(0, 19);
+    const r = await this.req('GET', ENDPOINTS.analytics(kind), { blogId: brandId, from: fmt(from), to: fmt(to), timezone });
+    if (r.status === 401 || r.status === 403) throw new Error(`Metricool رفض الوصول إلى التحليلات (${r.status}) — قد لا تتيح خطتك ذلك.`);
+    if (r.status !== 200) throw new Error(`استجابة تحليلات غير متوقعة من Metricool (${r.status}).`);
+    return parsePostMetrics(r.json, kind);
   }
 
   async verify() {

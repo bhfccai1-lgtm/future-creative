@@ -1,5 +1,7 @@
 # Implemented vs. not implemented
 
+> V8 (2026-11-11): see `docs/V8_UPGRADE.md` for the audit, the status table, and what is still not implemented.
+
 Legend: ✅ implemented and covered by automated tests · 🟡 implemented, but needs live credentials or manual verification · ❌ not implemented
 
 ## Core
@@ -25,7 +27,7 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, but 
 | Proofreading | 🟡 | Deterministic typographic lint, plus human approval in MANUAL/ASSISTED modes. **There is no dictionary spell-checker**, and AI review (`useAiReview`) exists as a setting but is not wired ❌ |
 | Unverifiable-claims detection (prices, discounts, delivery times, superlatives in AR/EN/ML) | ✅ | Pattern-based. |
 | Duplicate prevention (SHA-256, pHash, headline, idea, product+occasion; per account and cross-account) | ✅ | Idea similarity is lexical (token and trigram Jaccard), not embedding-based. |
-| Performance-weighted product selection | ✅ / 🟡 | The selection logic is tested. Engagement metrics come from manual entry (`PUT /api/results/:id`); **automatic analytics import from Metricool is not implemented** ❌ |
+| Performance-weighted product selection | ✅ / 🟡 | The selection logic is tested. Engagement metrics come from manual entry or the V8 read-only Metricool analytics import (🟡 endpoint not yet called against a live account) |
 
 ## Scheduling and publishing
 | Feature | Status | Notes |
@@ -34,7 +36,7 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, but 
 | BullMQ durable jobs, atomic claim, idempotency keys, restart recovery | ✅ | |
 | MANUAL / ASSISTED / AUTONOMOUS modes, approval queue, publish now, kill switch, audit log | ✅ | |
 | Metricool adapter: brands, create scheduled post, status, reconcile search | 🟡 | Body schema aligned with Metricool. **Paths and response parsing must be verified with a real account** (see `CONFIG_OPENAI_METRICOOL.md`). |
-| UNKNOWN reconciliation, bounded re-queue, SCHEDULED→PUBLISHED only on confirmation | ✅ | Tested with a mocked provider only. |
+| UNKNOWN reconciliation, SCHEDULED→PUBLISHED only on confirmation; V8: resubmission only by operator decision after a fresh lookup | ✅ | Tested with a mocked provider only. |
 | Provider rate limiting (shared limiter plus 429 handling) | ✅ | |
 | Creating drafts in Metricool | ❌ | The system keeps its own approval queue. All provider posts are created with `draft:false` after approval. |
 | Direct official platform adapters (Meta Graph, TikTok, YouTube, LinkedIn, Pinterest, X) | ❌ | `PublishingAdapter` interface ready; not implemented. |

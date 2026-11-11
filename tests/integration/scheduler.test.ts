@@ -31,7 +31,16 @@ describe('hourly scheduler', () => {
     expect(again.planned).toEqual([]);
     expect(await prisma.publicationSchedule.count()).toBe(2);
     const acc = await prisma.socialAccount.findUniqueOrThrow({ where: { id: accounts[0].id } });
-    expect(acc.nextPublishAt?.toISOString()).toBe('2026-11-09T09:00:00.000Z');
+    expect(acc.nextPublishAt?.toISOString()).toBe('2026-11-09T15:00:00.000Z'); // V8 default: every 7 hours
+  });
+
+  it('paused accounts are never planned (per-account emergency stop)', async () => {
+    const { accounts } = await seedBase({ accounts: 2 });
+    await prisma.socialAccount.updateMany({ data: { autoPublishEnabled: true } });
+    await prisma.socialAccount.update({ where: { id: accounts[1].id }, data: { paused: true } });
+    await updateSettings((s) => ({ ...s, autoPublishGlobal: true }));
+    const r = await runSchedulerCycle(NOW);
+    expect(r.planned).toEqual([accounts[0].id]);
   });
 
   it('respects each account\'s own interval and publishing window', async () => {

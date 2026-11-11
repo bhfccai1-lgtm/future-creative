@@ -12,6 +12,10 @@ export const SettingsSchema = z.object({
   modeBAccountIds: z.array(z.string()).default([]),
   autoPublishGlobal: z.boolean().default(false),
   killSwitch: z.boolean().default(false),
+  publishing: z.object({
+    /** false (V8 default): UNKNOWN submissions that are absent at the provider wait for an operator. */
+    autoResubmitAfterAbsence: z.boolean().default(false),
+  }).default({}),
   killSwitchReason: z.string().nullable().default(null),
   duplicateWindowDays: z.number().int().min(1).max(365).default(30),
   scheduleLeadMinutes: z.number().int().min(5).max(240).default(20),

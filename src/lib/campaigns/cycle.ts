@@ -36,7 +36,9 @@ export async function runCampaignCycle(now = new Date()) {
     if (!slot) { await prisma.campaign.update({ where: { id: c.id }, data: { active: false, nextRunAt: null } }); continue; }
     if (slot.getTime() > now.getTime() + GENERATE_AHEAD_MS) { await prisma.campaign.update({ where: { id: c.id }, data: { nextRunAt: slot } }); continue; }
 
+    const paused = new Set((await prisma.socialAccount.findMany({ where: { id: { in: c.accountIds }, paused: true }, select: { id: true } })).map((a) => a.id));
     for (const accountId of c.accountIds) {
+      if (paused.has(accountId)) continue; // per-account emergency pause
       let schedule;
       try {
         schedule = await prisma.publicationSchedule.create({ data: { accountId, slotAt: slot, status: 'GENERATING', campaignId: c.id } });

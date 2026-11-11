@@ -49,6 +49,7 @@ export function api<C = { params: Promise<Record<string, string>> }>(perm: Permi
 export function errorResponse(e: unknown) {
   if (e instanceof AppError) return NextResponse.json({ error: e.code, message: e.message, details: e.details }, { status: e.status });
   if (e instanceof ZodError) return NextResponse.json({ error: 'VALIDATION', message: 'بيانات غير صالحة', details: e.issues }, { status: 422 });
+  if ((e as { code?: string; name?: string })?.code === 'P2025' || (e as { name?: string })?.name === 'NotFoundError') return NextResponse.json({ error: 'NOT_FOUND', message: 'العنصر المطلوب غير موجود.' }, { status: 404 });
   console.error('[api] unhandled', e);
   return NextResponse.json({ error: 'INTERNAL', message: 'خطأ داخلي في الخادم' }, { status: 500 });
 }

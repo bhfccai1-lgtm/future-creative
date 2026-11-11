@@ -14,7 +14,7 @@ export const AccountInput = z.object({
   publishWindowEnd: z.string().regex(/^\d{2}:\d{2}$/),
   timezone: z.string().default('Asia/Bahrain'),
   reelDurationSec: z.number().int().min(6).max(60).default(12),
-  maxDailyAds: z.number().int().min(1).max(48).default(24),
+  maxDailyAds: z.number().int().min(1).max(48).default(4),
 });
 
 export const ProductInput = z.object({

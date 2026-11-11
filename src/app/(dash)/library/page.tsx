@@ -18,7 +18,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
     <>
       <PageHeader title="مكتبة التصاميم" subtitle={`${total} تصميم منجز`} />
       <form className="mb-4 flex gap-2">
-        <select name="account" defaultValue={sp.account ?? ''} className="input w-64"><option value="">كل الحسابات</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+        <select name="account" defaultValue={sp.account ?? ''} className="input" style={{ width: "16rem" }}><option value="">كل الحسابات</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
         <button className="rounded-lg bg-navy-800 px-4 text-sm font-bold text-white">تصفية</button>
       </form>
       {!ads.length && <Empty>لا توجد تصاميم بعد.</Empty>}

@@ -42,4 +42,6 @@ export interface PublishingAdapter {
   getStatus(brandId: string, providerPostId: string, around: Date, timezone: string): Promise<RemoteStatus>;
   /** Find a post we may have created (used when the submit result was UNCERTAIN). */
   findExisting(req: PublishRequest): Promise<{ providerPostId: string; raw: unknown } | null>;
+  /** Optional read-only analytics (authorised provider metrics only). */
+  listPostMetrics?(brandId: string, kind: 'posts' | 'reels' | 'stories', from: Date, to: Date, timezone?: string): Promise<import('./metricool').ProviderPostMetrics[]>;
 }
