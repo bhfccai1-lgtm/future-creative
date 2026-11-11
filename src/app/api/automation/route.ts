@@ -6,6 +6,7 @@ import { getSettings, updateSettings } from '@/lib/settings';
 import { audit, notify } from '@/lib/audit';
 import { AppError } from '@/lib/errors';
 import { prisma } from '@/lib/db';
+import { applyRecommended, planRecommended } from '@/lib/ops/recommended';
 
 const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start') }),
@@ -16,6 +17,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('enable_accounts'), accountIds: z.array(z.string()).min(1).max(100), enabled: z.boolean().default(true) }),
   /** Bulk per-account settings: publishing interval (hours) and/or publish-without-approval (autonomous authorisation). */
   z.object({ action: z.literal('account_settings'), accountIds: z.array(z.string()).min(1).max(100), intervalHours: z.number().int().min(1).max(168).optional(), autonomous: z.boolean().optional() }),
+  /** One-click recommended setup for all accounts (preview with dryRun). */
+  z.object({ action: z.literal('recommended'), dryRun: z.boolean().default(true), intervalHours: z.number().int().min(1).max(48).default(7) }),
   z.object({ action: z.literal('scheduler_mode'), mode: z.enum(['A_PER_ACCOUNT_HOURLY', 'B_FIXED_PER_HOUR']), postsPerHour: z.number().int().min(1).max(100).optional(), accountIds: z.array(z.string()).optional() }),
 ]);
 
@@ -65,6 +68,12 @@ export const POST = api('dashboard:view', async (req, { user }) => {
       const cur = await getSettings();
       const warning = b.autonomous && cur.publishingMode !== 'AUTONOMOUS' ? 'ملاحظة: وضع النشر ليس «ذاتي» — التصاميم ستذهب للموافقة حتى تختار الوضع الذاتي.' : undefined;
       return NextResponse.json({ ...cur, changed, skipped, warning });
+    }
+    case 'recommended': {
+      if (b.dryRun) return NextResponse.json({ plan: await planRecommended(b.intervalHours) });
+      const plan = await applyRecommended(b.intervalHours);
+      await audit({ actorId: user.sub, actorLabel: user.email, action: 'automation.recommended', details: { intervalHours: b.intervalHours, accounts: plan.map((r) => ({ name: r.name, niche: r.niche, categories: r.categories })) } });
+      return NextResponse.json({ plan, applied: true });
     }
     case 'stop': s = await updateSettings((x) => ({ ...x, autoPublishGlobal: false }), user.email); break;
     case 'kill':

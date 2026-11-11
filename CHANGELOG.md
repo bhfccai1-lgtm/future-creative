@@ -1,5 +1,12 @@
 # Changelog
 
+## 8.13.2 — 2026-11-12 (recommended one-click setup)
+- New card on the schedule page: «⭐ الإعداد الموصى به» (recommended setup).
+  - A preview comes first, then one click applies it to every account: every 7 hours (daily cap 4), smart format variety, and niche categories matched to the account name.
+  - Name matches: mugs, education, gifts, stickers, business, occasions, advertising, india.
+  - Main-brand and branch accounts keep all products.
+  - Accounts that already have chosen categories or products are not changed. The action is audited.
+
 ## 8.13.1 — 2026-11-12 (minimum gap between posts)
 - **At least 30 minutes between any two posts on the same account**, set by `publishing.minGapMinutes`.
   - The rule applies whatever created the post: a campaign, the automatic schedule or a manual publish.
