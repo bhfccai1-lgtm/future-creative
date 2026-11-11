@@ -82,8 +82,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
   const product = p.productId
     ? await prisma.product.findFirstOrThrow({ where: { id: p.productId, active: true } })
-    : await selectProductForAccount(account);
-  if (!product) throw new AppError('NO_PRODUCT', 'لا توجد منتجات نشطة مسموح بها لهذا الحساب.', 422);
+    : await selectProductForAccount(account, Math.random, p.direction?.categoryId);
+  if (!product) throw new AppError('NO_PRODUCT', p.direction?.categoryId ? 'لا توجد منتجات نشطة في فئة الحملة مسموح بها لهذا الحساب — اسمح بالفئة في إعدادات الحساب أو فعّل منتجاتها.' : 'لا توجد منتجات نشطة مسموح بها لهذا الحساب.', 422);
 
   const lang = (p.language ?? account.language) as Lang; // content language may override the account default
   // GROWTH_MIX rotates Reels / carousel / feed / stories; a campaign set to «تلقائي» uses the mix even for fixed-format accounts

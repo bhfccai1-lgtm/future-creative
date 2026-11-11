@@ -8,7 +8,7 @@ import { CONTENT_TYPES, LANGUAGES, MARKETS, OCCASIONS, SEGMENTS } from '@/lib/cr
 import { bestHoursFor, previewSlots } from '@/lib/campaigns/slots';
 import { DesignFields, designDirection, EMPTY_DESIGN, type DesignValues } from './design-fields';
 
-type Opt = { id: string; label: string };
+type Opt = { id: string; label: string; categoryId?: string };
 const TZ = 'Asia/Bahrain';
 const DAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const INTERVALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 24, 48, 72, 168];
@@ -20,10 +20,10 @@ function Sel({ label, value, onChange, children }: { label: string; value: strin
 }
 
 /** Create a one-off or recurring campaign: a NEW AI design for every slot, with the chosen creative direction. */
-export function CampaignForm({ accounts, products }: { accounts: Opt[]; products: Opt[] }) {
+export function CampaignForm({ accounts, products, categories = [] }: { accounts: Opt[]; products: Opt[]; categories?: Opt[] }) {
   const router = useRouter();
   const [v, setV] = useState({
-    name: '', accountIds: [] as string[], productId: '', format: 'AUTO', language: '', ideaMode: 'auto' as 'auto' | 'custom',
+    name: '', accountIds: [] as string[], productId: '', categoryId: '', format: 'AUTO', language: '', ideaMode: 'auto' as 'auto' | 'custom',
     contentType: '', market: '', segment: '', occasion: '', idea: '',
     scheduleType: 'RECURRING' as 'ONCE' | 'RECURRING', everyHours: 24, daysOfWeek: [] as number[], timeMode: 'BEST' as 'BEST' | 'FIXED',
     start: nowLocal(), end: '', maxRuns: '',
@@ -49,6 +49,7 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
       for (const k of ['contentType', 'market', 'segment', 'occasion'] as const) if (v[k].trim()) direction[k] = v[k].trim();
       if (v.ideaMode === 'custom' && v.idea.trim()) direction.idea = v.idea.trim();
       if (v.format === 'AUTO') direction.autoFormat = true;
+      if (v.categoryId && !v.productId) direction.categoryId = v.categoryId;
       Object.assign(direction, designDirection(design, fmt));
       try {
         await apiCall('/api/campaigns', { body: {
@@ -65,7 +66,8 @@ export function CampaignForm({ accounts, products }: { accounts: Opt[]; products
       <fieldset className="grid gap-4 md:grid-cols-4">
         <legend className="mb-2 text-sm font-extrabold text-navy-800">١. ماذا ننشر؟</legend>
         <div className="md:col-span-2"><label className="label">اسم الحملة</label><input className="input" required value={v.name} onChange={(e) => set('name')(e.target.value)} placeholder="مثال: أكواب العيد الوطني" /></div>
-        <Sel label="المنتج" value={v.productId} onChange={set('productId')}><option value="">اختيار تلقائي لكل إعلان</option>{products.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</Sel>
+        <Sel label="فئة المنتج" value={v.categoryId} onChange={(x) => setV((s) => ({ ...s, categoryId: x, productId: '' }))}><option value="">اختيار تلقائي — كل الفئات</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</Sel>
+        <Sel label="المنتج" value={v.productId} onChange={set('productId')}><option value="">{v.categoryId ? 'اختيار تلقائي من هذه الفئة' : 'اختيار تلقائي لكل إعلان'}</option>{products.filter((p) => !v.categoryId || p.categoryId === v.categoryId).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</Sel>
         <Sel label="الصيغة" value={v.format} onChange={set('format')}><option value="AUTO">تلقائي — تنويع ذكي (Reel · كاروسيل · منشور · ستوري)</option><option value="">حسب إعداد الحساب</option><option value="IMAGE_STORY">صورة عمودية</option><option value="IMAGE_FEED">صورة منشور</option><option value="IMAGE_SQUARE">صورة مربعة</option><option value="REEL_VIDEO">فيديو Reel</option><option value="IMAGE_CAROUSEL">كاروسيل (شرائح)</option></Sel>
         <Sel label="لغة المحتوى" value={v.language} onChange={set('language')}><option value="">حسب الحساب</option>{LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.ar}</option>)}</Sel>
         <Sel label="نوع المحتوى" value={v.contentType} onChange={set('contentType')}><option value="">تلقائي (يتنوع)</option>{CONTENT_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>

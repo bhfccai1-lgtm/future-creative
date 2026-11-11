@@ -34,4 +34,13 @@ describe('«تلقائي» format / design style / design method', () => {
     for (let i = 0; i < 4; i++) formats.add((await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', direction: { autoFormat: true } })).advertisement.format);
     expect(formats.size).toBeGreaterThan(1);
   });
+  it('campaign category: auto-picks products only from that category', async () => {
+    const { accounts } = await seedBase();
+    const cat = (await prisma.product.findFirstOrThrow()).categoryId;
+    for (let i = 0; i < 3; i++) {
+      const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { categoryId: cat } });
+      expect((await prisma.product.findUniqueOrThrow({ where: { id: r.advertisement.productId } })).categoryId).toBe(cat);
+    }
+    await expect(generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { categoryId: 'missing' } })).rejects.toThrow(/فئة الحملة/);
+  });
 });

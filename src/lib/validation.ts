@@ -42,6 +42,7 @@ export const DirectionSchema = z.object({
   renderMode: z.enum(['layered', 'ai_full', 'auto']).optional(),
   /** campaign: vary the format per post (growth mix) regardless of the account's fixed format */
   autoFormat: z.boolean().optional(),
+  categoryId: z.string().max(64).optional(),
   customPrompt: z.string().max(3000).optional(),
   channels: z.array(z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'linkedin', 'twitter', 'gmb'])).max(8).optional(),
   reelStyle: z.enum(['standard', 'pro']).optional(),

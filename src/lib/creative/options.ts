@@ -119,6 +119,8 @@ export interface Direction {
   designType?: string; designStyle?: string; layout?: 'gold-poster' | 'navy-gold-classic' | 'gold-frame-lower';
   /** layered = deterministic text layers (100% verified); ai_full = the image model designs the whole poster like ChatGPT. */
   renderMode?: 'layered' | 'ai_full' | 'auto'; customPrompt?: string; autoFormat?: boolean;
+  /** campaign: auto-pick products only from this category */
+  categoryId?: string;
   channels?: Channel[];
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
   /** Reel engine for this design (default from AI settings): ffmpeg = motion from stills, veo = Gemini AI video. */

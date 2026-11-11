@@ -12,10 +12,11 @@ const every = (h: number) => (h < 24 ? `كل ${h} س` : h === 24 ? 'يوميًا
 
 export default async function CampaignsPage() {
   await requirePageUser('ads:create');
-  const [campaigns, accounts, products] = await Promise.all([
+  const [campaigns, accounts, products, categories] = await Promise.all([
     prisma.campaign.findMany({ orderBy: { createdAt: 'desc' }, include: { _count: { select: { schedules: true } } } }),
     prisma.socialAccount.findMany({ orderBy: { createdAt: 'asc' } }),
     prisma.product.findMany({ where: { active: true }, orderBy: { titleAr: 'asc' } }),
+    prisma.productCategory.findMany({ orderBy: { nameAr: 'asc' }, select: { id: true, nameAr: true, _count: { select: { products: { where: { active: true } } } } } }),
   ]);
   const accName = Object.fromEntries(accounts.map((a) => [a.id, a.name]));
   return (
@@ -45,7 +46,7 @@ export default async function CampaignsPage() {
         )}
       </Card>
       <Card title="حملة جديدة">
-        <CampaignForm accounts={accounts.map((a) => ({ id: a.id, label: `${a.name} — ${PLATFORM_AR[a.platform]}` }))} products={products.map((p) => ({ id: p.id, label: p.titleAr }))} />
+        <CampaignForm accounts={accounts.map((a) => ({ id: a.id, label: `${a.name} — ${PLATFORM_AR[a.platform]}` }))} products={products.map((p) => ({ id: p.id, label: p.titleAr, categoryId: p.categoryId }))} categories={categories.filter((c) => c._count.products > 0).map((c) => ({ id: c.id, label: `${c.nameAr} (${c._count.products})` }))} />
       </Card>
     </>
   );

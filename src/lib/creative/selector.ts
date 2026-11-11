@@ -24,8 +24,8 @@ export function chooseProduct(candidates: Product[], recentProductIds: string[],
   return list[list.length - 1];
 }
 
-export async function selectProductForAccount(account: SocialAccount, rng: Rng = Math.random) {
-  const candidates = await prisma.product.findMany({ where: { active: true, ...allowedWhere(account) } });
+export async function selectProductForAccount(account: SocialAccount, rng: Rng = Math.random, categoryId?: string) {
+  const candidates = await prisma.product.findMany({ where: { active: true, ...allowedWhere(account), ...(categoryId ? { categoryId } : {}) } });
   const recent = await prisma.advertisement.findMany({
     where: { accountId: account.id, state: { notIn: ['REJECTED', 'FAILED'] } }, orderBy: { createdAt: 'desc' }, take: 30, select: { productId: true },
   });
