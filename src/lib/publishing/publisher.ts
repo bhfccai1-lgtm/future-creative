@@ -3,6 +3,7 @@ import { prisma } from '../db';
 import { audit, notify } from '../audit';
 import { getAdapter } from './registry';
 import type { PublishRequest } from './types';
+import { lockAccount, spacedTime } from './spacing';
 import { signedMediaUrl, storage } from '../storage';
 import { loadApprovedLogo } from '../brand/logo';
 import { rateLimit } from '../security/rate-limit';
@@ -152,8 +153,13 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
   const approval = await prisma.approvalRequest.findFirst({ where: { advertisementId: ad.id, status: 'APPROVED' }, orderBy: { decidedAt: 'desc' } });
   if (approval?.mediaSha256 && approval.mediaSha256 !== actual) { await fail(job.id, ad.id, 'الملف الحالي ليس الملف الذي تم اعتماده — أعد الاعتماد.', job.accountId); return 'FAILED'; }
   if (job.scheduledFor.getTime() < Date.now() + 2 * 60_000) {
-    const newTime = new Date(Date.now() + s.scheduleLeadMinutes * 60_000);
-    await prisma.publicationJob.update({ where: { id: job.id }, data: { scheduledFor: newTime } });
+    // late start (queue backlog) → move forward, still keeping the minimum gap from the account's other posts
+    await prisma.$transaction(async (tx) => {
+      await lockAccount(tx, job.accountId);
+      const newTime = job.primary ? await spacedTime(tx, job.accountId, new Date(Date.now() + s.scheduleLeadMinutes * 60_000), s.publishing.minGapMinutes, job.id) : new Date(Date.now() + s.scheduleLeadMinutes * 60_000);
+      await tx.publicationJob.update({ where: { id: job.id }, data: { scheduledFor: newTime } });
+      job.scheduledFor = newTime;
+    });
   }
 
   // ── Provider-side rate limit (shared across workers) ──

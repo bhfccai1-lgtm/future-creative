@@ -1,5 +1,14 @@
 # Changelog
 
+## 8.13.1 — 2026-11-12 (minimum gap between posts)
+- **At least 30 minutes between any two posts on the same account**, set by `publishing.minGapMinutes`.
+  - The rule applies whatever created the post: a campaign, the automatic schedule or a manual publish.
+  - The slot is chosen under a per-account PostgreSQL advisory lock, so simultaneous requests cannot pick the same minute.
+  - A queue-delayed post that is moved forward also keeps the gap.
+  - A failed post frees its slot.
+  - A moved post is audited with `requestedFor` and `movedForGap`.
+- Found live in Metricool: bhfcc.mugs had two stories at 19:01.
+
 ## 8.13.0 — 2026-11-12 (Bahraini and multilingual voice-over)
 - **23 speaker personas** in 12 groups:
   - commercial announcers, female, male, youth;

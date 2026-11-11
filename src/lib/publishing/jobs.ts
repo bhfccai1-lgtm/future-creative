@@ -9,6 +9,7 @@ import type { QcReport } from '../qc';
 import { emitEvent } from '../integrations/events';
 import { bundleSha, publishableMedia } from './media';
 import { targetNetworks } from './publisher';
+import { lockAccount, spacedTime } from './spacing';
 
 /** SHA-256 recorded at render time for the asset that will actually be published (video for Reels). */
 export async function primaryMediaSha(adId: string) {
@@ -107,12 +108,16 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
 
   let job: PublicationJob;
   let satelliteId: string | null = null;
+  let slot = when;
   try {
     job = await prisma.$transaction(async (tx) => {
+      // never two posts on the same account closer than publishing.minGapMinutes (campaign + schedule collisions)
+      await lockAccount(tx, ad.accountId);
+      slot = await spacedTime(tx, ad.accountId, when, s.publishing.minGapMinutes);
       const moved = await tx.advertisement.updateMany({ where: { id: ad.id, state: 'APPROVED' }, data: { state: 'QUEUED' } });
       if (moved.count !== 1) throw new AppError('BAD_STATE', 'يجب أن يكون الإعلان معتمدًا قبل جدولته.', 409);
-      const primary = await tx.publicationJob.create({ data: { idempotencyKey, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: when, networks: main.length ? main : ['gmb'] } });
-      if (withGbp && main.length) satelliteId = (await tx.publicationJob.create({ data: { idempotencyKey: `${idempotencyKey}:gmb`, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: when, networks: ['gmb'], primary: false } })).id;
+      const primary = await tx.publicationJob.create({ data: { idempotencyKey, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: slot, networks: main.length ? main : ['gmb'] } });
+      if (withGbp && main.length) satelliteId = (await tx.publicationJob.create({ data: { idempotencyKey: `${idempotencyKey}:gmb`, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: slot, networks: ['gmb'], primary: false } })).id;
       return primary;
     });
   } catch (e) {
@@ -120,7 +125,7 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
     if (again) return again; // lost a race to another request — idempotent result
     throw e;
   }
-  await audit({ actorLabel: actor, action: 'publication.queue', targetType: 'publication_job', targetId: job.id, details: { adId, scheduledFor: when.toISOString() } });
+  await audit({ actorLabel: actor, action: 'publication.queue', targetType: 'publication_job', targetId: job.id, details: { adId, scheduledFor: slot.toISOString(), ...(slot.getTime() !== when.getTime() ? { requestedFor: when.toISOString(), movedForGap: true } : {}) } });
   await enq.publish(job.id);
   if (satelliteId) await enq.publish(satelliteId);
   return job;

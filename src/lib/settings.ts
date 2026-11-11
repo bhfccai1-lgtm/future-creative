@@ -15,6 +15,8 @@ export const SettingsSchema = z.object({
   publishing: z.object({
     /** false (V8 default): UNKNOWN submissions that are absent at the provider wait for an operator. */
     autoResubmitAfterAbsence: z.boolean().default(false),
+    /** Minimum minutes between two posts on the same account (campaigns + automatic schedule + manual). */
+    minGapMinutes: z.number().int().min(0).max(720).default(30),
   }).default({}),
   killSwitchReason: z.string().nullable().default(null),
   duplicateWindowDays: z.number().int().min(1).max(365).default(30),

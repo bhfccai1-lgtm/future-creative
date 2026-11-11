@@ -233,7 +233,7 @@ describe('unknown publication states and reconciliation', () => {
 
   it('legacy behaviour is available only when explicitly enabled', async () => {
     const { accounts } = await setup();
-    await updateSettings((s) => ({ ...s, publishing: { autoResubmitAfterAbsence: true } }));
+    await updateSettings((s) => ({ ...s, publishing: { ...s.publishing, autoResubmitAfterAbsence: true } }));
     const job = await publishNow((await readyAd(accounts[0].id)).id, admin);
     adapter.outcomes.push({ kind: 'UNCERTAIN', message: 'x' });
     await processPublishJob(job.id, 'w');
