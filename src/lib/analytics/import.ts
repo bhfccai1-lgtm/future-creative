@@ -54,8 +54,8 @@ export async function importMetrics(adapter: PublishingAdapter, opts: { days?: n
     for (const r of rows) {
       const m = matchMetrics({ publicUrl: r.publicUrl, scheduledFor: r.job.scheduledFor, format: r.job.advertisement.format }, provider);
       if (!m) { unmatched++; continue; }
-      const { reach, views, likes, comments, saves, shares, watchTimeSec, profileVisits, postId } = m.row;
-      const metrics = { reach, views, likes, comments, saves, shares, watchTimeSec, profileVisits };
+      const { reach, views, likes, comments, saves, shares, watchTimeSec, profileVisits, follows, retentionPct, skipRatePct, durationSec, postId } = m.row;
+      const metrics = { reach, views, likes, comments, saves, shares, watchTimeSec, profileVisits, follows, retentionPct, skipRatePct, durationSec };
       const score = engagementRate(metrics);
       await prisma.publicationResult.update({
         where: { id: r.id },

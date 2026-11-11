@@ -24,6 +24,7 @@ export const ENDPOINTS = {
 export interface ProviderPostMetrics {
   url?: string; postId?: string; publishedAt?: Date; kind: 'posts' | 'reels' | 'stories';
   reach?: number; views?: number; likes?: number; comments?: number; saves?: number; shares?: number; watchTimeSec?: number; profileVisits?: number;
+  follows?: number; retentionPct?: number; skipRatePct?: number; durationSec?: number;
   raw: unknown;
 }
 
@@ -41,12 +42,13 @@ export function parsePostMetrics(json: unknown, kind: ProviderPostMetrics['kind'
   const arr = Array.isArray(json) ? json : ((json as { data?: unknown })?.data as unknown[]) ?? [];
   if (!Array.isArray(arr)) return [];
   return (arr as Record<string, unknown>[]).map((p) => {
-    const pub = (p.publishedAt ?? p.published ?? p.date ?? p.created) as unknown;
-    const dt = typeof pub === 'string' ? pub : (pub as { dateTime?: string } | null)?.dateTime;
+    // field names verified against Metricool's analytics catalogue (posts/reels: timestamp, saved, views, averageWatchTime, retention, reelsSkipRate…)
+    const pub = (p.timestamp ?? p.publishedAt ?? p.published ?? p.date ?? p.created) as unknown;
+    const dt = typeof pub === 'number' ? new Date(pub > 1e12 ? pub : pub * 1000).toISOString() : typeof pub === 'string' ? pub : (pub as { dateTime?: string } | null)?.dateTime;
     const d = dt ? new Date(dt) : undefined;
     return {
       kind, raw: p,
-      url: (p.url ?? p.permalink ?? p.link) as string | undefined,
+      url: (p.url ?? p.permalink ?? p.link) as string | undefined, // stories use `permalink`
       postId: (p.postId ?? p.id ?? p.mediaId)?.toString(),
       publishedAt: d && !Number.isNaN(d.getTime()) ? d : undefined,
       reach: num(p, 'reach', 'reachTotal'),
@@ -57,6 +59,10 @@ export function parsePostMetrics(json: unknown, kind: ProviderPostMetrics['kind'
       shares: num(p, 'shares', 'sharesCount'),
       watchTimeSec: num(p, 'averageWatchTime', 'avgWatchTime', 'watchTime'),
       profileVisits: num(p, 'profileVisits', 'profile_visits'),
+      follows: num(p, 'follows'),
+      retentionPct: num(p, 'retention'),
+      skipRatePct: num(p, 'reelsSkipRate', 'skipRate'),
+      durationSec: num(p, 'durationSeconds', 'duration'),
     };
   });
 }

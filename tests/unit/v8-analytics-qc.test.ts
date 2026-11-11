@@ -35,6 +35,11 @@ describe('metrics parsing, scoring and matching', () => {
     expect(p).toMatchObject({ url: 'u', reach: 120, likes: 3, saves: 2 });
     expect(p.shares).toBeUndefined(); expect(p.publishedAt?.toISOString()).toBe('2026-11-01T10:00:00.000Z');
   });
+  it('parses the real Metricool reel fields (timestamp, reelsSkipRate, retention)', () => {
+    const [r] = parsePostMetrics([{ timestamp: '2026-11-06T14:00:00', url: 'https://www.instagram.com/reel/X/', reach: 59, views: 82, likes: 6, comments: 0, saved: 0, shares: 0, averageWatchTime: 9.303, durationSeconds: 12, retention: 77.5, reelsSkipRate: 81.3 }], 'reels');
+    expect(r).toMatchObject({ reach: 59, views: 82, saves: 0, watchTimeSec: 9.303, durationSec: 12, retentionPct: 77.5, skipRatePct: 81.3 });
+    expect(r.publishedAt).toBeInstanceOf(Date);
+  });
   it('no reach/views → no score', () => {
     expect(engagementRate({ likes: 10 })).toBeNull();
     expect(engagementRate({ views: 200, likes: 4 })).toBe(2);

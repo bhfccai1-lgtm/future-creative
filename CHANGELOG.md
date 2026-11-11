@@ -1,5 +1,15 @@
 # Changelog
 
+## 8.1.0 — 2026-11-11 (data-driven growth update)
+Based on a real Metricool audit of the 15 brands (`docs/ACCOUNT_AUDIT_2026-11.md`):
+- **Reel hook opening** (default on): headline, product badge and logo are visible on frame 0, and the first scene opens with a fast punch-in. Measured skip rates were 63–84% with the old slow opening. Covered by a first-frame test.
+- **Growth content mix** per account (`formatStrategy = GROWTH_MIX`): 60% Reels, 30% feed, 10% stories, chosen automatically from the last 14 days. Opt-in; existing accounts keep FIXED.
+- Default Reel length for new accounts is 10 s (measured average watch time: 3–9 s).
+- Caption rules: natural Bahraini Arabic, hook under 125 characters, short body, send-to-a-friend and DM-keyword CTAs, 3–5 hashtags. The Instagram hashtag cap in the publisher is now 5.
+- The analytics parser understands the real Metricool fields (`timestamp`, `reelsSkipRate`, `retention`, `durationSeconds`, `follows`, `permalink`). Previously `timestamp` was not read, so time-based matching would have failed.
+- Reports show the Reel skip rate and retention, and warn when skips exceed 60% or a period has zero comments and shares.
+- 135 tests passing.
+
 ## 8.0.0 — 2026-11-11 (V8 Enterprise upgrade)
 
 An incremental upgrade of the existing system. Every V7 feature is kept, the database migration only adds things, and all 129 automated tests pass.

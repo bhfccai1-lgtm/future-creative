@@ -2,7 +2,8 @@ import type { SocialPlatform } from '@prisma/client';
 
 /** Per-network text limits (characters) and hashtag caps used when one post targets several networks. */
 export const TEXT_LIMITS: Record<SocialPlatform, number> = { twitter: 280, threads: 500, instagram: 2200, tiktok: 2200, linkedin: 3000, facebook: 5000, youtube: 5000, pinterest: 500 };
-export const HASHTAG_LIMITS: Record<SocialPlatform, number> = { twitter: 2, threads: 1, instagram: 30, tiktok: 10, linkedin: 5, facebook: 10, youtube: 15, pinterest: 10 };
+/** Instagram caps posts at 5 hashtags (2025+): more risk rejection and look spammy. */
+export const HASHTAG_LIMITS: Record<SocialPlatform, number> = { twitter: 2, threads: 1, instagram: 5, tiktok: 10, linkedin: 5, facebook: 10, youtube: 15, pinterest: 10 };
 
 /** Conservative length: emoji / astral symbols count double (X weights them as 2). */
 export const weightedLength = (s: string) => [...s].reduce((n, ch) => n + (ch.codePointAt(0)! > 0xffff ? 2 : 1), 0);

@@ -30,6 +30,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <Stat label="الوصول" value={m.reach.toLocaleString('en')} /><Stat label="المشاهدات" value={m.views.toLocaleString('en')} />
         <Stat label="الحفظ + المشاركة" value={(m.saves + m.shares).toLocaleString('en')} /><Stat label="متوسط التفاعل" value={m.avgEngagement === null ? '—' : `${m.avgEngagement}%`} tone="gold" />
       </div>
+      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-6">
+        <Stat label="تخطي الريلز (أول 3 ث)" value={m.reelSkipRatePct === null ? '—' : `${m.reelSkipRatePct}%`} tone={m.reelSkipRatePct !== null && m.reelSkipRatePct > 60 ? 'red' : 'navy'} hint="أقل = افتتاحية أقوى" />
+        <Stat label="الاحتفاظ بالمشاهدة" value={m.reelRetentionPct === null ? '—' : `${m.reelRetentionPct}%`} hint="نسبة المدة المشاهدة" />
+      </div>
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="التوصيات">
           <ul className="list-disc space-y-1 pr-5 text-sm">{r.recommendations.map((x, i) => <li key={i}>{x}</li>)}</ul>

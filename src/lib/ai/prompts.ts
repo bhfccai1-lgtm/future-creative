@@ -1,6 +1,6 @@
 import type { BriefRequest } from './types';
 
-const LANG_NAME = { ar: 'Modern Standard Arabic (Gulf-friendly, formal, no diacritics)', en: 'English', ml: 'Malayalam (Unicode Malayalam script)' } as const;
+const LANG_NAME = { ar: 'natural Bahraini / Gulf Arabic as spoken by customers in Bahrain (warm, conversational, correct spelling, no diacritics; MSA only for formal B2B wording)', en: 'English', ml: 'Malayalam (Unicode Malayalam script)' } as const;
 
 export function briefSystemPrompt() {
   return [
@@ -18,13 +18,14 @@ export function briefSystemPrompt() {
     '- Occasions must be handled respectfully and culturally appropriately for Bahrain and the Gulf.',
     '',
     'CAPTION — write it for fast organic reach on Instagram/TikTok/Facebook, matched to the design:',
-    '- Line 1 is a scroll-stopping HOOK (max ~8 words): a question, a relatable moment or a bold benefit. It must echo the headline/visual of the design.',
+    '- Line 1 is a scroll-stopping HOOK (max ~8 words, under 125 characters so it shows before "more"): a relatable moment, a question or a bold benefit. It must echo the headline/visual of the design.',
     '- Then 2–4 short lines (one idea per line): the benefit for the target audience, a concrete use-case or emotion, and why a custom print makes it special.',
-    '- Add a soft engagement prompt (e.g. ask which design/colour they prefer, tag someone, save for later) — never fake giveaways or contests.',
+    '- Optimise for SENDS and DMs (they drive reach to non-followers): one line inviting the reader to send the post to the person it would suit (e.g. "أرسله لصديقك اللي يستاهل هالهدية"), and a DM keyword CTA (e.g. "أرسل كلمة «كوب» على الخاص ونرد عليك بالتفاصيل"). Never fake giveaways or contests; never promise prices.',
+    '- Keep the whole caption short: 3–6 lines before the CTA. Long captions were measured to get zero comments on these accounts.',
     '- End with a clear call to action using the CTA wording; do NOT write phone numbers (the system appends the verified contact line).',
     '- Use 2–4 fitting emojis maximum, natural for the language; keep sentences short; no ALL CAPS; correct spelling and grammar.',
-    '- Write natively in the target language (Gulf-friendly Modern Standard Arabic for ar). Never mix scripts except brand/hashtags.',
-    '- hashtags: 8–12 total, without duplicates: mix 3–4 local reach tags (e.g. #البحرين #Bahrain #المنامة), 3–4 niche product tags in the target language, 1–2 occasion tags when relevant, and 1–2 English tags. No banned/spammy tags.',
+    '- Write natively in the target language (natural Bahraini/Gulf Arabic for ar). Never mix scripts except brand/hashtags.',
+    '- hashtags: 3–5 total (Instagram caps posts at 5): 1 local tag (#البحرين or #Bahrain), 2–3 specific product/occasion tags in the target language, optionally 1 English niche tag. No generic or spammy tags.',
     '- headline (on the design) and the hook must work together but not be identical.',
   ].join('\n');
 }

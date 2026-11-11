@@ -18,6 +18,7 @@ import { TEMPLATES } from '../render/templates';
 import { renderReel } from '../video/reel';
 import { runQualityChecks, type QcReport } from '../qc';
 import { sha256 } from '../crypto';
+import { nextFormatFor } from '../creative/format-mix';
 import { storage } from '../storage';
 import { startOfDayInTz } from '../time';
 import { autoApproveAndQueue } from '../publishing/jobs';
@@ -79,7 +80,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   if (!product) throw new AppError('NO_PRODUCT', 'لا توجد منتجات نشطة مسموح بها لهذا الحساب.', 422);
 
   const lang = (p.language ?? account.language) as Lang; // content language may override the account default
-  const format = p.format ?? account.publishFormat;
+  const format = p.format ?? (await nextFormatFor(account)); // GROWTH_MIX rotates Reels / feed / stories
   const provider = await getAiProvider(s);
   // Design options chosen by the user
   const d = p.direction ?? {};

@@ -9,6 +9,8 @@ import { probeVideo, run, REEL_REQUIREMENTS, type VideoProbe } from './probe';
 export interface ReelResult { mp4: Buffer; probe: VideoProbe; thumbnail: Buffer; scenes: number; audio: ReelAudio }
 export type ReelAudio = 'none' | 'ambient' | 'upbeat' | 'instagram';
 export interface ReelOptions {
+  /** Hook opening (default true): headline + badge on frame 0 and a fast punch-in on the first scene. */
+  hook?: boolean;
   /** Extra decorated backgrounds (same layout/theme) → "pro" multi-scene reel with transitions. */
   extraBackgrounds?: Buffer[];
   /** none / instagram (licensed IG audio is attached by the publisher) → silent AAC track; ambient / upbeat → royalty-free audio synthesised by FFmpeg. */
@@ -21,6 +23,14 @@ const FPS = 30;
 const XFADE = 0.7; // seconds
 const TRANSITIONS = ['fade', 'smoothleft', 'circleopen', 'slideup', 'smoothright'];
 /** Camera moves per scene: push-in, pull-out, pan right, pan left (applied on a 2× upscaled frame). */
+/**
+ * Opening "snap" for scene 1: fast punch-in (1.30 → 1.12 in the first ~0.8 s), then a slow drift.
+ * Real data on these accounts: 75–84 % of viewers skipped within the first 3 s of slow openings.
+ */
+const HOOK_MOTION = (F: number) => {
+  const H = Math.min(24, Math.max(6, Math.round(F / 6)));
+  return `z='if(lt(on,${H}),1.30-0.18*on/${H},1.12+0.06*(on-${H})/${Math.max(1, F - H)})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+};
 const MOTIONS = [
   (F: number) => `z='1+0.10*on/${F}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
   (F: number) => `z='1.12-0.10*on/${F}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
@@ -80,7 +90,8 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       const len = n === 1 ? D : L;
       const frames = Math.round(len * FPS);
       inputs.push('-loop', '1', '-framerate', String(FPS), '-t', len.toFixed(3), '-i', f);
-      filters.push(`[${i}:v]scale=2160:3840,zoompan=${MOTIONS[i % MOTIONS.length](frames)}:d=1:s=1080x1920:fps=${FPS},format=rgba,setsar=1[s${i}]`);
+      const motion = i === 0 && opts.hook !== false ? HOOK_MOTION(frames) : MOTIONS[i % MOTIONS.length](frames);
+      filters.push(`[${i}:v]scale=2160:3840,zoompan=${motion}:d=1:s=1080x1920:fps=${FPS},format=rgba,setsar=1[s${i}]`);
     }
     let base = 's0';
     for (let i = 1; i < n; i++) {
@@ -92,24 +103,28 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
 
     // overlay timeline — pro mode spreads the copy across scenes
     const byId = (id: string) => c.layers.find((l) => l.id === id);
-    const timeline: { layer: PlacedLayer; start: number; slide: number }[] = [];
-    const push = (l: PlacedLayer | undefined, start: number, slide = 0) => l && timeline.push({ layer: l, start, slide });
+    const timeline: { layer: PlacedLayer; start: number; slide: number; fade: number }[] = [];
+    const push = (l: PlacedLayer | undefined, start: number, slide = 0, fade = 0.6) => l && timeline.push({ layer: l, start, slide, fade });
     const last = n - 1;
-    push(byId('logo'), 0.3);
-    push(byId('headline'), 0.8, 90);
-    push(byId('badge'), 1.2, 60);
-    push(byId('support'), n > 1 ? sceneStart(Math.min(1, last)) + 0.6 : 1.8, 40);
-    push(byId('cta'), n > 1 ? sceneStart(last) + 0.5 : 2.6, 30);
-    c.layers.filter((l) => l.id.startsWith('benefit:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(Math.min(1, last)) + 1.0 : 2.2) + i * 0.15, 30));
-    c.layers.filter((l) => l.id.startsWith('contact:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(last) + 0.9 : 3.0) + i * 0.15));
+    const hook = opts.hook !== false;
+    // Hook mode: the promise (headline + product badge) is readable on the very first frame.
+    push(byId('logo'), hook ? 0 : 0.3, 0, hook ? 0.2 : 0.6);
+    push(byId('headline'), hook ? 0 : 0.8, hook ? 40 : 90, hook ? 0.25 : 0.6);
+    push(byId('badge'), hook ? 0.15 : 1.2, hook ? 30 : 60, hook ? 0.25 : 0.6);
+    push(byId('support'), n > 1 ? sceneStart(Math.min(1, last)) + 0.6 : hook ? 1.2 : 1.8, 40);
+    push(byId('cta'), n > 1 ? sceneStart(last) + 0.5 : hook ? 2.0 : 2.6, 30);
+    c.layers.filter((l) => l.id.startsWith('benefit:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(Math.min(1, last)) + 1.0 : hook ? 1.5 : 2.2) + i * 0.15, 30));
+    c.layers.filter((l) => l.id.startsWith('contact:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(last) + 0.9 : hook ? 2.4 : 3.0) + i * 0.15));
 
     let idx = n;
     for (const t of timeline) {
       const f = path.join(dir, `l${idx}.png`);
       await fs.writeFile(f, t.layer.png);
       inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', f);
-      filters.push(`[${idx}:v]format=rgba,fade=t=in:st=${t.start.toFixed(2)}:d=0.6:alpha=1[o${idx}]`);
-      const y = t.slide ? `'${t.layer.top}+${t.slide}*max(0\\,1-(t-${t.start.toFixed(2)})/0.6)*gte(1\\,(t-${t.start.toFixed(2)})/0.6)'` : String(t.layer.top);
+      filters.push(t.start === 0 && t.fade <= 0.25
+        ? `[${idx}:v]format=rgba[o${idx}]` // fully visible on frame 0 (no fade-from-transparent)
+        : `[${idx}:v]format=rgba,fade=t=in:st=${t.start.toFixed(2)}:d=${t.fade}:alpha=1[o${idx}]`);
+      const y = t.slide ? `'${t.layer.top}+${t.slide}*max(0\\,1-(t-${t.start.toFixed(2)})/${t.fade})*gte(1\\,(t-${t.start.toFixed(2)})/${t.fade})'` : String(t.layer.top);
       filters.push(`[${base}][o${idx}]overlay=x=${t.layer.left}:y=${y}:enable='gte(t,${t.start.toFixed(2)})':eval=frame[v${idx}]`);
       base = `v${idx}`;
       idx++;

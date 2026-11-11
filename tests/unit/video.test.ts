@@ -28,6 +28,26 @@ describe('real video reel pipeline', () => {
     await fs.rm(dir, { recursive: true, force: true });
   }, 180_000);
 
+  it('hook opening: headline and badge are readable on the very first frame (real data: most viewers skip in the first 3 s)', async () => {
+    const scene = (await new DryRunProvider().generateScene('', { size: '1024x1536', seedHint: 'hook' })).png;
+    const logo = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="500" height="200"><rect width="500" height="200" rx="40" fill="#d4af37"/></svg>')).png().toBuffer();
+    const c = await composeAdvertisement({ scene, format: 'REEL_VIDEO', lang: 'ar', headline: 'أكواب بتصميمك', supportingCopy: 'هدية تحمل ذكرى', cta: 'اطلب الآن', logo, contacts: [{ key: 'saar', label: 'فرع سار', phone: '33316319' }, { key: 'salmabad', label: 'فرع سلماباد', phone: '34315316' }] });
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-hook-'));
+    const frame0 = async (hook: boolean) => {
+      const r = await renderReel(c, 7, { hook });
+      const f = path.join(dir, `h${hook}.mp4`); await fs.writeFile(f, r.mp4);
+      const png = path.join(dir, `h${hook}.png`);
+      await run('ffmpeg', ['-y', '-loglevel', 'error', '-ss', '0', '-i', f, '-frames:v', '1', png]);
+      return png;
+    };
+    const head = c.layers.find((l) => l.id === 'headline')!;
+    const region = { left: head.left, top: Math.max(0, head.top - 10), width: Math.min(1080 - head.left, head.width), height: Math.min(1920 - head.top, head.height + 60) };
+    const [withHook, without] = await Promise.all([frame0(true), frame0(false)].map(async (p) => sharp(await p).extract(region).raw().toBuffer()));
+    let diff = 0; for (let i = 0; i < withHook.length; i++) diff += Math.abs(withHook[i] - without[i]);
+    expect(diff / withHook.length).toBeGreaterThan(8); // text present at t=0 only in hook mode
+    if (process.env.KEEP_HOOK_FRAMES) console.log('frames in', dir); else await fs.rm(dir, { recursive: true, force: true });
+  }, 240_000);
+
   it('rejects videos that do not meet Reels requirements', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-vt-'));
     const f = path.join(dir, 'bad.mp4');

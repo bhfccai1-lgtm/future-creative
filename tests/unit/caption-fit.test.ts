@@ -13,10 +13,10 @@ describe('per-network caption fitting', () => {
     expect(r.text).toContain('33316319'); expect(r.text).toContain('34315316');
     expect(r.text.match(/#/g)?.length).toBeLessThanOrEqual(2);
   });
-  it('Instagram alone: ≤ 2200 chars and ≤ 30 hashtags', () => {
+  it('Instagram alone: ≤ 2200 chars and ≤ 5 hashtags (current Instagram cap)', () => {
     const r = fitCaption(longCaption, contact, ['instagram']);
     expect(weightedLength(r.text)).toBeLessThanOrEqual(2200);
-    expect(r.text.match(/#/g)?.length).toBe(30);
+    expect(r.text.match(/#/g)?.length).toBe(5);
     expect(r.text).toContain('33316319');
   });
   it('short captions are untouched; hashtags can move to the first comment', () => {

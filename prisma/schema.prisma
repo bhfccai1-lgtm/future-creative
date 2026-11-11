@@ -185,7 +185,10 @@ model SocialAccount {
   publishWindowStart    String           @default("09:00") // local HH:mm
   publishWindowEnd      String           @default("22:00")
   timezone              String           @default("Asia/Bahrain")
-  reelDurationSec       Int              @default(12)
+  reelDurationSec       Int              @default(10) // measured avg watch time on these accounts: 3–9 s
+  /// FIXED = always publishFormat · GROWTH_MIX = scheduler rotates formats toward formatMix (default 60% Reels / 30% feed / 10% stories)
+  formatStrategy        String           @default("FIXED")
+  formatMix             Json?
   autoPublishEnabled    Boolean          @default(false) // per-account switch
   autonomousAuthorized  Boolean          @default(false) // admin explicitly authorised autonomous publishing
   autonomousAuthorizedAt DateTime?

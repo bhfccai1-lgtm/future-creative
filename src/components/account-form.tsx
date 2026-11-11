@@ -7,10 +7,10 @@ import { Button } from './ui';
 type Product = { id: string; titleAr: string };
 type Account = {
   id?: string; name: string; platform: string; handle?: string | null; language: string; businessCategory?: string | null; allowedProductIds: string[];
-  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number;
+  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string;
 };
 
-const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 12, maxDailyAds: 4 };
+const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 4, formatStrategy: 'GROWTH_MIX' };
 
 export function AccountForm({ account, products }: { account?: Account; products: Product[] }) {
   const router = useRouter();
@@ -20,7 +20,9 @@ export function AccountForm({ account, products }: { account?: Account; products
   return (
     <form className="grid gap-4 md:grid-cols-3" onSubmit={async (e) => {
       e.preventDefault(); setMsg(null);
-      const { id, ...body } = a;
+      const { id, ...rest } = a;
+      const { formatMix: _ignored, ...body } = rest as typeof rest & { formatMix?: unknown }; // mix is edited elsewhere; never send null
+      void _ignored;
       try {
         const r = await apiCall<{ id: string }>(id ? `/api/accounts/${id}` : '/api/accounts', { method: id ? 'PATCH' : 'POST', body });
         setMsg({ ok: true, t: 'تم الحفظ ✓' });
@@ -40,6 +42,11 @@ export function AccountForm({ account, products }: { account?: Account; products
         <select className="input" value={a.publishFormat} onChange={(e) => set('publishFormat', e.target.value)}>
           <option value="IMAGE_STORY">صورة عمودية 1080×1920</option><option value="IMAGE_FEED">صورة منشور 1080×1350</option><option value="IMAGE_SQUARE">صورة مربعة 1080×1080</option><option value="REEL_VIDEO">فيديو Reel متحرك (MP4)</option>
         </select></div>
+      <div><label className="label">استراتيجية المحتوى</label>
+        <select className="input" value={a.formatStrategy ?? 'FIXED'} onChange={(e) => set('formatStrategy', e.target.value)}>
+          <option value="GROWTH_MIX">مزيج النمو: 60% ريلز · 30% منشورات · 10% ستوري (موصى به)</option><option value="FIXED">صيغة ثابتة (صيغة النشر أعلاه فقط)</option>
+        </select>
+        <p className="mt-1 text-xs text-slate-500">بيانات حساباتك: الريلز وصلت 5–7 أضعاف وصول الصور، والستوري لا تجلب متابعين جددًا.</p></div>
       <div><label className="label">فترة النشر (دقائق)</label><input type="number" min={60} step={30} className="input" value={a.publishIntervalMinutes} onChange={(e) => set('publishIntervalMinutes', Number(e.target.value))} /></div>
       <div><label className="label">بداية نافذة النشر</label><input type="time" className="input ltr" value={a.publishWindowStart} onChange={(e) => set('publishWindowStart', e.target.value)} /></div>
       <div><label className="label">نهاية نافذة النشر</label><input type="time" className="input ltr" value={a.publishWindowEnd} onChange={(e) => set('publishWindowEnd', e.target.value)} /></div>

@@ -228,3 +228,17 @@ describe('full-AI approval setting', () => {
     expect(r.queued).toBe(true);
   });
 });
+
+describe('growth content mix in the generation pipeline', () => {
+  it('GROWTH_MIX accounts get a real MP4 Reel first, then rotate formats; FIXED accounts keep their format', async () => {
+    const { accounts } = await seedBase({ accounts: 2 });
+    await prisma.socialAccount.update({ where: { id: accounts[0].id }, data: { formatStrategy: 'GROWTH_MIX' } });
+    const first = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler' });
+    expect(first.advertisement.format).toBe('REEL_VIDEO');
+    expect(await prisma.mediaAsset.count({ where: { advertisementId: first.advertisement.id, role: 'VIDEO' } })).toBe(1);
+    const second = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler' });
+    expect(second.advertisement.format).toBe('IMAGE_FEED');
+    const fixed = await generateAdvertisement({ accountId: accounts[1].id, createdBy: 'scheduler' });
+    expect(fixed.advertisement.format).toBe('IMAGE_STORY');
+  }, 300_000);
+});
