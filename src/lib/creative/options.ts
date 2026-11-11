@@ -120,6 +120,8 @@ export interface Direction {
   renderMode?: 'layered' | 'ai_full'; customPrompt?: string;
   channels?: Channel[];
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
+  /** Reel engine for this design (default from AI settings): ffmpeg = motion from stills, veo = Gemini AI video. */
+  videoEngine?: 'ffmpeg' | 'veo';
   /** Which fields the planner filled automatically (for analytics / transparency). */
   autoPicked?: string[];
 }

@@ -6,11 +6,15 @@ import type { ComposeResult, PlacedLayer } from '../render/compose';
 import { THEMES } from '../render/compose';
 import { probeVideo, run, REEL_REQUIREMENTS, type VideoProbe } from './probe';
 
-export interface ReelResult { mp4: Buffer; probe: VideoProbe; thumbnail: Buffer; scenes: number; audio: ReelAudio }
+export interface ReelResult { mp4: Buffer; probe: VideoProbe; thumbnail: Buffer; scenes: number; audio: ReelAudio; nativeAudio?: boolean; aiVideo?: boolean }
 export type ReelAudio = 'none' | 'ambient' | 'upbeat' | 'instagram';
 export interface ReelOptions {
   /** Hook opening (default true): headline + badge on frame 0 and a fast punch-in on the first scene. */
   hook?: boolean;
+  /** AI video clip (e.g. Gemini Veo) used as the moving base instead of the still scene(s). */
+  baseVideo?: Buffer;
+  /** Keep the base clip's own soundtrack (Veo native audio) instead of `audio`. */
+  nativeAudio?: boolean;
   /** Extra decorated backgrounds (same layout/theme) → "pro" multi-scene reel with transitions. */
   extraBackgrounds?: Buffer[];
   /** none / instagram (licensed IG audio is attached by the publisher) → silent AAC track; ambient / upbeat → royalty-free audio synthesised by FFmpeg. */
@@ -70,7 +74,7 @@ export function audioSource(kind: ReelAudio, D: number): string {
 export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelOptions = {}): Promise<ReelResult> {
   if (c.width !== 1080 || c.height !== 1920) throw new VideoRenderError('Reels require a 1080x1920 composition');
   const D = Math.max(6, Math.min(60, durationSec));
-  const backgrounds = [c.background, ...(opts.extraBackgrounds ?? [])];
+  const backgrounds = opts.baseVideo ? [c.background] : [c.background, ...(opts.extraBackgrounds ?? [])];
   const n = backgrounds.length;
   const audio: ReelAudio = opts.audio ?? 'none';
   const endStart = D - 3;
@@ -84,7 +88,24 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
   try {
     const inputs: string[] = [];
     const filters: string[] = [];
-    for (let i = 0; i < n; i++) {
+    let baseHasAudio = false;
+    if (opts.baseVideo) {
+      // AI clip as the moving base: fill 9:16, 30 fps, hold the last frame under the end card, add a contrast shade for the verified text layers
+      const vf = path.join(dir, 'base.mp4');
+      await fs.writeFile(vf, opts.baseVideo);
+      const bp = await probeVideo(vf, { ...REEL_REQUIREMENTS, width: 0, height: 0, minSec: 0.5 });
+      baseHasAudio = bp.hasAudio;
+      const clip = Math.max(1, Math.min(bp.durationSec || endStart, endStart + XFADE));
+      inputs.push('-i', vf);
+      const th = THEMES[c.themeKey ?? 'navy_gold'];
+      const shade = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${th.panel}" stop-opacity="0.75"/><stop offset="0.3" stop-color="${th.panel}" stop-opacity="0"/><stop offset="0.58" stop-color="${th.panel}" stop-opacity="0"/><stop offset="1" stop-color="${th.panel}" stop-opacity="0.92"/></linearGradient></defs><rect width="1080" height="1920" fill="url(#t)"/></svg>`);
+      const sf = path.join(dir, 'shade.png'); await fs.writeFile(sf, await sharp(shade).png().toBuffer());
+      inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', sf);
+      filters.push(`[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=${FPS},setsar=1,trim=duration=${clip.toFixed(3)},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${D},trim=duration=${D},format=rgba[raw0]`);
+      filters.push(`[1:v]format=rgba[shade]`);
+      filters.push(`[raw0][shade]overlay=0:0[s0]`);
+    }
+    for (let i = 0; i < n && !opts.baseVideo; i++) {
       const f = path.join(dir, `bg${i}.png`);
       await fs.writeFile(f, backgrounds[i]);
       const len = n === 1 ? D : L;
@@ -116,7 +137,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     c.layers.filter((l) => l.id.startsWith('benefit:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(Math.min(1, last)) + 1.0 : hook ? 1.5 : 2.2) + i * 0.15, 30));
     c.layers.filter((l) => l.id.startsWith('contact:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(last) + 0.9 : hook ? 2.4 : 3.0) + i * 0.15));
 
-    let idx = n;
+    let idx = opts.baseVideo ? 2 : n;
     for (const t of timeline) {
       const f = path.join(dir, `l${idx}.png`);
       await fs.writeFile(f, t.layer.png);
@@ -135,14 +156,16 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     const endIdx = idx++;
     filters.push(`[${endIdx}:v]format=rgba,fade=t=in:st=${endStart}:d=0.7:alpha=1[end]`);
     filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})',format=yuv420p[vout]`);
-    inputs.push('-f', 'lavfi', '-t', String(D), '-i', audioSource(audio, D));
+    const useNative = !!opts.baseVideo && !!opts.nativeAudio && baseHasAudio;
+    if (useNative) filters.push(`[0:a]aresample=44100,apad,atrim=duration=${D},afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5[aout]`);
+    else inputs.push('-f', 'lavfi', '-t', String(D), '-i', audioSource(audio, D));
     const audioIdx = idx;
 
     const out = path.join(dir, 'reel.mp4');
     const args = [
       '-y', '-hide_banner', '-loglevel', 'error', ...inputs,
       '-filter_complex', filters.join(';'),
-      '-map', '[vout]', '-map', `${audioIdx}:a`,
+      '-map', '[vout]', '-map', useNative ? '[aout]' : `${audioIdx}:a`,
       '-c:v', 'libx264', '-profile:v', 'high', '-level', '4.1', '-preset', 'medium', '-crf', '20', '-maxrate', '8M', '-bufsize', '16M',
       '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', String(FPS * 2),
       '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
@@ -153,7 +176,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     const probe = await probeVideo(out, { ...REEL_REQUIREMENTS, targetSec: D });
     const thumbFile = path.join(dir, 'thumb.jpg');
     await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(Math.min(4.5, D - 3.5)), '-i', out, '-frames:v', '1', '-q:v', '3', thumbFile], 60_000);
-    return { mp4: await fs.readFile(out), probe, thumbnail: await fs.readFile(thumbFile), scenes: n, audio };
+    return { mp4: await fs.readFile(out), probe, thumbnail: await fs.readFile(thumbFile), scenes: n, audio, nativeAudio: useNative, aiVideo: !!opts.baseVideo };
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

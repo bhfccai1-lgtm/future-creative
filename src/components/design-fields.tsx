@@ -4,9 +4,9 @@ import { RENDER_MODES, AUDIO_TYPES, CHANNELS, DESIGN_STYLES, DESIGN_TYPES, REEL_
 
 export interface DesignValues {
   renderMode: string; customPrompt: string; layout: string; designType: string; designStyle: string; channels: string[];
-  reelStyle: string; reelDuration: string; audio: string; audioQuery: string;
+  reelStyle: string; reelDuration: string; audio: string; audioQuery: string; videoEngine?: string;
 }
-export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: 'none', audioQuery: '' };
+export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: 'none', audioQuery: '', videoEngine: '' };
 
 /** Adds the design/channel/reel options of a DesignValues object to a direction payload. */
 export function designDirection(v: DesignValues, format: string) {
@@ -19,6 +19,7 @@ export function designDirection(v: DesignValues, format: string) {
   if (v.channels.length) d.channels = v.channels;
   if (format === 'REEL_VIDEO' || format === '') {
     if (v.reelStyle) d.reelStyle = v.reelStyle;
+    if (v.videoEngine) d.videoEngine = v.videoEngine;
     if (v.reelDuration) d.reelDuration = Number(v.reelDuration);
     if (v.audio) d.audio = v.audio;
     if (v.audio === 'instagram' && v.audioQuery.trim()) d.audioQuery = v.audioQuery.trim();
@@ -79,6 +80,7 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
 
       <fieldset className={`grid gap-4 md:grid-cols-4 ${isReel ? '' : 'opacity-60'}`}>
         <legend className="mb-2 text-sm font-extrabold text-navy-800">الريلز (الفيديو) {!isReel && <span className="font-normal text-slate-500">— اختر الصيغة «فيديو Reel» لتفعيلها</span>}</legend>
+        <Sel label="محرك الفيديو" value={v.videoEngine ?? ''} onChange={(x) => set({ videoEngine: x })}><option value="">حسب إعدادات الذكاء الاصطناعي</option><option value="ffmpeg">FFmpeg — حركة من الصورة (مجاني)</option><option value="veo">Gemini Veo — فيديو ذكاء اصطناعي حقيقي (مدفوع)</option></Sel>
         <Sel label="نوع الريلز" value={v.reelStyle} onChange={(x) => set({ reelStyle: x })}>{REEL_STYLES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="مدة الريلز" value={v.reelDuration} onChange={(x) => set({ reelDuration: x })}><option value="">حسب إعداد الحساب</option>{REEL_DURATIONS.map((d) => <option key={d} value={d}>{d} ثانية</option>)}</Sel>
         <Sel label="نوع الصوت" value={v.audio} onChange={(x) => set({ audio: x })}>{AUDIO_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>

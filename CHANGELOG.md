@@ -1,5 +1,21 @@
 # Changelog
 
+## 8.4.0 — 2026-11-11 (Gemini Veo AI video for Reels)
+- **Gemini API / Veo connector** (`src/lib/ai/veo.ts`):
+  - image-to-video at 9:16, 4/6/8 s, 720p or 1080p;
+  - long-running operation with polling, then an authenticated download;
+  - error mapping: AUTH, QUOTA, SAFETY (filtered outputs), TIMEOUT, NETWORK;
+  - first-frame image falls back to the alternative REST field format when the API rejects the first one;
+  - a free `verify()` that lists the Veo models available to the key.
+- **Pipeline:** with `videoEngine = veo`, the AI product scene is the first frame of the Veo clip. The FFmpeg renderer uses the clip as the moving base, adds a contrast shade, the deterministic verified overlays (logo, headline, badge, CTA, both phones) and the 3 s end card, and keeps Veo's native audio (unless music was chosen). The output is a 1080×1920 H.264/AAC MP4. The raw clip is kept as `SOURCE_VIDEO`.
+- **Cost controls:** price per second (editable), up-front budget check, a daily Veo limit, and usage recorded as `kind = video`. Dry-run never calls Veo.
+- **Fallback:** if Veo fails, an FFmpeg reel is still delivered. It is flagged by the QC warning `ai_video` and a `VEO_FALLBACK` notification, so a substitution is never silent. The fallback can be turned off.
+- **UI:**
+  - AI settings → Gemini Veo: encrypted key, model, duration, resolution, price, daily limit, native audio, fallback, and a free "verify key & model" button.
+  - Create page: a «محرك الفيديو» selector.
+- 161 tests passing.
+- **Not verified against the live Gemini API:** this environment has no Gemini key, and Google's docs domain is blocked here. Model ids and price are settings for that reason.
+
 ## 8.3.0 — 2026-11-11 (Instagram carousels)
 - New format `IMAGE_CAROUSEL`. Each post has 5–6 slides at 1080×1350:
   - the designed cover;

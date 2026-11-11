@@ -242,3 +242,62 @@ describe('growth content mix in the generation pipeline', () => {
     expect(fixed.advertisement.format).toBe('IMAGE_STORY');
   }, 300_000);
 });
+
+describe('Gemini Veo reels in the pipeline', () => {
+  const makeClip = async (seconds: number) => {
+    const { promises: fs } = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const { run } = await import('@/lib/video/probe');
+    const f = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'veo-it-')), 'c.mp4');
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', `testsrc2=s=720x1280:d=${seconds}:r=24`, '-f', 'lavfi', '-i', `sine=f=330:d=${seconds}`, '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', f]);
+    return fs.readFile(f);
+  };
+  it('uses the Veo clip as the moving base under the verified overlays, keeps native audio, records the cost', async () => {
+    const { setVideoProviderOverride } = await import('@/lib/ai/video');
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false, video: { ...s.ai.video, veoDurationSec: 4, veoPricePerSec: 0.15 } } }) });
+    setAiProviderOverride(new FakeAiProvider());
+    const clip = await makeClip(4);
+    const seen: { prompt: string; hasImage: boolean }[] = [];
+    setVideoProviderOverride({ name: 'fake-veo', generateVideo: async (r) => { seen.push({ prompt: r.prompt, hasImage: !!r.image }); return { mp4: clip, model: 'veo-test', operation: 'op', durationSec: 4 }; } });
+    try {
+      const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'REEL_VIDEO', direction: { videoEngine: 'veo' } });
+      expect(r.advertisement.state).toBe('QUALITY_REVIEW');
+      expect(seen[0].hasImage).toBe(true); expect(seen[0].prompt).toMatch(/No text/);
+      const v = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: r.advertisement.id, role: 'VIDEO' } });
+      expect([v.width, v.height]).toEqual([1080, 1920]);
+      expect(Math.abs((v.durationSec ?? 0) - 7)).toBeLessThan(0.3); // 4 s AI clip + 3 s end card
+      expect(await prisma.mediaAsset.count({ where: { advertisementId: r.advertisement.id, role: 'SOURCE_VIDEO' } })).toBe(1);
+      expect(r.qc?.checks.find((c) => c.id === 'ai_video')?.passed).toBe(true);
+      expect(r.qc?.publishable).toBe(true);
+      const u = await prisma.aiUsage.findFirstOrThrow({ where: { kind: 'video' } });
+      expect(Number(u.costUsd)).toBeCloseTo(0.6);
+      const opts = (await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as Record<string, unknown>;
+      expect(opts).toMatchObject({ videoEngineUsed: 'veo', veoModel: 'veo-test', nativeAudio: true });
+    } finally { setVideoProviderOverride(null); }
+  }, 300_000);
+  it('if Veo fails the reel is still produced with FFmpeg, flagged in QC and notified (no silent substitution)', async () => {
+    const { setVideoProviderOverride } = await import('@/lib/ai/video');
+    const { VeoError } = await import('@/lib/ai/veo');
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+    setAiProviderOverride(new FakeAiProvider());
+    setVideoProviderOverride({ name: 'fake-veo', generateVideo: async () => { throw new VeoError('SAFETY', 'حجب Veo الفيديو الناتج'); } });
+    try {
+      const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'REEL_VIDEO', direction: { videoEngine: 'veo' } });
+      const check = r.qc?.checks.find((c) => c.id === 'ai_video');
+      expect(check).toMatchObject({ passed: false, severity: 'WARNING' });
+      expect(check?.detail).toMatch(/FFmpeg/);
+      expect(await prisma.mediaAsset.count({ where: { advertisementId: r.advertisement.id, role: 'VIDEO' } })).toBe(1);
+      expect(await prisma.notification.count({ where: { code: 'VEO_FALLBACK' } })).toBe(1);
+      expect(await prisma.aiUsage.count({ where: { kind: 'video' } })).toBe(0); // nothing billed
+    } finally { setVideoProviderOverride(null); }
+  }, 300_000);
+  it('dry-run never calls the paid Veo API', async () => {
+    const { setVideoProviderOverride } = await import('@/lib/ai/video');
+    const { accounts } = await seedBase();
+    let called = false;
+    setVideoProviderOverride({ name: 'fake-veo', generateVideo: async () => { called = true; throw new Error('should not be called'); } });
+    try {
+      await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'REEL_VIDEO', direction: { videoEngine: 'veo' } });
+      expect(called).toBe(false);
+    } finally { setVideoProviderOverride(null); }
+  }, 300_000);
+});

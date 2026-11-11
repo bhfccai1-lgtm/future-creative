@@ -3,6 +3,7 @@ import { getSettings, secretStatus } from '@/lib/settings';
 import { estimateAdCost, monthToDateSpend } from '@/lib/ai/cost';
 import { Card, PageHeader, Stat } from '@/components/ui';
 import { AiSettingsForm } from '@/components/ai-settings-form';
+import { GeminiForm } from '@/components/gemini-form';
 
 export default async function AiSettingsPage() {
   await requirePageUser('settings:ai');
@@ -18,6 +19,7 @@ export default async function AiSettingsPage() {
         <Stat label="التكلفة التقديرية لكل إعلان" value={<span className="ltr">${estimateAdCost(s).toFixed(3)}</span>} hint="موجز نصي + صورة مشهد واحدة" />
       </div>
       <Card><AiSettingsForm ai={s.ai} keyStatus={key} /></Card>
+      <Card title="Gemini Veo — إنتاج فيديو الريلز بالذكاء الاصطناعي" className="mt-6"><GeminiForm video={s.ai.video} keyStatus={await secretStatus('GEMINI_API_KEY')} /></Card>
     </>
   );
 }

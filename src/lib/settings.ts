@@ -39,6 +39,19 @@ export const SettingsSchema = z.object({
     useAiReview: z.boolean().default(false),
     /** Full-AI posters (AI-drawn text): require a human approval before publishing. Admin may turn it off. */
     aiFullRequiresApproval: z.boolean().default(true),
+    /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
+    video: z.object({
+      engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),
+      veoModel: z.string().default('veo-3.1-fast-generate-preview'),
+      veoDurationSec: z.union([z.literal(4), z.literal(6), z.literal(8)]).default(8),
+      veoResolution: z.enum(['720p', '1080p']).default('720p'),
+      /** USD per generated second — editable because Google pricing changes; verify on the Gemini pricing page. */
+      veoPricePerSec: z.number().min(0).default(0.15),
+      maxVeoPerDay: z.number().int().min(0).max(200).default(6),
+      nativeAudio: z.boolean().default(true),
+      /** If Veo fails, still deliver an FFmpeg reel (flagged in QC) instead of failing the design. */
+      fallbackToFfmpeg: z.boolean().default(true),
+    }).default({}),
     // USD estimates — editable because provider pricing changes. Verify against current OpenAI pricing.
     pricing: z.object({
       textInputPer1M: z.number().default(0.4),
@@ -89,7 +102,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

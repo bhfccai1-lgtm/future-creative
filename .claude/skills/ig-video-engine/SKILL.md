@@ -9,4 +9,12 @@ Run commands through `bash scripts/ig/run.sh <command>` — it uses `docker comp
 - Create: `bash scripts/ig/run.sh generate <accountId> REEL_VIDEO "<idea>" --confirm` (after the user agrees). Duration, reel style (standard/pro multi-scene) and audio (none/ambient/upbeat/Instagram licensed audio) are chosen on the dashboard create page.
 - Verify: `bash scripts/ig/run.sh probe <adId>` → report codec, resolution, fps, duration, audio, SHA-256 match and any problems.
 
-Honesty: motion is produced with FFmpeg from AI stills (camera moves, transitions, animated text). No generative-video model and no voiceover provider is connected — never describe the output as AI-generated video footage. If `video` is null the ad is a still image, not a Reel.
+Engines:
+- **FFmpeg** (free): camera motion and transitions from the AI product still.
+- **Gemini Veo** (paid per second, needs a Gemini API key in the dashboard → AI settings → Gemini Veo): real AI video generated from the product scene as its first frame. The system then draws the verified logo, headline, button, both phone numbers and the end card on top.
+- Choose the engine per design on the create page («محرك الفيديو»), or set the default in AI settings.
+
+Honesty:
+- After generation, check the design's QC item «فيديو ذكاء اصطناعي حقيقي (Gemini Veo)». If it failed, the reel was made with FFmpeg (the reason is shown). Never call an FFmpeg reel "AI-generated video".
+- If `video` is null the ad is a still image, not a Reel.
+- No voiceover provider is connected.

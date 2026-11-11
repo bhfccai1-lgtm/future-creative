@@ -20,11 +20,13 @@ import { runQualityChecks, type QcReport } from '../qc';
 import { sha256 } from '../crypto';
 import { nextFormatFor } from '../creative/format-mix';
 import { renderCarousel, normaliseSlides } from '../render/carousel';
+import { getVideoProvider } from '../ai/video';
+import { startOfDayInTz } from '../time';
+import { veoPrompt, VEO_NEGATIVE, type VeoResult } from '../ai/veo';
 import { marketOf, pickContentType, pickOccasion } from '../creative/planner';
 import { emitEvent } from '../integrations/events';
 import { signedMediaUrl } from '../storage';
 import { storage } from '../storage';
-import { startOfDayInTz } from '../time';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
 import { designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
@@ -204,9 +206,39 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // ── Step 11: format (real video for Reels) ──
     let video: Awaited<ReturnType<typeof renderReel>> | null = null;
     let videoError: string | null = null;
+    // Gemini Veo: real AI motion from the product scene (first frame), then our verified overlays on top.
+    const engine = format === 'REEL_VIDEO' ? (d.videoEngine ?? s.ai.video.engine) : null;
+    let veo: VeoResult | null = null;
+    let aiVideoNote: string | null = null;
+    if (engine === 'veo') {
+      try {
+        if (aiFull) throw new AppError('VEO_UNSUPPORTED', 'وضع التصميم الكامل بالذكاء الاصطناعي لا يُدمج مع Veo');
+        if (provider.isDryRun) throw new AppError('DRY_RUN', 'وضع التجربة (Dry-run) لا يستدعي Veo المدفوع');
+        const vp = await getVideoProvider(s);
+        if (!vp) throw new AppError('NO_GEMINI_KEY', 'مفتاح Gemini غير مُعدّ (إعدادات الذكاء الاصطناعي ← Gemini Veo)');
+        const today = await prisma.aiUsage.count({ where: { kind: 'video', createdAt: { gte: startOfDayInTz() } } });
+        if (today >= s.ai.video.maxVeoPerDay) throw new AppError('VEO_DAILY_LIMIT', `بلغ الحد اليومي لفيديوهات Veo (${s.ai.video.maxVeoPerDay})`);
+        const cost = s.ai.video.veoDurationSec * s.ai.video.veoPricePerSec;
+        await assertBudget(s, cost);
+        veo = await withAiJob(ad.id, 'VIDEO', { name: vp.name } as AiProvider, s.ai.video.veoModel, async (jobId) => {
+          const r = await vp.generateVideo({ prompt: veoPrompt(brief!.sceneDescription, creativeStyle), image: scene.png, durationSec: s.ai.video.veoDurationSec, resolution: s.ai.video.veoResolution, negativePrompt: VEO_NEGATIVE });
+          await recordUsage({ jobId, provider: vp.name, model: r.model, kind: 'video', costUsd: cost });
+          return r;
+        });
+      } catch (e) {
+        aiVideoNote = (e as Error).message;
+        if (!s.ai.video.fallbackToFfmpeg) throw e;
+        await notify('WARNING', 'VEO_FALLBACK', 'تعذر توليد فيديو Gemini Veo', `استُخدم محرك FFmpeg بدلًا منه: ${aiVideoNote}`, account.id);
+      }
+    }
     if (format === 'REEL_VIDEO') {
-      try { video = await renderReel(composed, reelDuration, { extraBackgrounds, audio: d.audio ?? 'none' }); }
-      catch (e) { videoError = (e as Error).message; }
+      const audio = d.audio ?? 'none';
+      try {
+        video = await renderReel(composed, veo ? veo.durationSec + 3 : reelDuration, {
+          extraBackgrounds, audio, baseVideo: veo?.mp4,
+          nativeAudio: !!veo && s.ai.video.nativeAudio && audio === 'none', // explicit music choice wins; Instagram audio stays silent
+        });
+      } catch (e) { videoError = (e as Error).message; }
     }
 
     // ── Store media ──
@@ -224,6 +256,11 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     if (video) {
       await put('VIDEO', 'reel.mp4', video.mp4, 'video/mp4', { width: video.probe.width, height: video.probe.height, durationSec: video.probe.durationSec, meta: video.probe as unknown as Prisma.InputJsonValue });
       await put('THUMBNAIL', 'thumb.jpg', video.thumbnail, 'image/jpeg');
+    }
+    if (veo) await put('SOURCE_VIDEO', 'veo.mp4', veo.mp4, 'video/mp4', { meta: { model: veo.model, operation: veo.operation, durationSec: veo.durationSec } });
+    if (engine) {
+      const opts = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(opts ?? {}), videoEngine: engine, videoEngineUsed: veo ? 'veo' : 'ffmpeg', veoModel: veo?.model ?? null, nativeAudio: !!video?.nativeAudio, aiVideoNote } as Prisma.InputJsonValue } });
     }
     if (carousel) for (let i = 0; i < carousel.slides.length; i++) await put('SLIDE', `slide-${String(i + 2).padStart(2, '0')}.jpg`, carousel.slides[i], 'image/jpeg', { width: 1080, height: 1350, meta: { index: i + 2 } });
     const primarySha = video ? sha256(video.mp4) : sha256(jpeg);
@@ -256,6 +293,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       productAllowed: productAllowed(account, product.id), duplicates: dups, dryRun: provider.isDryRun,
       video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval,
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
+      aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,
     });
 
     await storeFingerprints(account.id, ad.id, [

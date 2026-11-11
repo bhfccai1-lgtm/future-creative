@@ -24,6 +24,8 @@ export interface QcInput {
   hashtags?: string[];
   /** Carousel: total images (cover included) and rendering problems. */
   carousel?: { images: number; problems: string[] } | null;
+  /** Gemini Veo requested for this reel: whether it was really used (otherwise FFmpeg fallback). */
+  aiVideo?: { used: boolean; model: string | null; note: string | null } | null;
 }
 
 export interface QcReport { passed: boolean; publishable: boolean; checks: QcCheck[]; checkedAt: string; requiresHuman?: boolean }
@@ -84,6 +86,7 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
     const ok = !!q.carousel && q.carousel.images >= 5 && q.carousel.images <= 10 && q.carousel.problems.length === 0;
     checks.push({ id: 'carousel_slides', label: 'شرائح الكاروسيل مكتملة ومقروءة (5–10 صور، نص يتسع، أرقام الفرعين)', passed: ok, severity: 'BLOCKER', detail: !q.carousel ? 'لم تُنتج الشرائح' : [`${q.carousel.images} صور`, ...q.carousel.problems].join('؛ ') });
   }
+  if (q.aiVideo) checks.push({ id: 'ai_video', label: 'فيديو ذكاء اصطناعي حقيقي (Gemini Veo)', passed: q.aiVideo.used, severity: 'WARNING', detail: q.aiVideo.used ? `Gemini ${q.aiVideo.model}` : `استُخدم FFmpeg بدلًا من Veo: ${q.aiVideo.note ?? ''}` });
   const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
   checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });
 
