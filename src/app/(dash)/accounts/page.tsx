@@ -8,9 +8,10 @@ import { fmtLocal } from '@/lib/time';
 
 export default async function AccountsPage() {
   await requirePageUser();
-  const [accounts, products] = await Promise.all([
+  const [accounts, products, cats] = await Promise.all([
     prisma.socialAccount.findMany({ include: { connection: true, _count: { select: { advertisements: true } } }, orderBy: { createdAt: 'asc' } }),
-    prisma.product.findMany({ where: { active: true }, select: { id: true, titleAr: true }, orderBy: { titleAr: 'asc' } }),
+    prisma.product.findMany({ where: { active: true }, select: { id: true, titleAr: true, categoryId: true }, orderBy: { titleAr: 'asc' } }),
+    prisma.productCategory.findMany({ orderBy: { nameAr: 'asc' }, select: { id: true, nameAr: true, _count: { select: { products: { where: { active: true } } } } } }),
   ]);
   return (
     <>
@@ -32,7 +33,7 @@ export default async function AccountsPage() {
           </tbody>
         </table>
       </Card>
-      <Card title="إضافة حساب جديد"><AccountForm products={products} /></Card>
+      <Card title="إضافة حساب جديد"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} /></Card>
     </>
   );
 }

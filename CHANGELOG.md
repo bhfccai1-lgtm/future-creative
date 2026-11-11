@@ -1,5 +1,26 @@
 # Changelog
 
+## 8.10.0 — 2026-11-11 (large catalogue: 500+ products and services)
+- **Bulk import** from CSV (Excel «CSV UTF-8») or a shared Google Sheets link:
+  - Only the **category + name** are required. Arabic and English headers are both accepted (الفئة/الاسم/الاسم بالإنجليزية…, or category/titleAr/titleEn…). Lists are separated with `|`.
+  - Missing fields are filled automatically: audience, occasions, image description, messages.
+  - **Preview first** (nothing is saved): new, updated, new categories, rejected rows with line numbers. Then «تأكيد الاستيراد» (confirm import).
+  - Upsert by code (slug), so re-importing the same sheet updates and never duplicates. Arabic-only names get a stable code. Missing categories are created.
+  - Rows with unverified claims or prices in their messages are rejected (same QC rules).
+  - Up to 5,000 rows per file, written in batches of 100.
+- **Export / template:** `/api/products/export` produces a CSV that the importer reads back unchanged.
+- **Products page:**
+  - server-side search, filter by category and status;
+  - 50 per page;
+  - bulk activate/deactivate.
+- **Account form:**
+  - allow whole **categories** (includes products added later);
+  - a searchable product list instead of hundreds of checkboxes.
+- **Smarter rotation:** an account never repeats any of its last 10 products (fewer for small catalogues).
+- Index `products(categoryId, active)`. Migration `20261112090000_catalog_scale` (additive).
+- Bug found by the new tests and fixed: Arabic headers containing «إ/أ» were not recognised.
+- Tests (203 passing): CSV parsing (Arabic headers, defaults, stable codes, duplicates, claims, Sheets link), 600-row import (preview writes nothing, commit, re-import updates, export round-trip), category allowance, rotation over 600 products.
+
 ## 8.9.1 — 2026-11-11 (n8n one-command setup)
 - **Dashboard Telegram section:**
   - bot token (encrypted), chat id and allowed user ids;

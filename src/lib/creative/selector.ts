@@ -11,7 +11,8 @@ export type Rng = () => number;
  */
 export function chooseProduct(candidates: Product[], recentProductIds: string[], rng: Rng = Math.random, epsilon = 0.2): Product | null {
   if (!candidates.length) return null;
-  const rotateN = Math.min(3, candidates.length - 1);
+  // large catalogues: don't repeat any of the last 10 products used on the account (or n-1 for small ones)
+  const rotateN = Math.min(10, candidates.length - 1);
   const blocked = new Set(recentProductIds.slice(0, rotateN));
   const pool = candidates.filter((p) => !blocked.has(p.id));
   const list = pool.length ? pool : candidates;
@@ -24,16 +25,23 @@ export function chooseProduct(candidates: Product[], recentProductIds: string[],
 }
 
 export async function selectProductForAccount(account: SocialAccount, rng: Rng = Math.random) {
-  const candidates = await prisma.product.findMany({
-    where: { active: true, ...(account.allowedProductIds.length ? { id: { in: account.allowedProductIds } } : {}) },
-  });
+  const candidates = await prisma.product.findMany({ where: { active: true, ...allowedWhere(account) } });
   const recent = await prisma.advertisement.findMany({
-    where: { accountId: account.id, state: { notIn: ['REJECTED', 'FAILED'] } }, orderBy: { createdAt: 'desc' }, take: 10, select: { productId: true },
+    where: { accountId: account.id, state: { notIn: ['REJECTED', 'FAILED'] } }, orderBy: { createdAt: 'desc' }, take: 30, select: { productId: true },
   });
   return chooseProduct(candidates, recent.map((r) => r.productId), rng);
 }
 
-export const productAllowed = (account: SocialAccount, productId: string) => !account.allowedProductIds.length || account.allowedProductIds.includes(productId);
+/** No restriction = all active products; otherwise the listed products OR any product in the listed categories. */
+export function allowedWhere(account: Pick<SocialAccount, 'allowedProductIds' | 'allowedCategoryIds'>) {
+  const ids = account.allowedProductIds, cats = account.allowedCategoryIds ?? [];
+  if (!ids.length && !cats.length) return {};
+  return { OR: [...(ids.length ? [{ id: { in: ids } }] : []), ...(cats.length ? [{ categoryId: { in: cats } }] : [])] };
+}
+export const productAllowed = (account: Pick<SocialAccount, 'allowedProductIds' | 'allowedCategoryIds'>, product: { id: string; categoryId: string }) => {
+  const ids = account.allowedProductIds, cats = account.allowedCategoryIds ?? [];
+  return (!ids.length && !cats.length) || ids.includes(product.id) || cats.includes(product.categoryId);
+};
 
 /** Recompute product performance from VERIFIED published results that carry an engagement score. */
 export async function refreshPerformanceScores() {

@@ -14,8 +14,9 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const a = await prisma.socialAccount.findUnique({ where: { id }, include: { connection: true } });
   if (!a) notFound();
-  const [products, ads, jobs, errors] = await Promise.all([
-    prisma.product.findMany({ where: { active: true }, select: { id: true, titleAr: true }, orderBy: { titleAr: 'asc' } }),
+  const [products, cats, ads, jobs, errors] = await Promise.all([
+    prisma.product.findMany({ where: { active: true }, select: { id: true, titleAr: true, categoryId: true }, orderBy: { titleAr: 'asc' } }),
+    prisma.productCategory.findMany({ orderBy: { nameAr: 'asc' }, select: { id: true, nameAr: true, _count: { select: { products: { where: { active: true } } } } } }),
     prisma.advertisement.findMany({ where: { accountId: id }, orderBy: { createdAt: 'desc' }, take: 30, include: { product: true } }),
     prisma.publicationJob.findMany({ where: { accountId: id }, orderBy: { createdAt: 'desc' }, take: 30, include: { result: true } }),
     prisma.notification.findMany({ where: { accountId: id }, orderBy: { createdAt: 'desc' }, take: 20 }),
@@ -54,7 +55,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
           {!connected && <p className="mt-2 text-xs text-amber-700">الحساب غير مرتبط — لا يمكن التفويض.</p>}
         </Card>
       </div>
-      <Card title="إعدادات الحساب" className="mt-6"><AccountForm products={products} account={{ ...a }} /></Card>
+      <Card title="إعدادات الحساب" className="mt-6"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} account={{ ...a }} /></Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card title="سجل المحتوى">
           <table className="w-full"><tbody>{ads.map((ad) => <tr key={ad.id} className="border-t"><td className="td"><Link className="text-navy-700 hover:underline" href={`/ads/${ad.id}`}>{ad.headline ?? ad.product.titleAr}</Link><div className="text-xs text-slate-500">{fmtLocal(ad.createdAt)}</div></td><td className="td"><StateBadge state={ad.state} /></td></tr>)}</tbody></table>

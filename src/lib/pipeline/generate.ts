@@ -291,7 +291,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       manifest: composed.manifest, background: composed.background, finalImage: jpeg, logoPng: composed.layers.find((l) => l.id === 'logo')!.png,
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
-      productAllowed: productAllowed(account, product.id), duplicates: dups, dryRun: provider.isDryRun,
+      productAllowed: productAllowed(account, product), duplicates: dups, dryRun: provider.isDryRun,
       video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval,
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
       aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,

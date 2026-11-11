@@ -4,17 +4,19 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type Product = { id: string; titleAr: string };
+type Product = { id: string; titleAr: string; categoryId?: string };
+type Category = { id: string; nameAr: string; count?: number };
 type Account = {
-  id?: string; name: string; platform: string; handle?: string | null; language: string; businessCategory?: string | null; allowedProductIds: string[];
+  id?: string; name: string; platform: string; handle?: string | null; language: string; businessCategory?: string | null; allowedProductIds: string[]; allowedCategoryIds?: string[];
   publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string;
 };
 
-const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 4, formatStrategy: 'GROWTH_MIX' };
+const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], allowedCategoryIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 4, formatStrategy: 'GROWTH_MIX' };
 
-export function AccountForm({ account, products }: { account?: Account; products: Product[] }) {
+export function AccountForm({ account, products, categories = [] }: { account?: Account; products: Product[]; categories?: Category[] }) {
   const router = useRouter();
   const [a, setA] = useState<Account>(account ?? EMPTY);
+  const [pq, setPq] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const set = <K extends keyof Account>(k: K, v: Account[K]) => setA((x) => ({ ...x, [k]: v }));
   return (
@@ -57,13 +59,28 @@ export function AccountForm({ account, products }: { account?: Account; products
       <div><label className="label">الحد الأقصى اليومي</label><input type="number" min={1} max={48} className="input" value={a.maxDailyAds} onChange={(e) => set('maxDailyAds', Number(e.target.value))} /></div>
       <div><label className="label">المنطقة الزمنية</label><input className="input ltr" value={a.timezone} onChange={(e) => set('timezone', e.target.value)} /></div>
       <div className="md:col-span-3">
-        <label className="label">المنتجات المسموح بها (بدون اختيار = كل المنتجات النشطة)</label>
-        <div className="grid max-h-48 grid-cols-2 gap-1 overflow-y-auto rounded-lg border p-2 md:grid-cols-4">
-          {products.map((p) => (
-            <label key={p.id} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={a.allowedProductIds.includes(p.id)} onChange={(e) => set('allowedProductIds', e.target.checked ? [...a.allowedProductIds, p.id] : a.allowedProductIds.filter((x) => x !== p.id))} />{p.titleAr}
-            </label>
-          ))}
+        <label className="label">الفئات المسموح بها (تشمل كل منتجاتها، بما فيها التي تُضاف لاحقًا)</label>
+        <div className="flex flex-wrap gap-2 rounded-lg border p-2">
+          {categories.map((c) => { const cats = a.allowedCategoryIds ?? []; return (
+            <label key={c.id} className={`flex items-center gap-1 rounded-full border px-3 py-1 text-sm ${cats.includes(c.id) ? 'border-navy-700 bg-navy-50' : ''}`}>
+              <input type="checkbox" checked={cats.includes(c.id)} onChange={(e) => set('allowedCategoryIds', e.target.checked ? [...cats, c.id] : cats.filter((x) => x !== c.id))} />{c.nameAr}{c.count !== undefined && <span className="text-xs text-slate-500">({c.count})</span>}
+            </label>); })}
+          {!categories.length && <span className="text-xs text-slate-500">لا توجد فئات بعد.</span>}
+        </div>
+      </div>
+      <div className="md:col-span-3">
+        <label className="label">منتجات إضافية محددة ({a.allowedProductIds.length} مختار) — بدون اختيار فئة أو منتج = كل المنتجات النشطة</label>
+        <input className="input mb-2" style={{ width: '18rem' }} placeholder="ابحث عن منتج…" value={pq} onChange={(e) => setPq(e.target.value)} />
+        <div className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto rounded-lg border p-2 md:grid-cols-4">
+          {(() => { const q = pq.trim().toLowerCase(); const cats = a.allowedCategoryIds ?? [];
+            const list = products.filter((p) => a.allowedProductIds.includes(p.id) || (!q ? true : p.titleAr.toLowerCase().includes(q)));
+            const shown = q ? list.slice(0, 200) : [...products.filter((p) => a.allowedProductIds.includes(p.id)), ...products.filter((p) => !a.allowedProductIds.includes(p.id))].slice(0, 120);
+            return <>{shown.map((p) => { const viaCat = !!p.categoryId && cats.includes(p.categoryId); return (
+              <label key={p.id} className={`flex items-center gap-2 text-sm ${viaCat ? 'text-slate-400' : ''}`} title={viaCat ? 'مسموح عبر الفئة' : undefined}>
+                <input type="checkbox" disabled={viaCat} checked={viaCat || a.allowedProductIds.includes(p.id)} onChange={(e) => set('allowedProductIds', e.target.checked ? [...a.allowedProductIds, p.id] : a.allowedProductIds.filter((x) => x !== p.id))} />{p.titleAr}
+              </label>); })}
+              {products.length > shown.length && <span className="col-span-full text-xs text-slate-500">يُعرض {shown.length} من {products.length} — استخدم البحث للوصول لبقية المنتجات.</span>}</>;
+          })()}
         </div>
       </div>
       <div className="flex items-center gap-3 md:col-span-3"><Button>{a.id ? 'حفظ التعديلات' : 'إضافة الحساب'}</Button>{msg && <span className={msg.ok ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>{msg.t}</span>}</div>
