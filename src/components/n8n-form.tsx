@@ -24,7 +24,14 @@ export function N8nForm({ n8n, events, secret, token, apiBase, telegram }: { n8n
     <div className="space-y-4">
       <form className="space-y-3" onSubmit={async (e) => {
         e.preventDefault(); setMsg(null);
-        try { await apiCall('/api/settings/n8n', { method: 'PUT', body: { ...v, telegramBotToken: tgToken || undefined } }); setTgToken(''); setMsg({ ok: true, t: 'تم الحفظ ✓' }); router.refresh(); }
+        try {
+          // a browser may autofill this password-type field with a saved password: only a real BotFather token is sent
+          const tokenOk = /^\d{5,}:[\w-]{20,}$/.test(tgToken);
+          await apiCall('/api/settings/n8n', { method: 'PUT', body: { ...v, telegramBotToken: tokenOk ? tgToken : undefined } });
+          setTgToken('');
+          setMsg({ ok: true, t: tgToken && !tokenOk ? 'تم الحفظ ✓ — وتجاهلنا قيمة غير صحيحة في «رمز البوت» (غالبًا ملأها المتصفح تلقائيًا)؛ الرمز المحفوظ باقٍ كما هو.' : 'تم الحفظ ✓' });
+          router.refresh();
+        }
         catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
       }}>
         <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={v.enabled} onChange={(e) => setV({ ...v, enabled: e.target.checked })} /> تفعيل تكامل n8n</label>
@@ -51,7 +58,7 @@ export function N8nForm({ n8n, events, secret, token, apiBase, telegram }: { n8n
             <li>اضغط «اكتشاف تلقائي» — يملأ رقم المحادثة ورقمك.</li>
           </ol>
           <div className="grid gap-3 md:grid-cols-3">
-            <div><label className="label">رمز البوت {telegram && <span className="text-emerald-700">(محفوظ ✓)</span>}</label><input type="password" autoComplete="off" className="input ltr" placeholder={telegram ? 'اتركه فارغًا للإبقاء عليه' : '123456789:AA…'} value={tgToken} onChange={(e) => setTgToken(e.target.value.trim())} /></div>
+            <div><label className="label">رمز البوت {telegram && <span className="text-emerald-700">(محفوظ ✓)</span>}</label><input type="password" name="fc-telegram-bot-token" autoComplete="new-password" data-lpignore="true" data-1p-ignore className="input ltr" placeholder={telegram ? 'اتركه فارغًا للإبقاء عليه' : '123456789:AA…'} value={tgToken} onChange={(e) => setTgToken(e.target.value.trim())} /></div>
             <div><label className="label">رقم المحادثة (Chat ID)</label><input className="input ltr" value={v.telegramChatId} onChange={(e) => setV({ ...v, telegramChatId: e.target.value.trim() })} /></div>
             <div><label className="label">المسموح لهم بالاعتماد (User IDs)</label><input className="input ltr" placeholder="111,222" value={v.telegramAllowedUserIds} onChange={(e) => setV({ ...v, telegramAllowedUserIds: e.target.value })} /></div>
           </div>
