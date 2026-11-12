@@ -79,6 +79,8 @@ export interface AiProvider {
   suggestIdeas(req: BriefRequest, model: string, count: number): Promise<{ ideas: IdeaSuggestion[]; usage: TextUsage; model: string }>;
   /** Optional: writes a spoken voice-over script in a given dialect/language for a persona. */
   writeVoiceover?(req: VoiceoverRequest, model: string): Promise<{ script: string; usage: TextUsage; model: string }>;
+  /** Optional art-director: scores candidate images (JPEG) for the brief and returns the index of the best one. */
+  judgeImages?(images: Buffer[], brief: string, model: string): Promise<{ best: number; scores: number[]; reason: string; usage: TextUsage; model: string }>;
   generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string }): Promise<ImageResult>;
 }
 

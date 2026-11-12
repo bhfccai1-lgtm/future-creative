@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -41,6 +41,19 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div><label className="label">نموذج النص</label><input className="input ltr" value={v.textModel} onChange={(e) => setV({ ...v, textModel: e.target.value })} /></div>
         <div><label className="label">نموذج الصور</label><input className="input ltr" value={v.imageModel} onChange={(e) => setV({ ...v, imageModel: e.target.value })} /></div>
         <div><label className="label">جودة الصور</label><select className="input" value={v.imageQuality} onChange={(e) => setV({ ...v, imageQuality: e.target.value as Ai['imageQuality'] })}><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option></select></div>
+        <fieldset className="rounded-lg border-2 border-gold-300 p-3 md:col-span-3">
+          <legend className="px-1 text-sm font-bold text-navy-800">✨ استوديو الإبداع</legend>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.creativeConcepts ?? true} onChange={(e) => setV({ ...v, creativeConcepts: e.target.checked })} /><span><b>فكرة بصرية مميزة لكل تصميم</b> — 10 أفكار إبداعية تتناوب لكل حساب: طبيعة صامتة فاخرة، المنتج يطفو، لحظة حركة مجمّدة، عالم مصغّر، ورق مقصوص، لون جريء وأشكال هندسية، تراث خليجي فاخر، لقطة سينمائية، مجسّمات ناعمة، مفاجأة الحجم. حسابات الشركات تأخذ الأفكار الرسمية فقط.</span></label>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div><label className="label">المخرج الفني: عدد الصور المولدة لكل تصميم</label>
+              <select className="input" style={{ width: '16rem' }} value={v.bestOf ?? 1} onChange={(e) => setV({ ...v, bestOf: Number(e.target.value) })}>
+                <option value={1}>صورة واحدة (الأوفر)</option><option value={2}>صورتان ويُختار الأفضل (موصى به)</option><option value={3}>3 صور ويُختار الأفضل</option>
+              </select></div>
+            <p className="text-xs text-slate-500">يقيّم الذكاء الاصطناعي كل صورة كمخرج فني (دقة شكل المنتج، الجمال، قوة التكوين، خلوها من الحروف) ويحتفظ بالأقوى. كل صورة إضافية = تكلفة صورة.</p>
+          </div>
+          <button type="button" className="mt-3 rounded-lg bg-navy-800 px-3 py-1.5 text-xs font-bold text-white" onClick={() => setV({ ...v, creativeConcepts: true, bestOf: 2, qualityByFormat: { IMAGE_STORY: 'medium', IMAGE_FEED: 'high', IMAGE_SQUARE: 'high', IMAGE_CAROUSEL: 'high', REEL_VIDEO: 'high' } })}>⭐ تطبيق «الجودة الاحترافية»: عالية للريلز والمنشورات والكاروسيل · متوسطة للستوري · صورتان ويُختار الأفضل</button>
+          <p className="mt-1 text-xs text-slate-500">ثم اضغط «حفظ الإعدادات». راجع الحد الشهري للإنفاق أدناه — التكلفة لكل تصميم تزيد تقريبًا 2–4 أضعاف.</p>
+        </fieldset>
         <fieldset className="rounded-lg border p-3 md:col-span-3">
           <legend className="px-1 text-sm font-bold text-navy-800">الجودة حسب الصيغة</legend>
           <p className="mb-2 text-xs text-slate-500">الذكاء الاصطناعي يرسم صورة المنتج فقط — الشعار والنصوص والأرقام يضيفها النظام بنفس الدقة في كل المستويات. «حسب الإعداد العام» = جودة الصور أعلاه.</p>

@@ -83,7 +83,7 @@ export const DESIGN_STYLES: (Opt & { theme: 'navy_gold' | 'black_gold' | 'white_
  * Art-direction engine: every design gets a professional photo/poster recipe (composition × lighting × lens × poster layout),
  * rotated per account (least-recently-used) so consecutive designs never look alike. Recorded on the ad for reports.
  */
-export interface Art { composition?: string; lighting?: string; lens?: string; poster?: string }
+export interface Art { composition?: string; lighting?: string; lens?: string; poster?: string; concept?: string }
 export const LIGHTING = [
   { value: 'softbox', light: true, prompt: 'large softbox studio lighting, gentle wrap-around shadows, clean highlights' },
   { value: 'golden_hour', light: true, prompt: 'warm golden-hour window light with long soft shadows' },
@@ -107,6 +107,24 @@ export const POSTER_LAYOUTS = [
   { value: 'diagonal', prompt: 'dynamic diagonal composition, a flowing ribbon leads the eye from the headline to the product' },
   { value: 'editorial', prompt: 'minimal magazine-editorial layout with lots of negative space, refined typography and the gold badge' },
 ] as const;
+/**
+ * Creative concepts («الفكرة البصرية»): the big visual idea on top of the photo recipe — what makes a scroll stop.
+ * Rotated per account (least-recently-used). Each keeps ONE hero product, readable and true to its real shape.
+ * `formal` = suitable for corporate/B2B accounts (no playful/whimsical concepts there).
+ */
+export const CONCEPTS = [
+  { value: 'luxury_still_life', ar: 'طبيعة صامتة فاخرة', formal: true, prompt: 'luxury editorial still life: the product on a sculptural stone or travertine pedestal, soft architectural arches and curved shadows, museum-gallery calm' },
+  { value: 'levitation', ar: 'المنتج يطفو', formal: true, prompt: 'the product floats weightlessly in mid-air at a slight dynamic tilt, with a soft realistic shadow on the surface below and a few related elements floating around it' },
+  { value: 'motion_freeze', ar: 'لحظة حركة مجمّدة', formal: false, prompt: 'frozen-motion moment: silk ribbons, confetti or flower petals caught mid-air swirling around the product, high-speed photography, crisp detail' },
+  { value: 'miniature_world', ar: 'عالم مصغّر حول المنتج', formal: false, prompt: 'playful miniature world: tiny realistic figurines and props interacting with the giant product as if it were a building or a stage, tilt-shift depth of field' },
+  { value: 'paper_craft', ar: 'عالم من الورق المقصوص', formal: false, prompt: 'handcrafted layered cut-paper 3D scene around the product, soft paper shadows, depth layers, craft feel that celebrates printing' },
+  { value: 'color_block', ar: 'خلفية لون جريء وأشكال هندسية', formal: true, prompt: 'bold colour-block set: one strong saturated backdrop colour with simple geometric podiums (cylinders, cubes, arches) in tone-on-tone shades, modern pop advertising' },
+  { value: 'gulf_heritage', ar: 'لمسة تراث خليجي فاخرة', formal: true, prompt: 'refined Gulf heritage setting: mashrabiya patterned light and shadow, brass and wood details, subtle arabesque motifs, warm elegant ambience — modern, never kitsch' },
+  { value: 'cinematic_still', ar: 'لقطة سينمائية', formal: true, prompt: 'cinematic film still: anamorphic look, gentle haze, atmospheric depth, storytelling scene where the product is the clear hero' },
+  { value: 'clay_3d', ar: 'مجسّمات ثلاثية الأبعاد ناعمة', formal: false, prompt: 'soft 3D clay-render environment in pastel colours with rounded shapes around a photorealistic hero product, friendly and premium' },
+  { value: 'scale_surprise', ar: 'مفاجأة الحجم', formal: false, prompt: 'surreal scale surprise: the product appears oversized in a believable real-world location, creating an eye-catching visual metaphor' },
+] as const;
+
 /** Poster decoration that matches the colour theme (instead of always navy). */
 export const THEME_DECOR: Record<string, string> = {
   navy_gold: 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background',
@@ -231,6 +249,8 @@ export interface Direction {
   /** resolved art recipe (system-picked) */
   art?: Art;
   channels?: Channel[];
+  /** big visual idea (CONCEPTS value), 'auto' or 'none' */
+  concept?: string;
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
   /** Reel engine for this design (default from AI settings): ffmpeg = motion from stills, veo = Gemini AI video. */
   videoEngine?: 'ffmpeg' | 'veo';
@@ -254,7 +274,8 @@ export function directionForPrompt(d?: Direction) {
   if (d.idea?.trim()) out.userIdea = d.idea.trim().slice(0, 500);
   if (d.art) {
     const c = find(DESIGN_TYPES, d.art.composition), l = LIGHTING.find((x) => x.value === d.art!.lighting), n = LENSES.find((x) => x.value === d.art!.lens);
-    const parts = [c && `composition: ${c.prompt}`, l && `lighting: ${l.prompt}`, n && `camera: ${n.prompt}`].filter(Boolean);
+    const k = CONCEPTS.find((x) => x.value === d.art!.concept);
+    const parts = [k && `big visual idea (build the sceneDescription around it): ${k.prompt}`, c && `composition: ${c.prompt}`, l && `lighting: ${l.prompt}`, n && `camera: ${n.prompt}`].filter(Boolean);
     if (parts.length) out.art = parts.join('; ');
   }
   return Object.keys(out).length ? out : undefined;

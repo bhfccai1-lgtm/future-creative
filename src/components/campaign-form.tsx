@@ -41,7 +41,7 @@ export function CampaignForm({ accounts, products, categories = [], initial }: {
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [design, setDesign] = useState<DesignValues>(initial ? {
-    ...EMPTY_DESIGN, renderMode: str(d0.renderMode) || 'auto', designStyle: str(d0.designStyle), customPrompt: str(d0.customPrompt), layout: str(d0.layout), designType: str(d0.designType),
+    ...EMPTY_DESIGN, renderMode: str(d0.renderMode) || 'auto', designStyle: str(d0.designStyle), customPrompt: str(d0.customPrompt), layout: str(d0.layout), designType: str(d0.designType), concept: str(d0.concept),
     channels: Array.isArray(d0.channels) ? (d0.channels as string[]) : [], reelStyle: str(d0.reelStyle) || 'standard', reelDuration: d0.reelDuration ? String(d0.reelDuration) : '',
     audio: str(d0.audio), audioQuery: str(d0.audioQuery), videoEngine: str(d0.videoEngine),
   } : { ...EMPTY_DESIGN, renderMode: 'auto', designStyle: 'auto' });

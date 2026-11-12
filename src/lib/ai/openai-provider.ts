@@ -141,6 +141,27 @@ export class OpenAiProvider implements AiProvider {
     return { text: res.choices[0]?.message?.content ?? '', model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async judgeImages(images: Buffer[], brief: string, model: string) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: `You are a senior art director judging ${images.length} candidate advertising photos (in order, index 0..${images.length - 1}) for this brief:\n${brief}\n\nScore each 0-100 on: product accuracy and realistic shape (heaviest weight), professional commercial aesthetics and lighting, striking scroll-stopping composition, fit to the brief, and NO stray text/letters/logos (any visible text = max 40). Return JSON {"scores":[numbers in order],"best":index,"reason":"one short sentence"}.` },
+          ...images.map((b) => ({ type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${b.toString('base64')}`, detail: 'low' as const } })),
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('judge'));
+    } catch (e) { throw mapError(e); }
+    const usage = { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 };
+    let parsed: { scores?: unknown; best?: unknown; reason?: unknown } = {};
+    try { parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { /* fall back below */ }
+    const scores = Array.isArray(parsed.scores) ? parsed.scores.map((x) => Number(x) || 0).slice(0, images.length) : [];
+    const top = scores.length ? scores.indexOf(Math.max(...scores)) : 0;
+    const best = Number.isInteger(parsed.best) && Number(parsed.best) >= 0 && Number(parsed.best) < images.length ? Number(parsed.best) : top;
+    return { best, scores, reason: String(parsed.reason ?? '').slice(0, 300), usage, model: res.model ?? model };
+  }
+
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024' }) {
     let res;
     try {

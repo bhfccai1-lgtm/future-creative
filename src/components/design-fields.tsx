@@ -1,9 +1,9 @@
 'use client';
 import { LAYOUTS } from '@/lib/render/templates';
-import { RENDER_MODES, AUDIO_TYPES, CHANNELS, DESIGN_STYLES, DESIGN_TYPES, REEL_DURATIONS, REEL_STYLES, proSceneCount } from '@/lib/creative/options';
+import { CONCEPTS, RENDER_MODES, AUDIO_TYPES, CHANNELS, DESIGN_STYLES, DESIGN_TYPES, REEL_DURATIONS, REEL_STYLES, proSceneCount } from '@/lib/creative/options';
 
 export interface DesignValues {
-  renderMode: string; customPrompt: string; layout: string; designType: string; designStyle: string; channels: string[];
+  renderMode: string; customPrompt: string; layout: string; designType: string; designStyle: string; channels: string[]; concept?: string;
   reelStyle: string; reelDuration: string; audio: string; audioQuery: string; videoEngine?: string;
 }
 export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: '', audioQuery: '', videoEngine: '' };
@@ -15,6 +15,7 @@ export function designDirection(v: DesignValues, format: string) {
   if (v.renderMode === 'ai_full' && v.customPrompt.trim()) d.customPrompt = v.customPrompt.trim();
   if (v.layout) d.layout = v.layout;
   if (v.designType) d.designType = v.designType;
+  if (v.concept) d.concept = v.concept;
   if (v.designStyle) d.designStyle = v.designStyle;
   if (v.channels.length) d.channels = v.channels;
   if (format === 'REEL_VIDEO' || format === '') {
@@ -66,6 +67,7 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
         <legend className="mb-2 text-sm font-extrabold text-navy-800">التصميم</legend>
         <Sel label="قالب التصميم (للطبقات الثابتة)" value={v.layout} onChange={(x) => set({ layout: x })} hint="الملصق الذهبي للصيغ العمودية فقط"><option value="">تلقائي (الملصق الذهبي للعمودي)</option>{LAYOUTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="نوع التصميم" value={v.designType} onChange={(x) => set({ designType: x })}><option value="">اختيار تلقائي</option>{DESIGN_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
+        <Sel label="✨ الفكرة البصرية" value={v.concept ?? ''} onChange={(x) => set({ concept: x })}><option value="">تلقائي (تتناوب)</option><option value="none">بدون — تصوير منتج كلاسيكي</option>{CONCEPTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="أسلوب التصميم" value={v.designStyle} onChange={(x) => set({ designStyle: x })} hint="يغيّر ألوان القالب وأسلوب الصورة؛ الشعار يبقى كما هو"><option value="auto">تلقائي — يتنوع بين الأساليب</option><option value="">هوية المطبعة (كحلي وذهبي)</option>{DESIGN_STYLES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <div>
           <label className="label">قنوات النشر</label>

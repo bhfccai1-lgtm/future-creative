@@ -61,10 +61,11 @@ export function ideasSystemPrompt() {
   ].join('\n');
 }
 
-export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string }) {
+export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string }) {
   return [
     sceneDescription,
     `Art direction: ${style}`,
+    art?.concept ? `Creative concept (the big visual idea — make it striking but keep the product the clear, accurate hero): ${art.concept}.` : '',
     art?.lighting ? `Lighting: ${art.lighting}.` : '',
     art?.lens ? `Camera: ${art.lens}.` : '',
     'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
@@ -85,13 +86,14 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string;
+  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string;
 }) {
   const S = SCRIPT_NAME[p.lang];
   return [
     'Design a complete, finished, world-class vertical advertising poster for a premium print shop in Bahrain (portrait 2:3). Luxury Gulf commercial style, professional graphic design, social-media ready.',
     p.customPrompt?.trim() ? `Client brief (follow it closely): ${p.customPrompt.trim()}` : `Art direction: ${p.style}`,
     p.layout ? `Layout: ${p.layout}.` : '',
+    p.concept ? `Creative concept for the product scene (striking, scroll-stopping, product stays the accurate hero): ${p.concept}.` : '',
     `Hero product photo: ${p.sceneDescription}`,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
     `Typography — render EXACTLY these words, perfectly spelled ${S} text${p.lang === 'ar' ? ' (correct right-to-left Arabic letter joining, bold modern Arabic display font)' : ''}, nothing else:`,

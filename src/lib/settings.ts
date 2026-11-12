@@ -70,6 +70,10 @@ export const SettingsSchema = z.object({
     /** Automatic designs (schedule, campaigns, n8n) that don't choose: design method and style. 'auto' method = full AI poster for vertical formats on approval-mode accounts, verified layers for autonomous ones. */
     autoRenderMode: z.enum(['auto', 'layered', 'ai_full']).default('auto'),
     autoDesignStyle: z.string().max(40).default('fc_signature'),
+    /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */
+    creativeConcepts: z.boolean().default(true),
+    /** art director: generate N candidate images and keep the best (vision-scored). 1 = off. Each extra candidate costs one image. */
+    bestOf: z.number().int().min(1).max(3).default(1),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),

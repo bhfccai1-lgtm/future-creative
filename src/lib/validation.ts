@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CONTENT_TYPES, DESIGN_STYLES, DESIGN_TYPES, MARKETS, OCCASIONS, SEGMENTS, optionValues } from './creative/options';
+import { CONCEPTS, CONTENT_TYPES, DESIGN_STYLES, DESIGN_TYPES, MARKETS, OCCASIONS, SEGMENTS, optionValues } from './creative/options';
 
 export const AccountInput = z.object({
   name: z.string().min(2).max(100),
@@ -43,6 +43,7 @@ export const DirectionSchema = z.object({
   occasion: z.enum(optionValues(OCCASIONS)).optional(),
   idea: z.string().max(500).optional(),
   designType: z.enum(optionValues(DESIGN_TYPES)).optional(),
+  concept: z.enum(['auto', 'none', ...CONCEPTS.map((c) => c.value)] as [string, ...string[]]).optional(),
   designStyle: z.enum(['auto', ...optionValues(DESIGN_STYLES)] as [string, ...string[]]).optional(),
   layout: z.enum(['gold-poster', 'navy-gold-classic', 'gold-frame-lower']).optional(),
   renderMode: z.enum(['layered', 'ai_full', 'auto']).optional(),

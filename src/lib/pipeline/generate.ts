@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
 import { autoChannelsFor } from '../publishing/channels';
 import { prisma } from '../db';
@@ -33,7 +34,7 @@ import { signedMediaUrl } from '../storage';
 import { storage } from '../storage';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
-import { paletteFor, signaturePoster, DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
+import { CONCEPTS, paletteFor, signaturePoster, DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 
 export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null; revisionOf?: string }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
@@ -142,12 +143,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const aiFull = d.renderMode === 'ai_full' && (format === 'IMAGE_STORY' || format === 'REEL_VIDEO');
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
-  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined });
+  const formal = /business|corporate|b2b|شركات/i.test(`${account.name} ${account.handle ?? ''} ${account.businessCategory ?? ''}`);
+  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined, concept: d.concept, concepts: s.ai.creativeConcepts, formal });
   if (!dtype) dtype = designTypeOf(art.composition);
   const lightingP = LIGHTING.find((x) => x.value === art.lighting)?.prompt, lensP = LENSES.find((x) => x.value === art.lens)?.prompt;
+  const conceptP = CONCEPTS.find((x) => x.value === art.concept)?.prompt;
   p = { ...p, direction: { ...(p.direction ?? {}), art } };
   // Up-front budget check for the WHOLE advertisement (incl. extra pro-reel scenes), so a partial spend never happens near the cap.
-  if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s, format) + (sceneCount - 1) * estimateImageCost(s, imgQuality));
+  if (!provider.isDryRun) await assertBudget(s, estimateAdCost(s, format) + (sceneCount - 1 + Math.max(0, s.ai.bestOf - 1)) * estimateImageCost(s, imgQuality));
 
   const ad = await prisma.advertisement.create({
     data: {
@@ -195,15 +198,38 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     });
 
     // ── Step 7: AI scene (no text, no logo) ──
+    let artDirector: { candidates: number; best: number; scores: number[]; reason: string } | null = null;
     await assertBudget(s, estimateImageCost(s, imgQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP })
-        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP });
-      const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}` }));
-      if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
-      return img;
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP })
+        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
+      // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
+      const n = !provider.isDryRun && provider.judgeImages ? s.ai.bestOf : 1;
+      const candidates: Awaited<ReturnType<typeof provider.generateScene>>[] = [];
+      for (let k = 0; k < n; k++) {
+        if (k > 0) await assertBudget(s, estimateImageCost(s, imgQuality));
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}${k ? `-c${k}` : ''}` }));
+        if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+        candidates.push(img);
+      }
+      if (candidates.length === 1) return candidates[0];
+      try {
+        const thumbs = await Promise.all(candidates.map((c) => sharp(c.png).resize(512).jpeg({ quality: 80 }).toBuffer()));
+        const j = await provider.judgeImages!(thumbs, `${brief!.headline} — ${brief!.sceneDescription}`.slice(0, 1500), s.ai.textModel);
+        await recordUsage({ jobId, provider: provider.name, model: j.model, kind: 'text', inputTokens: j.usage.inputTokens, outputTokens: j.usage.outputTokens, costUsd: estimateTextCost(s, j.usage.inputTokens, j.usage.outputTokens) });
+        artDirector = { candidates: candidates.length, best: j.best, scores: j.scores, reason: j.reason };
+        return candidates[j.best] ?? candidates[0];
+      } catch (e) {
+        artDirector = { candidates: candidates.length, best: 0, scores: [], reason: `judge failed: ${(e as Error).message.slice(0, 120)}` };
+        return candidates[0];
+      }
     });
+
+    if (artDirector) {
+      const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), artDirector } as Prisma.InputJsonValue } });
+    }
 
     // ── Step 9: deterministic layered composition ──
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
@@ -443,7 +469,7 @@ export function pickLeastRecent(options: string[], recent: (string | null)[]) {
 }
 
 /** Least-recently-used art recipe for this account (last 12 designs). A user-chosen composition is kept. */
-export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean }): Promise<Art> {
+export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean; concept?: string; concepts?: boolean; formal?: boolean }): Promise<Art> {
   const recent = await prisma.advertisement.findMany({ where: { accountId }, orderBy: { createdAt: 'desc' }, take: 12, select: { options: true } });
   const prev = recent.map((r) => ((r.options ?? {}) as { direction?: { art?: Art } | null }).direction?.art ?? {});
   const comps = o.aiFull ? DESIGN_TYPES.map((x) => x.value) : LAYERED_COMPOSITIONS;
@@ -457,6 +483,7 @@ export async function pickArt(accountId: string, o: { aiFull: boolean; compositi
     lighting: pickLeastRecent(lights, prev.map((a) => a.lighting ?? null)),
     lens: pickLeastRecent(lenses, prev.map((a) => a.lens ?? null)),
     ...(o.aiFull ? { poster: pickLeastRecent(POSTER_LAYOUTS.map((x) => x.value), prev.map((a) => a.poster ?? null)) } : {}),
+    ...conceptOf(o, prev),
   };
 }
 
@@ -480,4 +507,13 @@ export function withAutoChannels(account: Parameters<typeof autoChannelsFor>[0],
   if (!extra.length) return chosen;
   const base = chosen.length ? chosen : [account.platform];
   return [...new Set([...base, ...extra])];
+}
+
+/** Big visual idea: user choice, «none», or least-recently-used (formal accounts only get formal concepts). Macro shots keep the pure product look. */
+function conceptOf(o: { composition?: string; concept?: string; concepts?: boolean; formal?: boolean }, prev: Art[]): { concept?: string } {
+  if (o.concept === 'none') return {};
+  if (o.concept && o.concept !== 'auto') return CONCEPTS.some((c) => c.value === o.concept) ? { concept: o.concept } : {};
+  if (o.concepts === false || o.composition === 'macro_detail') return {};
+  const pool = CONCEPTS.filter((c) => !o.formal || c.formal).map((c) => c.value as string);
+  return { concept: pickLeastRecent(pool, prev.map((a) => a.concept ?? null)) };
 }
