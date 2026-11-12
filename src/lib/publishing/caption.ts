@@ -9,8 +9,8 @@ export const HASHTAG_LIMITS: Record<SocialPlatform, number> = { twitter: 2, thre
 export const weightedLength = (s: string) => [...s].reduce((n, ch) => n + (ch.codePointAt(0)! > 0xffff ? 2 : 1), 0);
 
 export function splitCaption(caption: string): { body: string; hashtags: string[] } {
-  const hashtags = [...new Set(caption.match(/#[\p{L}\p{N}_]+/gu) ?? [])];
-  const body = caption.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  const hashtags = [...new Set(caption.match(/#[\p{L}\p{M}\p{N}_\u200c\u200d]+/gu) ?? [])];
+  const body = caption.replace(/#[\p{L}\p{M}\p{N}_\u200c\u200d]+/gu, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   return { body, hashtags };
 }
 

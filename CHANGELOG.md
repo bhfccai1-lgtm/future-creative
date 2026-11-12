@@ -1,5 +1,11 @@
 # Changelog
 
+## 8.15.1 — 2026-11-12 (fix: Malayalam and Indic hashtags)
+- **Live bug found in Metricool:** a Malayalam carousel on bhfcc.india was published with broken hashtags («#ബഹ #ക #വ #സ») and a stray line of fragments in the caption.
+  - Cause: the hashtag pattern excluded combining marks (vowel signs, virama) and ZWJ/ZWNJ.
+  - Fix: hashtags now keep `\p{M}` and ZWJ/ZWNJ, and text de-duplication keeps combining marks too.
+  - A regression test uses the real example.
+
 ## 8.15.0 — 2026-11-12 (direct Google Drive archive, no n8n or Google Cloud)
 - Each verified publication goes to the owner's own **Google Apps Script** web app, through the durable outbox (with retries).
   - The payload carries signed links to the exact published files.

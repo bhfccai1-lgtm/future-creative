@@ -9,7 +9,7 @@ export function normalizeText(s: string): string {
     .replace(AR_DIACRITICS, '')
     .replace(/[إأآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
     .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660))
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

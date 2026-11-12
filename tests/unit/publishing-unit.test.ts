@@ -114,3 +114,16 @@ describe('creative direction options', () => {
     expect(r.ideas.every((i) => i.idea.includes('عيد الفطر') && findClaims(i.idea).length === 0)).toBe(true);
   });
 });
+
+describe('hashtags in Malayalam / Indic scripts (live bug: "#ബഹ്റൈൻ" was cut to "#ബഹ")', () => {
+  it('keeps vowel signs, virama and ZWJ/ZWNJ inside hashtags', async () => {
+    const { splitCaption, fitCaption } = await import('@/lib/publishing/caption');
+    const cap = 'ഈ പോസ്റ്റ് സേവ് ചെയ്യൂ ✨\n\n#ബഹ്റൈൻ #കൈമാറ്റഫോം #വീഡിയോനിർമ്മാണം #स्टिकर';
+    const s = splitCaption(cap);
+    expect(s.hashtags).toEqual(['#ബഹ്റൈൻ', '#കൈമാറ്റഫോം', '#വീഡിയോനിർമ്മാണം', '#स्टिकर']);
+    expect(s.body).toBe('ഈ പോസ്റ്റ് സേവ് ചെയ്യൂ ✨');
+    const out = JSON.stringify(fitCaption(cap, '📞 33316319', ['instagram']));
+    expect(out).toContain('#ബഹ്റൈൻ #കൈമാറ്റഫോം');
+    expect(out).not.toMatch(/\\n്/); // no orphaned vowel-sign fragments starting a line
+  });
+});
