@@ -1,5 +1,19 @@
 # Changelog
 
+## 8.16.0 — 2026-11-12 (the owner's signature style plus a colour story by occasion and audience)
+- New default design style, **«توقيع المطبعة الإعلاني»** (the print shop's ad signature). It was extracted from the owner's own designs (style only):
+  - glossy 3D look, hero product on a warm wooden table in a softly blurred real setting;
+  - plant, books, pencils, gift box and swatch-fan props, golden bokeh;
+  - Pixar-style cartoon artwork on the products, and a smiling child giving a thumbs up for education.
+- **Full-AI posters add the signature language:**
+  - 3D metallic-gold headline and a gold ribbon banner for the tagline;
+  - navy circular benefit badges with gold rings, gold ribbon swooshes;
+  - the Bahrain skyline with the Bahrain World Trade Center, and a waving Bahrain flag (Bahrain accounts only).
+  - The logo, CTA and phone numbers are still deterministic layers.
+- **Colour story:** it follows the occasion first, then the audience, for example National Day in red and white, Ramadan in midnight purple with lanterns, weddings in ivory, blush and champagne, schools in sky blue and yellow, companies in navy and brushed gold.
+  - It applies to the AI-poster decoration and to the colour theme of the layered templates.
+  - A specific style chosen by the user always takes precedence.
+
 ## 8.15.2 — 2026-11-12 (n8n: re-running setup keeps the Google accounts)
 - Problem seen live: re-running `n8n-setup.sh` re-imported the templates and cleared the Google accounts chosen in the editor, which caused "Credential not configured".
   - Now `deploy/n8n/link-credentials.js` links each template's empty credential references to the existing n8n credentials (by type) before importing.

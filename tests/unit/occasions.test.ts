@@ -27,3 +27,16 @@ describe('Bahraini occasions calendar', () => {
     expect(pickOccasion(new Date('2026-11-30T10:00:00+03:00'), { language: 'ar', market: 'KSA' }, () => 0)).not.toBe('bahraini_women_day');
   });
 });
+
+describe('signature style and colour story by occasion / audience', () => {
+  it('palette follows the occasion first, then the audience; everyday has none', async () => {
+    const { paletteFor, signaturePoster, DESIGN_STYLES } = await import('@/lib/creative/options');
+    expect(paletteFor({ occasion: 'bahrain_national_day' })!.theme).toBe('festive_red');
+    expect(paletteFor({ occasion: 'everyday', segment: 'couples_weddings' })!.decor).toMatch(/blush/);
+    expect(paletteFor({ occasion: 'ramadan', segment: 'companies' })!.decor).toMatch(/crescent/);
+    expect(paletteFor({})).toBeNull();
+    expect(DESIGN_STYLES[0].value).toBe('fc_signature');
+    expect(signaturePoster({ bahrain: true })).toMatch(/Bahrain World Trade Center/);
+    expect(signaturePoster({ bahrain: false })).not.toMatch(/flag/);
+  });
+});

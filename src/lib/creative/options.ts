@@ -70,6 +70,7 @@ export const DESIGN_TYPES: Opt[] = [
 
 /** Visual style — drives the image prompt AND the layout colour theme. */
 export const DESIGN_STYLES: (Opt & { theme: 'navy_gold' | 'black_gold' | 'white_minimal' | 'emerald_gold' | 'festive_red' })[] = [
+  { value: 'fc_signature', ar: 'توقيع المطبعة الإعلاني (من نماذجك)', en: 'Future Creative signature', theme: 'navy_gold', prompt: 'warm glossy 3D commercial advertising look: the hero product on a warm wooden table, softly blurred real setting (bright classroom, print workshop with a heat press, cosy café), a green plant, books, coloured pencils, a gift box or a colour-swatch fan as props, golden bokeh and soft sparkles, rich saturated cheerful colours; when people are involved, artwork printed on the product is in a cute Pixar-style 3D cartoon look, and for education a smiling child gives a thumbs up next to the product' },
   { value: 'luxury_navy_gold', ar: 'فاخر كحلي وذهبي (هوية المطبعة)', en: 'Luxury navy & gold', theme: 'navy_gold', prompt: 'premium commercial photography, cinematic lighting, deep navy and elegant gold accents' },
   { value: 'black_gold', ar: 'أسود فاخر مع ذهبي', en: 'Black & gold luxury', theme: 'black_gold', prompt: 'dark moody luxury photography, black surfaces, warm gold rim light, high contrast' },
   { value: 'white_minimal', ar: 'أبيض بسيط وعصري', en: 'Clean white minimal', theme: 'white_minimal', prompt: 'bright airy minimal photography, white and soft grey tones, soft daylight, modern Scandinavian feel' },
@@ -114,6 +115,48 @@ export const THEME_DECOR: Record<string, string> = {
   emerald_gold: 'deep emerald velvet textures with fine gold filigree accents',
   festive_red: 'festive deep red and gold ornaments, soft sparkles and warm glowing lights',
 };
+/** The owner's signature poster language (extracted from their own designs — style only, nothing copied). */
+export function signaturePoster(o: { bahrain: boolean }) {
+  return [
+    'Signature poster language:',
+    '  • a huge bold headline in glossy 3D metallic gold with a bevel and soft glow; a gold ribbon banner directly under it carries the tagline;',
+    '  • the benefits as a row of deep-navy circular badges with thin gold rings and gold line icons, labels under each;',
+    '  • flowing gold ribbon swooshes sweeping in from the corners, golden bokeh and tiny sparkles;',
+    o.bahrain ? '  • at the very bottom a glowing Bahrain skyline silhouette (Bahrain World Trade Center towers) with golden city lights, and a Bahrain flag ribbon waving in one lower corner.' : '  • at the very bottom a softly glowing city skyline silhouette with golden lights.',
+  ].join('\n');
+}
+
+/** Background colour story by occasion, then by audience (used unless the user picked a specific style). */
+export const PALETTES: Record<string, { decor: string; theme: 'navy_gold' | 'black_gold' | 'white_minimal' | 'emerald_gold' | 'festive_red' }> = {
+  bahrain_national_day: { theme: 'festive_red', decor: 'deep Bahraini red and white with gold accents and a waving Bahrain flag ribbon' },
+  saudi_national_day: { theme: 'emerald_gold', decor: 'deep Saudi green and white with gold accents' },
+  bahraini_women_day: { theme: 'festive_red', decor: 'elegant plum and magenta with gold accents and soft florals' },
+  ramadan: { theme: 'navy_gold', decor: 'deep midnight navy-purple with gold crescent and lantern motifs and a warm lantern glow' },
+  gergaoon: { theme: 'festive_red', decor: 'joyful turquoise, pink and gold with traditional Gulf patterns and little sweet bags' },
+  eid_fitr: { theme: 'emerald_gold', decor: 'emerald green and gold with elegant Islamic geometric patterns' },
+  eid_adha: { theme: 'emerald_gold', decor: 'emerald green and warm gold with elegant Islamic geometric patterns' },
+  wedding_season: { theme: 'white_minimal', decor: 'ivory, blush pink and champagne gold with soft florals' },
+  mothers_day: { theme: 'white_minimal', decor: 'soft rose pink and rose gold with fresh flowers' },
+  graduation: { theme: 'navy_gold', decor: 'royal navy and gold with graduation caps and confetti' },
+  back_to_school: { theme: 'navy_gold', decor: 'bright sky blue and sunny yellow with navy accents, cheerful classroom energy' },
+  teachers_day: { theme: 'navy_gold', decor: 'bright sky blue and warm gold with chalkboard and apple motifs' },
+  new_year: { theme: 'black_gold', decor: 'midnight navy-black with silver and gold sparkles' },
+  diwali: { theme: 'festive_red', decor: 'warm saffron, magenta and gold with glowing diya lights' },
+  onam: { theme: 'festive_red', decor: 'marigold yellow and orange floral pookalam colours' },
+  // audiences
+  companies: { theme: 'black_gold', decor: 'deep navy-charcoal and brushed gold, clean corporate' },
+  event_organizers: { theme: 'black_gold', decor: 'deep navy-charcoal with gold spotlights, professional event mood' },
+  schools: { theme: 'navy_gold', decor: 'bright sky blue and sunny yellow with navy accents' },
+  students: { theme: 'navy_gold', decor: 'vibrant blue, yellow and coral, youthful and energetic' },
+  families: { theme: 'navy_gold', decor: 'warm navy with soft gold and cosy home tones' },
+  couples_weddings: { theme: 'white_minimal', decor: 'ivory, blush pink and champagne gold with soft florals' },
+  gift_buyers: { theme: 'festive_red', decor: 'rich red and gold gift-wrap tones with satin ribbons' },
+  restaurants_cafes: { theme: 'black_gold', decor: 'warm espresso brown, cream and gold' },
+};
+export function paletteFor(d: { occasion?: string; segment?: string }) {
+  return (d.occasion && d.occasion !== 'everyday' && PALETTES[d.occasion]) || (d.segment && PALETTES[d.segment]) || null;
+}
+
 /** Compositions safe for the layered templates (text zones top and bottom). */
 export const LAYERED_COMPOSITIONS = ['hero_product', 'in_context', 'flat_lay', 'lifestyle'];
 

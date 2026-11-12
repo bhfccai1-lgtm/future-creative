@@ -32,7 +32,7 @@ import { signedMediaUrl } from '../storage';
 import { storage } from '../storage';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
-import { DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
+import { paletteFor, signaturePoster, DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 
 export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null; revisionOf?: string }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
@@ -122,9 +122,13 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     p = { ...p, direction: { ...dir, autoPicked: auto } };
   }
   const d = p.direction ?? {};
-  const style = styleOf(d.designStyle);
+  const style = styleOf(d.designStyle || 'fc_signature'); // the owner's signature look is the default
   let dtype = designTypeOf(d.designType);
-  const creativeStyle = style?.prompt ?? s.ai.creativeStyle;
+  // colour story by occasion / audience — only when the user didn't pick a specific look (default, auto, or the signature style)
+  const styleOpen = !d.designStyle || d.designStyle === 'fc_signature' || (d.autoPicked ?? []).includes('designStyle');
+  const palette = styleOpen ? paletteFor(d) : null;
+  const signature = !d.designStyle || d.designStyle === 'fc_signature';
+  const creativeStyle = (style?.prompt ?? s.ai.creativeStyle) + (palette ? ` Colour story: ${palette.decor}.` : '');
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
   const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
   const aiFull = d.renderMode === 'ai_full' && (format === 'IMAGE_STORY' || format === 'REEL_VIDEO');
@@ -186,7 +190,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     await assertBudget(s, estimateImageCost(s, imgQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: THEME_DECOR[style?.theme ?? 'navy_gold'], lighting: lightingP, lens: lensP })
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP });
       const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}` }));
       if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
@@ -203,7 +207,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       : TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
     const features = s.brandFeatures[lang] ?? [];
     const composed = await composeAdvertisement({
-      scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: style?.theme,
+      scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,
       badge: brief.badge, features,
     });
 
