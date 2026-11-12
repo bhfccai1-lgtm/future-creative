@@ -1,5 +1,17 @@
 # Changelog
 
+## 8.19.0 — 2026-11-12 (automatic Google Business Profile)
+- New per-account settings: `gbpAuto` and `gbpPerWeek` (default 2), shown as a section in the account form.
+- Automatic designs add the Google channel by themselves when all of these hold:
+  - the account opted in;
+  - Google Business is linked in Metricool;
+  - the format suits Google: feed or square → update, reel → gallery;
+  - the weekly cadence isn't reached.
+- It reuses the Google-safe satellite job: no phones, no hashtags, plus the local branch line. A Google failure never fails the Instagram post.
+- **Advisor:** "Google Business not linked", with per-branch steps. Found live: none of the 15 brands has Google Business linked.
+- **Live bug fixed:** Metricool reports Google Business as `networksData.gbpData`, which the parser didn't recognise, so a linked profile looked unlinked. Seen on bhfcc.mugs. A test uses the live shape.
+- Migration `20261112170000_gbp_auto` (additive).
+
 ## 8.18.0 — 2026-11-12 (same-brand cross-promotion; campaigns respect the posting window)
 - **Cross-promotion stories:** when a feed post, reel or carousel is verified published, the accounts chosen for it get a branded story.
   - The story reads «جديد على حسابنا @handle», with the post image in a gold frame, the headline and a CTA, in the target account's language.

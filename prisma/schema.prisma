@@ -177,6 +177,9 @@ model SocialAccount {
   business              Business         @relation(fields: [businessId], references: [id])
   name                  String
   platform              SocialPlatform
+  /// automatic Google Business Profile updates (when GBP is linked to the brand in Metricool)
+  gbpAuto               Boolean          @default(false)
+  gbpPerWeek            Int              @default(2)
   /// accounts that share this account's new posts in their story (transparent same-brand cross-promotion)
   promoteToIds          String[]         @default([])
   handle                String?

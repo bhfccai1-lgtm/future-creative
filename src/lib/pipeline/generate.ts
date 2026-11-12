@@ -149,7 +149,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const ad = await prisma.advertisement.create({
     data: {
       accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId,
-      channels: d.channels ?? [],
+      channels: await withAutoGbp(account, format, (d.channels ?? []) as import('@prisma/client').SocialPlatform[]),
       options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? s.ai.audio.defaultReelAudio) : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
     },
   });
@@ -455,4 +455,18 @@ export async function pickArt(accountId: string, o: { aiFull: boolean; compositi
     lens: pickLeastRecent(lenses, prev.map((a) => a.lens ?? null)),
     ...(o.aiFull ? { poster: pickLeastRecent(POSTER_LAYOUTS.map((x) => x.value), prev.map((a) => a.poster ?? null)) } : {}),
   };
+}
+
+/**
+ * Automatic Google Business Profile: adds the «gmb» channel (a separate Google-safe satellite post: no phones,
+ * no hashtags, local branch line) when the account opted in, GBP is linked to the brand in Metricool, the format
+ * suits Google (feed / square image, or a reel → profile gallery) and the weekly cadence isn't reached yet.
+ */
+export async function withAutoGbp(account: { id: string; platform: import('@prisma/client').SocialPlatform; gbpAuto: boolean; gbpPerWeek: number; connection: { providerSnapshot: unknown } | null }, format: MediaFormat, channels: import('@prisma/client').SocialPlatform[]): Promise<import('@prisma/client').SocialPlatform[]> {
+  if (!account.gbpAuto || channels.includes('gmb') || !['IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO'].includes(format)) return channels;
+  const linked = ((account.connection?.providerSnapshot as { networks?: { network: string }[] } | null)?.networks ?? []).map((n) => n.network);
+  if (!linked.includes('gmb')) return channels;
+  const week = await prisma.advertisement.count({ where: { accountId: account.id, channels: { has: 'gmb' }, createdAt: { gte: new Date(Date.now() - 7 * 86400_000) }, state: { notIn: ['REJECTED', 'FAILED'] } } });
+  if (week >= account.gbpPerWeek) return channels;
+  return [...(channels.length ? channels : [account.platform]), 'gmb' as const];
 }

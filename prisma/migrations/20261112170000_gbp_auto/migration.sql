@@ -1,0 +1,2 @@
+ALTER TABLE "social_accounts" ADD COLUMN "gbpAuto" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "social_accounts" ADD COLUMN "gbpPerWeek" INTEGER NOT NULL DEFAULT 2;

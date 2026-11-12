@@ -152,7 +152,7 @@ export class MetricoolAdapter implements PublishingAdapter {
       };
       const add = (network: SocialPlatform, v: string | null, asId = false) => { if (v) networks.push(asId ? { network, id: v } : { network, handle: v }); };
       add('instagram', val('instagram'));
-      add('gmb', val('gmb', 'googleBusiness', 'googleMyBusiness'));
+      add('gmb', val('gbp', 'gmb', 'googleBusiness', 'googleMyBusiness')); // Metricool: networksData.gbpData = "accounts/…/locations/…"
       add('facebook', val('facebookPageId', 'facebook'), true);
       add('tiktok', val('tiktok'));
       add('threads', val('threads'));

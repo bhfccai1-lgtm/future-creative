@@ -8,7 +8,7 @@ type Product = { id: string; titleAr: string; categoryId?: string };
 type Category = { id: string; nameAr: string; count?: number };
 type Account = {
   id?: string; name: string; platform: string; handle?: string | null; language: string; businessCategory?: string | null; allowedProductIds: string[]; allowedCategoryIds?: string[];
-  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string;
+  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string; gbpAuto?: boolean; gbpPerWeek?: number;
 };
 
 const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], allowedCategoryIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 4, formatStrategy: 'GROWTH_MIX' };
@@ -58,6 +58,14 @@ export function AccountForm({ account, products, categories = [] }: { account?: 
       <div><label className="label">مدة الـReel (ثانية)</label><input type="number" min={6} max={60} className="input" value={a.reelDurationSec} onChange={(e) => set('reelDurationSec', Number(e.target.value))} /></div>
       <div><label className="label">الحد الأقصى اليومي</label><input type="number" min={1} max={48} className="input" value={a.maxDailyAds} onChange={(e) => set('maxDailyAds', Number(e.target.value))} /></div>
       <div><label className="label">المنطقة الزمنية</label><input className="input ltr" value={a.timezone} onChange={(e) => set('timezone', e.target.value)} /></div>
+      <div className="rounded-lg border p-3 md:col-span-3">
+        <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={!!a.gbpAuto} onChange={(e) => set('gbpAuto', e.target.checked)} /> نشر تلقائي على ملف Google التجاري (خرائط وبحث Google)</label>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <span>عدد التحديثات أسبوعيًا:</span>
+          <select className="input" style={{ width: '6rem' }} value={a.gbpPerWeek ?? 2} onChange={(e) => set('gbpPerWeek', Number(e.target.value))}>{[1, 2, 3, 4, 5, 7].map((n) => <option key={n} value={n}>{n}</option>)}</select>
+          <span className="text-xs text-slate-500">Google يوصي بـ 1–2 أسبوعيًا. تُنشر نسخة مناسبة لـ Google: بلا أرقام هواتف ولا وسوم، مع سطر الفرعين للبحث المحلي. الصور (منشور/مربع) تحديثات، والريلز تذهب لمعرض الصور. يحتاج ربط Google Business بالعلامة في Metricool.</span>
+        </div>
+      </div>
       <div className="md:col-span-3">
         <label className="label">الفئات المسموح بها (تشمل كل منتجاتها، بما فيها التي تُضاف لاحقًا)</label>
         <div className="flex flex-wrap gap-2 rounded-lg border p-2">

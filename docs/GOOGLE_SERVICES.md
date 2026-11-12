@@ -7,6 +7,14 @@
 | **Google Drive** (archive) | n8n template `06` | Every **verified** publication: the exact published files (cover + slides, or the MP4) are uploaded to your folder | ✅ code tested in real n8n 2.35.7 (download and naming) · ❌ Drive upload needs your Google account |
 | **Google Sheets** (post log) | n8n template `06` (+ `04` for ideas) | One row per post: date, account, format, headline, Instagram link, Drive link | same as above |
 
+## Automatic Google Business Profile
+- In the account settings, turn on **«نشر تلقائي على ملف Google التجاري»** (automatic posting to Google Business) and choose how many updates per week (1–2 recommended).
+- Automatic designs then add the Google channel by themselves, but only when all of these hold:
+  - Google Business is linked to that brand in Metricool;
+  - the format suits Google: a feed or square image becomes an update, a reel goes to the gallery. Stories and carousels are skipped;
+  - the weekly limit hasn't been reached.
+- **System diagnostics** shows a recommendation when no brand is linked to Google Business.
+
 ## Why the Google Business post is separate
 - One Metricool post carries a single text for all its networks.
 - Instagram posts must show both branch phone numbers, but **Google rejects Business Profile posts that contain phone numbers** (customers use the profile's Call button). Hashtags have no effect on Google either.

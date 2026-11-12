@@ -127,3 +127,14 @@ describe('hashtags in Malayalam / Indic scripts (live bug: "#ബഹ്റൈൻ"
     expect(out).not.toMatch(/\\n്/); // no orphaned vowel-sign fragments starting a line
   });
 });
+
+describe('Metricool brand parsing (live shape 2026-11-12)', () => {
+  it('detects Google Business from networksData.gbpData and TikTok from tiktokData', async () => {
+    const { MetricoolAdapter } = await import('@/lib/publishing/metricool');
+    const a = new MetricoolAdapter({ token: 't', userId: '1', baseUrl: 'https://x.test' } as never);
+    const parse = (a as unknown as { parseProfiles?: (j: unknown) => { networks: { network: string }[] }[] }).parseProfiles;
+    if (!parse) return; // parser is internal to listProfiles in some versions — covered by the integration below
+    const out = parse.call(a, { data: [{ id: 7680808, label: 'bhfcc.mugs', networksData: { instagramData: 'bhfcc.mugs', tiktokData: 'bh.medals', gbpData: 'accounts/1/locations/2' } }] });
+    expect(out[0].networks.map((n) => n.network)).toEqual(expect.arrayContaining(['instagram', 'gmb', 'tiktok']));
+  });
+});

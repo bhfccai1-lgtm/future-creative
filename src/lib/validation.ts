@@ -9,6 +9,8 @@ export const AccountInput = z.object({
   businessCategory: z.string().max(100).optional().nullable(),
   allowedProductIds: z.array(z.string()).max(2000).default([]),
   allowedCategoryIds: z.array(z.string()).max(200).default([]),
+  gbpAuto: z.boolean().default(false),
+  gbpPerWeek: z.number().int().min(1).max(14).default(2),
   publishFormat: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO', 'IMAGE_CAROUSEL']),
   publishIntervalMinutes: z.number().int().min(60).max(7 * 24 * 60),
   publishWindowStart: z.string().regex(/^\d{2}:\d{2}$/),

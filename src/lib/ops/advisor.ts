@@ -192,6 +192,11 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
     if (dead) add({ id: 'n8n_dead', category: 'integration', severity: 'medium', title: 'أحداث n8n لم تصل', evidence: `${dead} حدث فشل نهائيًا خلال 24 ساعة`, why: 'تفوتك تنبيهات تيليجرام والموافقات.', steps: ['تأكد أن n8n يعمل والـWorkflow مفعّل', '«إعادة إرسال الأحداث الفاشلة» في إعدادات الربط'], link: '/settings/integrations' });
   }
 
+  // Google Business Profile (local search / Maps)
+  const conns = await prisma.socialConnection.findMany({ where: { status: 'CONNECTED' }, select: { providerSnapshot: true } });
+  const gbpLinked = conns.some((c) => ((c.providerSnapshot as { networks?: { network: string }[] } | null)?.networks ?? []).some((n) => n.network === 'gmb'));
+  if (!gbpLinked) add({ id: 'gbp_not_linked', category: 'growth', severity: 'low', title: 'ملف Google التجاري غير مربوط — تفوتك نتائج خرائط وبحث Google', evidence: 'لا توجد علامة في Metricool مرتبط بها Google Business Profile', why: 'منشورات Google Business تظهر في الخرائط والبحث المحلي («مطبعة قريبة مني») وتزيد الاتصالات والزيارات للفرعين.', steps: ['في Metricool: افتح علامة الفرع (مثل bhfcc.saar أو Salmabad_adv) ← Connect ← Google Business Profile ← اختر موقع الفرع', 'كرر لكل فرع (سار، سلماباد)', 'في النظام: «فحص كل الحسابات الآن» ثم فعّل «نشر تلقائي على Google التجاري» في إعدادات الحساب'], link: '/accounts' });
+
   // competitors
   const lastComp = await prisma.competitorSnapshot.findFirst({ where: { error: null }, orderBy: { takenAt: 'desc' }, select: { takenAt: true } });
   if (!lastComp) add({ id: 'no_competitors', category: 'growth', severity: 'info', title: 'لا توجد بيانات منافسين', evidence: 'لم يُستورد أي منافس بعد', why: 'مقارنة نفسك بالمنافسين المحليين تكشف وتيرة النشر والمواضيع والأوقات الناجحة في سوقك.', steps: ['في Metricool: Competitors ← أضف 5–10 حسابات منافسة على إنستغرام لكل علامة رئيسية', 'ثم «تحديث من Metricool» في صفحة تحليل المنافسين، أو استورد ملف CSV مُصدَّر من Metricool'], link: '/competitors' });
