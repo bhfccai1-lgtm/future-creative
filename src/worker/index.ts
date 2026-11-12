@@ -31,6 +31,7 @@ import { redis } from '../lib/queue/connection';
 import { getSettings } from '../lib/settings';
 import { syncWhatsappCatalog } from '../lib/integrations/whatsapp-catalog';
 import { sendStatusPacks } from '../lib/integrations/whatsapp-status';
+import { generateFromBank } from '../lib/ideas/bank';
 
 const workerId = `${os.hostname()}-${process.pid}`;
 const log = (...a: unknown[]) => console.log(JSON.stringify({ ts: new Date().toISOString(), level: 'info', event: 'worker', msg: a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ').slice(0, 1000) }));
@@ -60,6 +61,7 @@ async function main() {
   await sched.upsertJobScheduler('wa-catalog-daily', { pattern: '10 4 * * *', tz: TZ }, { name: 'wa-catalog', data: { daily: true } }); // WhatsApp catalogue (only if enabled)
   await sched.upsertJobScheduler('wa-status', { pattern: '10 9-21 * * *', tz: TZ }, { name: 'wa-status' }); // status pack → Telegram, max 1 per hour within the daily cap
   await sched.upsertJobScheduler('winners', { pattern: '15 10 * * 0', tz: TZ }, { name: 'winners' }); // Sunday 10:15: boost proven winners (only if enabled)
+  await sched.upsertJobScheduler('ideas-weekly', { pattern: '40 7 * * 6', tz: TZ }, { name: 'ideas-weekly' }); // Saturday 07:40: refill the idea bank
   await sched.upsertJobScheduler('analytics', { pattern: '15 5,17 * * *', tz: TZ }, { name: 'analytics' }); // read-only metrics import twice a day
 
   const workers = [
@@ -88,6 +90,7 @@ async function main() {
         return syncWhatsappCatalog(job.data?.actor ?? 'worker');
       }
       if (job.name === 'wa-status') return sendStatusPacks();
+      if (job.name === 'ideas-weekly') return (await import('../lib/ideas/bank')).weeklyIdeas();
       if (job.name === 'winners') return (await import('../lib/growth/winners')).boostWinners();
       if (job.name === 'campaigns') return runCampaignCycle();
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };
@@ -95,7 +98,10 @@ async function main() {
     }, { connection: newRedisConnection(), concurrency: 1 }),
     new Worker(QUEUE.generate, async (job: Job<GenerateJobData>) => {
       try {
-        const r = await generateAdvertisement({ ...job.data, format: job.data.format as MediaFormat | undefined });
+        // scheduler slots use the best APPROVED idea from the idea bank when there is one
+        const r = job.data.createdBy === 'scheduler'
+          ? await generateFromBank(job.data, (d) => generateAdvertisement({ ...d, format: d.format as MediaFormat | undefined }))
+          : await generateAdvertisement({ ...job.data, format: job.data.format as MediaFormat | undefined });
         if (job.data.scheduleId) await prisma.publicationSchedule.update({ where: { id: job.data.scheduleId }, data: { status: r.advertisement.state === 'FAILED' ? 'FAILED' : 'READY' } });
         return { adId: r.advertisement.id, state: r.advertisement.state, queued: r.queued };
       } catch (e) {

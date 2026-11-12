@@ -97,7 +97,8 @@ export class DryRunProvider implements AiProvider {
       const idea = lang === 'ar'
         ? `${title}: ${parts.join(' — ')}. مشهد فاخر يبرز المنتج بوضوح مع إضاءة سينمائية.`
         : `${title}: ${parts.join(' — ')}. A premium scene that clearly features the product with cinematic lighting.`;
-      if (!ideas.some((x) => x.idea === idea)) ideas.push({ title: `${t(ct)}`, idea });
+      const angle = req.ideaContext?.angles?.[ideas.length] ?? 'problem_solution';
+      if (!ideas.some((x) => x.idea === idea)) ideas.push({ title: `${t(ct)}`, idea, hook: title, angle, format: ['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED'][ideas.length % 3], score: 6, why: 'dry-run' });
     }
     return { ideas, model: 'dry-run', usage: { inputTokens: 0, outputTokens: 0 } };
   }

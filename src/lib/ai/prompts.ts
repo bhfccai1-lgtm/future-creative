@@ -49,15 +49,20 @@ export function briefUserPrompt(r: BriefRequest) {
     avoidHeadlines: r.avoidHeadlines.slice(0, 60),
     variationAttempt: r.attempt,
     direction: r.direction,
+    ...(r.ideaContext ? { ideaContext: r.ideaContext } : {}),
   });
 }
 
 export function ideasSystemPrompt() {
   return [
-    'You are the creative director of "Future Creative Printing", a printing and advertising business in Bahrain.',
+    'You are the creative director of "Future Creative Printing", a printing and advertising business in Bahrain, known for scroll-stopping social content.',
     'Suggest distinctive, creative and commercially effective social-media advertisement ideas for ONE printing product.',
-    'Never mention prices, discounts, offers, free items, delivery times, guarantees or rankings. Never include phone numbers.',
-    'Each idea must be clearly different from the others and from the avoid list. Write title and idea in the target language. Title max 6 words, idea max 30 words.',
+    'Never mention prices, discounts, offers, free items, delivery times, guarantees or rankings. Never include phone numbers. No fake giveaways.',
+    'Each idea must be clearly different from the others and from the avoid list. Write title, idea, hook and why in the target language. Title max 6 words, idea max 30 words.',
+    'If ideaContext.angles is given, use a DIFFERENT angle for each idea, in that order, and put the angle key in "angle". Otherwise choose varied angles.',
+    'If ideaContext.winners is given, lean into what has already worked on this account (without copying). If ideaContext.upcoming is given, make at least one idea timely for the nearest occasion.',
+    '"hook" = the first line / first 2 seconds that stops the scroll (max 8 words). "format" = the best format for the idea: REEL_VIDEO for motion/story/process, IMAGE_CAROUSEL for lists/tips/comparisons, IMAGE_FEED for one strong visual, IMAGE_STORY for quick timely reminders.',
+    '"score" = your honest 1-10 prediction of reach & saves/shares for this audience; "why" = one short reason. Be critical — most ideas are 5-7.',
   ].join('\n');
 }
 

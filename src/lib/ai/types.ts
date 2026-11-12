@@ -53,12 +53,17 @@ export interface BriefRequest {
   occasionKey?: string;
   /** Target format (IMAGE_CAROUSEL needs slides). */
   format?: string;
+  /** Idea bank context: what worked on this account, upcoming occasions, angles to cover. */
+  ideaContext?: { winners?: string[]; upcoming?: string[]; angles?: string[] };
 }
 
-export interface IdeaSuggestion { title: string; idea: string }
+export interface IdeaSuggestion { title: string; idea: string; hook?: string; angle?: string; format?: string; score?: number; why?: string }
 export const IdeaSuggestionsJsonSchema = {
   type: 'object', additionalProperties: false, required: ['ideas'],
-  properties: { ideas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'idea'], properties: { title: { type: 'string' }, idea: { type: 'string' } } } } },
+  properties: { ideas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'idea', 'hook', 'angle', 'format', 'score', 'why'], properties: {
+    title: { type: 'string' }, idea: { type: 'string' }, hook: { type: 'string' }, angle: { type: 'string' },
+    format: { type: 'string', enum: ['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED', 'IMAGE_STORY'] }, score: { type: 'number' }, why: { type: 'string' },
+  } } } },
 } as const;
 
 export interface TextUsage { inputTokens: number; outputTokens: number }

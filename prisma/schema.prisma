@@ -221,6 +221,7 @@ model SocialAccount {
 
   @@index([autoPublishEnabled, nextPublishAt])
   @@map("social_accounts")
+  ideas             Idea[]
 }
 
 model SocialConnection {
@@ -283,6 +284,7 @@ model Product {
   @@index([active])
   @@index([categoryId, active])
   @@map("products")
+  ideas             Idea[]
 }
 
 // ───────────────────────── Creative ─────────────────────────
@@ -654,4 +656,37 @@ model CompetitorSnapshot {
 
   @@index([brandId, takenAt])
   @@map("competitor_snapshots")
+}
+
+enum IdeaStatus {
+  NEW
+  APPROVED
+  USED
+  REJECTED
+}
+
+/// Idea bank: AI-rated ideas per account (angle, hook, best format). APPROVED ideas are used by automatic generation.
+model Idea {
+  id        String        @id @default(cuid())
+  accountId String
+  account   SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  title     String
+  idea      String
+  hook      String?
+  angle     String?
+  format    String?
+  occasion  String?
+  score     Float?
+  why       String?
+  language  String
+  status    IdeaStatus    @default(NEW)
+  source    String        @default("weekly")
+  usedAdId  String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([accountId, status])
+  @@map("ideas")
 }

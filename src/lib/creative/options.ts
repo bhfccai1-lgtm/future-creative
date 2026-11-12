@@ -68,6 +68,22 @@ export const DESIGN_TYPES: Opt[] = [
   { value: 'macro_detail', ar: 'لقطة قريبة للتفاصيل والجودة', en: 'Macro detail', prompt: 'macro close-up showing print texture, edges, finish and material quality' },
 ];
 
+/** Proven advertising idea angles («زوايا الأفكار») — each idea in a batch uses a different one, so ideas never feel samey. */
+export const IDEA_ANGLES = [
+  { value: 'problem_solution', ar: 'مشكلة ← حل', prompt: 'a relatable everyday problem the customer has, solved by this printed product' },
+  { value: 'customer_moment', ar: 'لحظة زبون حقيقية', prompt: 'a short emotional story moment of a customer using or receiving the product' },
+  { value: 'gift_guide', ar: 'دليل هدايا حسب الشخص', prompt: 'gift idea tailored to a specific person (mother, teacher, colleague, new baby…)' },
+  { value: 'three_ways', ar: '3 طرق لاستخدامه', prompt: 'three surprising or practical ways to use the product (great for carousels)' },
+  { value: 'myth_fact', ar: 'خرافة وحقيقة', prompt: 'a common misconception about printing/this product, corrected with a useful fact' },
+  { value: 'mistake_avoid', ar: 'خطأ شائع تجنّبه', prompt: 'a common mistake people make when ordering/designing this product and how to avoid it' },
+  { value: 'pov', ar: 'من منظورك (POV)', prompt: 'a first-person POV scenario the audience instantly recognises (e.g. POV: your event is next week)' },
+  { value: 'comparison', ar: 'مقارنة خيارات', prompt: 'compare finishes, materials or sizes to help the customer choose (no prices, no claims of being the best)' },
+  { value: 'complete_set', ar: 'الطقم الكامل للمناسبة', prompt: 'the complete matching set of printed items for one event or brand (bundle idea, no prices)' },
+  { value: 'process_reveal', ar: 'كيف يُصنع', prompt: 'satisfying reveal of how it is designed and printed, from idea to finished piece' },
+  { value: 'seasonal_countdown', ar: 'العد التنازلي للمناسبة', prompt: 'get ready before the upcoming occasion — timely and relevant to the season' },
+  { value: 'local_pride', ar: 'فخر محلي', prompt: 'celebrating local life, places and culture of the market (Bahrain or Saudi as appropriate), tastefully' },
+] as const;
+
 /** Visual style — drives the image prompt AND the layout colour theme. */
 export const DESIGN_STYLES: (Opt & { theme: 'navy_gold' | 'black_gold' | 'white_minimal' | 'emerald_gold' | 'festive_red' })[] = [
   { value: 'fc_signature', ar: 'توقيع المطبعة الإعلاني (من نماذجك)', en: 'Future Creative signature', theme: 'navy_gold', prompt: 'warm glossy 3D commercial advertising look: the hero product on a warm wooden table, softly blurred real setting (bright classroom, print workshop with a heat press, cosy café), a green plant, books, coloured pencils, a gift box or a colour-swatch fan as props, golden bokeh and soft sparkles, rich saturated cheerful colours; when people are involved, artwork printed on the product is in a cute Pixar-style 3D cartoon look, and for education a smiling child gives a thumbs up next to the product' },

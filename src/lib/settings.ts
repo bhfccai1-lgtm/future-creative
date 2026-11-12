@@ -21,6 +21,14 @@ export const SettingsSchema = z.object({
     crossPromo: z.object({ enabled: z.boolean().default(false), maxPerTargetPerDay: z.number().int().min(1).max(6).default(2), delayMinutes: z.number().int().min(0).max(720).default(45) }).default({}),
   }).default({}),
   killSwitchReason: z.string().nullable().default(null),
+  /** Idea bank: weekly rated ideas per active account; approved ideas feed automatic generation. */
+  ideas: z.object({
+    weekly: z.boolean().default(true),
+    perAccount: z.number().int().min(1).max(6).default(5),
+    useBank: z.boolean().default(true),
+    /** auto-approve ideas the AI rates at least this high (0 = always review yourself) */
+    autoApproveMinScore: z.number().min(0).max(10).default(0),
+  }).default({}),
   /** Fast-reach engine: learned peak hours per account + boosting proven winners. Off by default. */
   growth: z.object({
     peakHours: z.object({
