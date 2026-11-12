@@ -28,6 +28,9 @@ import { importCompetitors } from '../lib/competitors/service';
 import { buildReport } from '../lib/analytics/report';
 import { sweepStuckJobs, HEARTBEAT_KEY } from '../lib/ops/diagnostics';
 import { redis } from '../lib/queue/connection';
+import { getSettings } from '../lib/settings';
+import { syncWhatsappCatalog } from '../lib/integrations/whatsapp-catalog';
+import { sendStatusPacks } from '../lib/integrations/whatsapp-status';
 
 const workerId = `${os.hostname()}-${process.pid}`;
 const log = (...a: unknown[]) => console.log(JSON.stringify({ ts: new Date().toISOString(), level: 'info', event: 'worker', msg: a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ').slice(0, 1000) }));
@@ -54,6 +57,8 @@ async function main() {
   await sched.upsertJobScheduler('health-snapshot', { pattern: '50 6 * * *', tz: TZ }, { name: 'health-snapshot' });
   await sched.upsertJobScheduler('daily-digest', { pattern: '5 21 * * *', tz: TZ }, { name: 'daily-digest' }); // 21:05 Bahrain
   await sched.upsertJobScheduler('weekly-report', { pattern: '40 8 * * 0', tz: TZ }, { name: 'weekly-report' }); // Sunday 08:40 Bahrain
+  await sched.upsertJobScheduler('wa-catalog-daily', { pattern: '10 4 * * *', tz: TZ }, { name: 'wa-catalog', data: { daily: true } }); // WhatsApp catalogue (only if enabled)
+  await sched.upsertJobScheduler('wa-status', { pattern: '10 9-21 * * *', tz: TZ }, { name: 'wa-status' }); // status pack → Telegram, max 1 per hour within the daily cap
   await sched.upsertJobScheduler('analytics', { pattern: '15 5,17 * * *', tz: TZ }, { name: 'analytics' }); // read-only metrics import twice a day
 
   const workers = [
@@ -76,6 +81,12 @@ async function main() {
         await emitEvent('report.weekly', { period: 'week', from: r.from, to: r.to, publishing: r.publishing, metrics: r.metrics, top: r.top, failures: r.failures.slice(0, 5), recommendations: r.recommendations, reportUrl: '/reports' });
         return { emitted: true };
       }
+      if (job.name === 'wa-catalog') {
+        const c = (await getSettings()).whatsapp.catalog;
+        if (job.data?.daily && !(c.enabled && c.autoSyncDaily)) return { skipped: true };
+        return syncWhatsappCatalog(job.data?.actor ?? 'worker');
+      }
+      if (job.name === 'wa-status') return sendStatusPacks();
       if (job.name === 'campaigns') return runCampaignCycle();
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };
       return undefined;

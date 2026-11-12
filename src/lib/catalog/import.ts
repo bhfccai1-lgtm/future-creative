@@ -9,7 +9,7 @@ import { findClaims } from '../qc/checks';
  * required — everything else gets sensible defaults so 500+ products can be loaded in one step. Upserts by slug,
  * so re-importing the same sheet updates instead of duplicating.
  */
-export interface ImportRow { line: number; slug: string; category: string; titleAr: string; titleEn: string; titleMl: string | null; audience: string[]; occasions: string[]; visual: string; messagesAr: string[]; messagesEn: string[]; tags: string[]; active: boolean }
+export interface ImportRow { line: number; slug: string; category: string; titleAr: string; titleEn: string; titleMl: string | null; audience: string[]; occasions: string[]; visual: string; messagesAr: string[]; messagesEn: string[]; tags: string[]; active: boolean; price?: number | null; catalogDescription?: string | null }
 export interface ImportError { line: number; message: string }
 
 const H: Record<string, string[]> = {
@@ -25,9 +25,20 @@ const H: Record<string, string[]> = {
   messagesEn: ['messagesen', 'englishmessages', 'رسائلانجليزية'],
   tags: ['tags', 'accounttags', 'الوسوم', 'الحسابات'],
   active: ['active', 'enabled', 'نشط', 'مفعل', 'الحالة'],
+  price: ['price', 'pricefrom', 'السعر', 'سعر', 'يبدامن', 'السعريبدامن'],
+  catalogDescription: ['catalogdescription', 'وصفالكتالوج', 'وصفللزبائن', 'وصفالمنتج'],
 };
 const norm = (s: string) => s.toLowerCase().replace(/[\s_\-.:()/]+/g, '').replace(/[أإآ]/g, 'ا');
 const list = (v: string) => v.split(/[|;،,\n]+/).map((x) => x.trim()).filter(Boolean);
+
+/** «2.5», «2,500», «٢٫٥ د.ب» → 2.5; empty/invalid → null */
+export function priceOf(v: string): number | null {
+  const t = v.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[٫,]/g, '.');
+  const m = t.match(/\d+(?:\.\d+)?/g);
+  if (!m || m.length !== 1) return null; // no number, or several numbers ("2-5") → ask for one starting price
+  const n = Number(m[0]);
+  return n <= 100000 ? n : null;
+}
 
 export function slugify(s: string) {
   return s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
@@ -62,12 +73,15 @@ export function parseProductCsv(text: string): { rows: ImportRow[]; errors: Impo
     const claim = findClaims([...messagesAr, ...messagesEn].join(' '));
     if (claim.length) { errors.push({ line, message: `رسائل تحتوي ادعاءات/أسعار ممنوعة: ${claim.join('، ')}` }); return; }
     const act = pick(r, 'active').toLowerCase();
+    const rawPrice = pick(r, 'price');
+    if (rawPrice && priceOf(rawPrice) === null) { errors.push({ line, message: `السعر غير صحيح: ${rawPrice}` }); return; }
     rows.push({
       line, slug, category,
       titleAr: (titleAr || titleEn).slice(0, 100), titleEn: (titleEn || titleAr).slice(0, 100), titleMl: pick(r, 'titleMl') || null,
       audience: list(pick(r, 'audience')).slice(0, 20), occasions: list(pick(r, 'occasions')).slice(0, 20),
       visual: pick(r, 'visual').slice(0, 1000), messagesAr, messagesEn, tags: list(pick(r, 'tags')).slice(0, 20),
       active: !['0', 'no', 'false', 'لا', 'متوقف', 'غير نشط'].includes(act),
+      price: priceOf(pick(r, 'price')), catalogDescription: pick(r, 'catalogDescription').slice(0, 2000) || null,
     });
   });
   return { rows, errors };
@@ -83,6 +97,8 @@ export function withDefaults(r: ImportRow) {
     visualGuidelines: r.visual.length >= 10 ? r.visual : `Premium commercial product photo of ${en} as produced by a professional print shop: the printed item is the hero, large and sharp, realistic materials and finish, tasteful props, warm studio lighting.`,
     recommendedMessages: { ar: r.messagesAr.length ? r.messagesAr : [`${ar} بتصميمك الخاص`, `${ar} بجودة طباعة عالية`], en: r.messagesEn.length ? r.messagesEn : [`${en}, designed your way`, `${en} with premium print quality`] },
     relevantAccountTags: r.tags, active: r.active,
+    // an empty price/description column never wipes values entered in the dashboard
+    ...(r.price != null ? { priceFrom: r.price } : {}), ...(r.catalogDescription ? { catalogDescription: r.catalogDescription } : {}),
   };
 }
 
@@ -115,10 +131,10 @@ export async function applyProductImport(rows: ImportRow[], opts: { dryRun: bool
 export async function exportProductsCsv() {
   const ps = await prisma.product.findMany({ include: { category: true }, orderBy: [{ category: { nameAr: 'asc' } }, { titleAr: 'asc' }] });
   const q = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const head = ['slug', 'category', 'titleAr', 'titleEn', 'titleMl', 'audience', 'occasions', 'visual', 'messagesAr', 'messagesEn', 'tags', 'active'];
+  const head = ['slug', 'category', 'titleAr', 'titleEn', 'titleMl', 'audience', 'occasions', 'visual', 'messagesAr', 'messagesEn', 'tags', 'active', 'price', 'catalogDescription'];
   const lines = ps.map((p) => {
     const m = p.recommendedMessages as { ar?: string[]; en?: string[] };
-    return [p.slug, p.category.nameAr, p.titleAr, p.titleEn, p.titleMl ?? '', p.targetAudience.join(' | '), p.occasions.join(' | '), p.visualGuidelines, (m.ar ?? []).join(' | '), (m.en ?? []).join(' | '), p.relevantAccountTags.join(' | '), p.active ? '1' : '0'].map((v) => q(String(v))).join(',');
+    return [p.slug, p.category.nameAr, p.titleAr, p.titleEn, p.titleMl ?? '', p.targetAudience.join(' | '), p.occasions.join(' | '), p.visualGuidelines, (m.ar ?? []).join(' | '), (m.en ?? []).join(' | '), p.relevantAccountTags.join(' | '), p.active ? '1' : '0', p.priceFrom ?? '', p.catalogDescription ?? ''].map((v) => q(String(v))).join(',');
   });
   return '﻿' + [head.join(','), ...lines].join('\r\n') + '\r\n';
 }

@@ -57,7 +57,7 @@ export function ProductImport({ presets = [] }: { presets?: string[] }) {
   );
 }
 
-type Row = { id: string; titleAr: string; titleEn: string; category: string; active: boolean; ads: number; perf: number };
+type Row = { id: string; titleAr: string; titleEn: string; category: string; active: boolean; ads: number; perf: number; price: number | null };
 export function ProductTable({ rows }: { rows: Row[] }) {
   const router = useRouter();
   const [sel, setSel] = useState<string[]>([]);
@@ -76,12 +76,13 @@ export function ProductTable({ rows }: { rows: Row[] }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
-          <thead><tr><th className="th w-8"></th><th className="th">المنتج</th><th className="th">الفئة</th><th className="th">الأداء</th><th className="th">الإعلانات</th><th className="th">الحالة</th></tr></thead>
+          <thead><tr><th className="th w-8"></th><th className="th">المنتج</th><th className="th">الفئة</th><th className="th">السعر يبدأ من</th><th className="th">الأداء</th><th className="th">الإعلانات</th><th className="th">الحالة</th></tr></thead>
           <tbody>{rows.map((p) => (
             <tr key={p.id} className="border-t">
               <td className="td"><input type="checkbox" checked={sel.includes(p.id)} onChange={(e) => setSel(e.target.checked ? [...sel, p.id] : sel.filter((x) => x !== p.id))} aria-label={p.titleAr} /></td>
               <td className="td"><div className="font-bold">{p.titleAr}</div><div className="text-xs text-slate-500 ltr">{p.titleEn}</div></td>
               <td className="td text-xs">{p.category}</td>
+              <td className="td"><PriceCell id={p.id} value={p.price} /></td>
               <td className="td text-xs">{p.perf === 0 ? '—' : p.perf.toFixed(2)}</td>
               <td className="td">{p.ads}</td>
               <td className="td">{p.active ? <Badge tone="green">نشط</Badge> : <Badge>متوقف</Badge>}</td>
@@ -89,5 +90,24 @@ export function ProductTable({ rows }: { rows: Row[] }) {
         </table>
       </div>
     </div>
+  );
+}
+
+/** Starting price for the WhatsApp catalogue — saved when the field loses focus (empty = no price). */
+function PriceCell({ id, value }: { id: string; value: number | null }) {
+  const [v, setV] = useState(value == null ? '' : String(value));
+  const [state, setState] = useState<'idle' | 'ok' | 'err'>('idle');
+  const save = async () => {
+    const t = v.trim().replace(/[٫,]/g, '.');
+    const n = t === '' ? null : Number(t);
+    if (n !== null && (!Number.isFinite(n) || n < 0)) { setState('err'); return; }
+    if (n === value) return;
+    try { await apiCall(`/api/products/${id}`, { method: 'PATCH', body: { priceFrom: n } }); setState('ok'); } catch { setState('err'); }
+  };
+  return (
+    <span className="flex items-center gap-1">
+      <input className="input ltr" style={{ width: '5.5rem' }} inputMode="decimal" value={v} placeholder="—" onChange={(e) => { setV(e.target.value); setState('idle'); }} onBlur={save} aria-label="السعر يبدأ من" />
+      {state === 'ok' && <span className="text-xs text-emerald-700">✓</span>}{state === 'err' && <span className="text-xs text-red-700">!</span>}
+    </span>
   );
 }

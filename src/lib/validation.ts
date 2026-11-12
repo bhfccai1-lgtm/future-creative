@@ -30,6 +30,8 @@ export const ProductInput = z.object({
   recommendedMessages: z.object({ ar: z.array(z.string().max(120)).max(10), en: z.array(z.string().max(120)).max(10), ml: z.array(z.string().max(120)).max(10).optional() }),
   relevantAccountTags: z.array(z.string().max(40)).max(20).default([]),
   active: z.boolean().default(true),
+  priceFrom: z.number().min(0).max(100000).nullable().optional(),
+  catalogDescription: z.string().max(2000).nullable().optional(),
 });
 
 export const DirectionSchema = z.object({

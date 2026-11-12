@@ -269,6 +269,8 @@ model Product {
   relevantAccountTags String[]
   active            Boolean         @default(true)
   performanceScore  Float           @default(0) // rolling, updated from verified results
+  priceFrom         Float? // starting price in the business currency — only used by the WhatsApp/Meta catalogue
+  catalogDescription String? // customer-facing description for the catalogue / public product page
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   briefs            CreativeBrief[]

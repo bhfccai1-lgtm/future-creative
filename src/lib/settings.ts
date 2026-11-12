@@ -106,6 +106,27 @@ export const SettingsSchema = z.object({
     gdriveFolderId: z.string().default(''),
     gsheetId: z.string().default(''),
   }).default({}),
+  /** WhatsApp: official Meta catalogue sync (Catalog Batch API) + a daily «status pack» delivered to Telegram for manual posting.
+   *  WhatsApp has no official API for Status, so the system never posts to Status itself. */
+  whatsapp: z.object({
+    catalog: z.object({
+      enabled: z.boolean().default(false),
+      catalogId: z.string().regex(/^\d*$/).default(''),
+      graphVersion: z.string().regex(/^v\d+\.\d+$/).default('v23.0'),
+      /** products shown in the catalogue: all active, or only these categories */
+      categoryIds: z.array(z.string()).default([]),
+      autoSyncDaily: z.boolean().default(true),
+      lastSyncAt: z.string().nullable().default(null),
+      lastSyncOk: z.boolean().default(false),
+      lastSyncMessage: z.string().nullable().default(null),
+    }).default({}),
+    statusPack: z.object({
+      enabled: z.boolean().default(false),
+      maxPerDay: z.number().int().min(1).max(10).default(3),
+      /** accounts whose verified posts feed the pack (empty = all) */
+      accountIds: z.array(z.string()).default([]),
+    }).default({}),
+  }).default({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
@@ -137,7 +158,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL';
+export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;
