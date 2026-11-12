@@ -21,6 +21,7 @@ export default async function AccountsPage() {
       <PageHeader title="الحسابات الاجتماعية" subtitle={`${accounts.length} حساب — كل حساب له إعداداته وسجله المستقل`} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <ActionButton url="/api/accounts/verify-all" method="POST" label="فحص كل الحسابات الآن" variant="outline" size="sm" />
+        <Link href="/accounts/audit" className="rounded-lg bg-navy-800 px-3 py-1.5 text-sm font-bold text-white">🩺 تدقيق الحسابات</Link>
         <ActionButton url="/api/accounts/auto-channels" method="POST" label="انشر على كل القنوات المرتبطة" variant="outline" size="sm" confirm="كل حساب سينشر تلقائيًا على جميع الشبكات المرتبطة بعلامته في Metricool (حسب ما تدعمه كل صيغة). متابعة؟" />
         <span className="text-xs text-slate-500">يقرأ من Metricool الشبكات المربوطة بكل علامة (إنستغرام، Google التجاري، تيك توك…)</span>
       </div>
