@@ -1,3 +1,4 @@
+import { planRecommended } from './recommended';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { redis } from '../queue/connection';
@@ -161,6 +162,9 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
   // ───────── growth ─────────
   const fixedStory = accounts.filter((a) => a.formatStrategy !== 'GROWTH_MIX' && a.publishFormat === 'IMAGE_STORY' && a.autoPublishEnabled);
   if (fixedStory.length) add({ id: 'story_only', category: 'growth', severity: 'medium', title: 'حسابات تنشر ستوري فقط', evidence: `${fixedStory.length} حساب: ${fixedStory.slice(0, 5).map((a) => a.name).join('، ')}`, why: 'بيانات حساباتك: الريلز وصلت 4–6 أضعاف المتابعين، والستوري لا تجلب متابعين جددًا.', steps: ['في إعدادات كل حساب: «استراتيجية المحتوى» = مزيج النمو (50% ريلز · 25% كاروسيل)'], link: '/accounts' });
+  // niche-named accounts (stickers, gifts, mugs…) without categories publish ANY product — off-niche posts confuse followers
+  const offNiche = (await planRecommended().catch(() => [] as Awaited<ReturnType<typeof planRecommended>>)).filter((r) => r.niche && r.categories.length);
+  if (offNiche.length) add({ id: 'niche_without_categories', category: 'content', severity: 'medium', title: 'حسابات متخصصة تنشر منتجات خارج تخصصها', evidence: `${offNiche.length} حساب بلا فئات: ${offNiche.slice(0, 6).map((r) => `${r.name} (${r.niche})`).join('، ')}`, why: 'حساب الملصقات أو الهدايا الذي ينشر كروتًا أو لوحات يربك المتابعين ويضعف ظهوره لجمهوره المتخصص.', steps: ['الجدول الزمني ← «الإعداد الموصى به» ← تطبيق (يضبط الفئات للحسابات المتخصصة فقط ولا يغيّر ما اخترته)', 'أو في إعدادات كل حساب: اختر الفئات المسموحة يدويًا'], link: '/schedule' });
   const noMetrics = results30.filter((r) => r.engagementScore === null).length;
   if (results30.length >= 3 && noMetrics / results30.length > 0.5) add({ id: 'metrics_missing', category: 'growth', severity: 'medium', title: 'منشورات مؤكدة بلا مقاييس أداء', evidence: `${noMetrics} من ${results30.length} منشور (30 يومًا) بلا مقاييس`, why: 'بدون مقاييس لا يمكن معرفة ما ينجح، ولا يتعلم اختيار المنتجات.', steps: ['اضغط «استيراد مقاييس Metricool الآن» في التقارير', 'إن فشل الاستيراد: تحقق أن خطة Metricool تتيح التحليلات عبر API'], link: '/reports' });
   const skips = results30.map((r) => Number((r.metrics as Prisma.JsonObject | null)?.skipRatePct)).filter(Number.isFinite);

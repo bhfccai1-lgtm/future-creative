@@ -105,6 +105,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     }
     if (auto.length) p = { ...p, direction: { ...dir, autoPicked: auto } };
   }
+  // Saudi accounts: market context defaults to Saudi/GCC (no Bahrain references or #البحرين)
+  if (marketOf(account) === 'KSA' && !p.direction?.market) p = { ...p, direction: { ...(p.direction ?? {}), market: 'gcc_saudi' } };
   // automatic designs that didn't choose a method/style use the settings (default: signature style, «تلقائي» method)
   if (!p.direction?.renderMode || !p.direction?.designStyle) {
     p = { ...p, direction: { ...(p.direction ?? {}), renderMode: p.direction?.renderMode ?? s.ai.autoRenderMode, designStyle: p.direction?.designStyle ?? s.ai.autoDesignStyle } };

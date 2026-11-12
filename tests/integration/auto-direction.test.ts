@@ -55,6 +55,14 @@ describe('«تلقائي» format / design style / design method', () => {
     expect(new Set(arts.map((a) => `${a.composition}|${a.lens}`)).size).toBe(4);
     for (const a of arts) if (a.composition === 'flat_lay') expect(a.lens).toBe('overhead');
   });
+  it('Saudi accounts default to the Saudi/GCC market (no Bahrain context)', async () => {
+    const { accounts } = await seedBase();
+    await prisma.socialAccount.update({ where: { id: accounts[0].id }, data: { name: 'Ksafcc' } });
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED' });
+    expect(((await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { direction: { market: string } }).direction.market).toBe('gcc_saudi');
+    const b = await generateAdvertisement({ accountId: accounts[1].id, createdBy: 't', format: 'IMAGE_FEED' });
+    expect(((await prisma.advertisement.findUniqueOrThrow({ where: { id: b.advertisement.id } })).options as { direction: { market?: string } }).direction.market).toBeUndefined();
+  });
   it('a user-chosen composition is kept', async () => {
     const { accounts } = await seedBase();
     const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { designType: 'macro_detail' } });

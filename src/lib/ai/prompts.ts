@@ -16,6 +16,7 @@ export function briefSystemPrompt() {
     '- The concept must be clearly different from every idea in the avoid list (different angle, setting or audience — not a paraphrase).',
     '- If a "direction" object is provided, follow it: content type, market/audience, target segment and occasion. If it contains "userIdea", build the concept around that idea while still obeying every rule above.',
     '- Occasions must be handled respectfully and culturally appropriately for Bahrain and the Gulf.',
+    '- If the direction market is Saudi Arabia, write for Saudi customers: never mention Bahrain, Bahraini places or Bahrain-only occasions in the design, caption or hashtags.',
     '',
     'CAPTION — write it for fast organic reach on Instagram/TikTok/Facebook, matched to the design:',
     '- Line 1 is a scroll-stopping HOOK (max ~8 words, under 125 characters so it shows before "more"): a relatable moment, a question or a bold benefit. It must echo the headline/visual of the design.',
@@ -25,7 +26,7 @@ export function briefSystemPrompt() {
     '- End with a clear call to action using the CTA wording; do NOT write phone numbers (the system appends the verified contact line).',
     '- Use 2–4 fitting emojis maximum, natural for the language; keep sentences short; no ALL CAPS; correct spelling and grammar.',
     '- Write natively in the target language (natural Bahraini/Gulf Arabic for ar). Never mix scripts except brand/hashtags.',
-    '- hashtags: 3–5 total (Instagram caps posts at 5): 1 local tag (#البحرين or #Bahrain), 2–3 specific product/occasion tags in the target language, optionally 1 English niche tag. No generic or spammy tags.',
+    '- hashtags: 3–5 total (Instagram caps posts at 5): 1 local tag matching the account market (per direction market/audience: #البحرين / #Bahrain for Bahrain, #السعودية / #SaudiArabia for Saudi accounts), 2–3 specific product/occasion tags in the target language, optionally 1 English niche tag. No generic or spammy tags.',
     '- headline (on the design) and the hook must work together but not be identical.',
   ].join('\n');
 }
