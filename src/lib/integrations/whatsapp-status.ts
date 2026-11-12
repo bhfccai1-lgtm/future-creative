@@ -1,5 +1,6 @@
 import { prisma } from '../db';
-import { getBusiness, locationsOf, ctaFor } from '../business';
+import { getBusiness, ctaFor } from '../business';
+import { displayWaPhone, numbersForAccount, waNumbers } from './whatsapp-numbers';
 import { getSecret, getSettings } from '../settings';
 import { signedMediaUrl } from '../storage';
 import { publishableMedia } from '../publishing/media';
@@ -66,17 +67,19 @@ export async function sendStatusPacks(opts: { force?: boolean } = {}) {
   const list = (await candidates(cfg.accountIds, new Set(sent))).slice(0, room);
   if (!list.length) return { sent: 0, reason: 'nothing_new' };
   const b = await getBusiness();
-  const phones = locationsOf(b).map((l) => `📞 ${l.nameAr} ${l.phone}`).join('\n');
+  const nums = await waNumbers();
   let n = 0;
   for (const ad of list) {
     const media = publishableMedia(ad)[0];
     if (!media) continue;
     const lang = (ad.language as Lang) ?? 'ar';
+    const mine = numbersForAccount(nums, ad.accountId);
+    const phones = mine.map((n) => `📞 ${n.label} ${displayWaPhone(n.phone)}`).join('\n');
     const text = statusText({ headline: ad.headline, productTitle: ad.product.titleAr, cta: ctaFor(b, lang), phones, lang });
     const url = signedMediaUrl(media.storageKey, 3 * 24 * 3600);
     try {
       const isVideo = media.mimeType.startsWith('video/');
-      await tg(token, isVideo ? 'sendVideo' : 'sendPhoto', { chat_id: chatId, [isVideo ? 'video' : 'photo']: url, caption: `🟢 حالة واتساب جاهزة — ${ad.account.name}\nاحفظ ${isVideo ? 'الفيديو' : 'الصورة'} ثم انشرها في الحالة، وانسخ النص:` });
+      await tg(token, isVideo ? 'sendVideo' : 'sendPhoto', { chat_id: chatId, [isVideo ? 'video' : 'photo']: url, caption: `🟢 حالة واتساب جاهزة — ${ad.account.name}\nانشرها من: ${mine.map((n) => n.label).join('، ')}\nاحفظ ${isVideo ? 'الفيديو' : 'الصورة'} ثم انشرها في الحالة، وانسخ النص:` });
       await tg(token, 'sendMessage', { chat_id: chatId, text });
       sent.push(ad.id); n++;
       await prisma.auditLog.create({ data: { actorLabel: 'whatsapp-status', action: 'whatsapp.status_pack', targetType: 'advertisement', targetId: ad.id, details: { account: ad.account.name, format: ad.format } } });

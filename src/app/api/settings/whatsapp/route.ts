@@ -6,6 +6,7 @@ import { audit } from '@/lib/audit';
 import { AppError } from '@/lib/errors';
 import { QUEUE, queue } from '@/lib/queue/queues';
 import { testCatalog, whatsappStatus } from '@/lib/integrations/whatsapp-catalog';
+import { normalizeWaPhone } from '@/lib/integrations/whatsapp-numbers';
 import { sendStatusPacks } from '@/lib/integrations/whatsapp-status';
 
 const status = whatsappStatus;
@@ -14,6 +15,7 @@ export const GET = api('settings:integrations', async () => NextResponse.json(aw
 const Body = z.object({
   catalog: z.object({ enabled: z.boolean(), catalogId: z.string().trim().regex(/^\d{0,30}$/, 'رقم الكتالوج أرقام فقط'), categoryIds: z.array(z.string()).max(200), autoSyncDaily: z.boolean(), graphVersion: z.string().regex(/^v\d+\.\d+$/).optional() }).optional(),
   statusPack: z.object({ enabled: z.boolean(), maxPerDay: z.number().int().min(1).max(10), accountIds: z.array(z.string()).max(50) }).optional(),
+  numbers: z.array(z.object({ label: z.string().trim().min(1, 'اكتب اسمًا لكل رقم').max(40), phone: z.string().max(30), accountIds: z.array(z.string()).max(50), showOnProductPage: z.boolean(), inCatalog: z.boolean() })).max(10).optional(),
   /** Meta system-user token (catalog_management). "__delete__" removes it. Never returned to the browser. */
   token: z.string().max(1000).optional(),
 });
@@ -24,11 +26,18 @@ export const PUT = api('settings:integrations', async (req, { user }) => {
     if (!/^EA[A-Za-z0-9]{40,}$/.test(b.token.trim())) throw new AppError('VALIDATION', 'رمز Meta غير صحيح — يبدأ عادة بـ EA (انسخه كاملًا من Business Settings ← System users)', 422);
     await setSecret('META_CATALOG_TOKEN', b.token.trim(), user.email);
   }
+  const numbers = b.numbers?.map((n) => {
+    const phone = normalizeWaPhone(n.phone);
+    if (!phone) throw new AppError('VALIDATION', `الرقم «${n.phone}» غير صحيح — اكتب 8 أرقام للبحرين أو الرقم مع مفتاح الدولة (مثل 9665xxxxxxxx)`, 422);
+    return { ...n, phone };
+  });
+  if (numbers && new Set(numbers.map((n) => n.phone)).size !== numbers.length) throw new AppError('VALIDATION', 'رقم مكرر في القائمة', 422);
   await updateSettings((s) => ({ ...s, whatsapp: {
+    numbers: numbers ?? s.whatsapp.numbers,
     catalog: b.catalog ? { ...s.whatsapp.catalog, ...b.catalog } : s.whatsapp.catalog,
     statusPack: b.statusPack ?? s.whatsapp.statusPack,
   } }), user.email);
-  await audit({ actorId: user.sub, actorLabel: user.email, action: 'settings.whatsapp', details: { catalog: b.catalog?.enabled ?? null, statusPack: b.statusPack?.enabled ?? null, token: b.token ? (b.token === '__delete__' ? 'deleted' : 'set') : 'unchanged' } });
+  await audit({ actorId: user.sub, actorLabel: user.email, action: 'settings.whatsapp', details: { numbers: numbers?.length ?? null, catalog: b.catalog?.enabled ?? null, statusPack: b.statusPack?.enabled ?? null, token: b.token ? (b.token === '__delete__' ? 'deleted' : 'set') : 'unchanged' } });
   return NextResponse.json(await status());
 });
 

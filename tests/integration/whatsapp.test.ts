@@ -115,3 +115,32 @@ describe('WhatsApp status pack (Telegram, manual posting)', () => {
     expect(f).not.toHaveBeenCalled();
   });
 });
+
+describe('WhatsApp numbers', () => {
+  it('normalizes Bahraini and international numbers', async () => {
+    const { normalizeWaPhone, displayWaPhone } = await import('@/lib/integrations/whatsapp-numbers');
+    expect([normalizeWaPhone('3331 6319'), normalizeWaPhone('+966 50 123 4567'), normalizeWaPhone('00966501234567'), normalizeWaPhone('٣٣٣١٦٣١٩'), normalizeWaPhone('123')]).toEqual(['97333316319', '966501234567', '966501234567', '97333316319', null]);
+    expect([displayWaPhone('97333316319'), displayWaPhone('966501234567')]).toEqual(['33316319', '+966501234567']);
+  });
+  it('falls back to the branch phones; account-specific numbers replace the general ones in the status pack', async () => {
+    const accounts = await setup();
+    const { waNumbers, numbersForAccount } = await import('@/lib/integrations/whatsapp-numbers');
+    expect((await waNumbers()).map((n) => n.phone)).toEqual(['97333316319', '97334315316']);
+    await updateSettings((s) => ({ ...s, n8n: { ...s.n8n, telegramChatId: '42' }, whatsapp: { ...s.whatsapp, statusPack: { enabled: true, maxPerDay: 5, accountIds: [] }, numbers: [
+      { label: 'فرع سار', phone: '97333316319', accountIds: [], showOnProductPage: true, inCatalog: true },
+      { label: 'السعودية', phone: '966501234567', accountIds: [accounts[1].id], showOnProductPage: true, inCatalog: false },
+    ] } }));
+    const all = await waNumbers();
+    expect(numbersForAccount(all, accounts[0].id).map((n) => n.label)).toEqual(['فرع سار']);
+    expect(numbersForAccount(all, accounts[1].id).map((n) => n.label)).toEqual(['السعودية']);
+    await setSecret('TELEGRAM_BOT_TOKEN', '123:abc');
+    await published(accounts[1].id);
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => { sent.push(JSON.parse(String(init!.body))); return okJson({ ok: true }); }));
+    expect((await sendStatusPacks()).sent).toBe(1);
+    expect(String(sent[1].text)).toMatch(/\+966501234567/);
+    expect(String(sent[1].text)).not.toMatch(/33316319/);
+    const plan = await planCatalog();
+    expect(plan.items.every((i) => !i.description.includes('966'))).toBe(true);
+  });
+});

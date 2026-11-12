@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { getBusiness, locationsOf } from '@/lib/business';
+import { getBusiness } from '@/lib/business';
+import { displayWaPhone, waLink, waNumbers } from '@/lib/integrations/whatsapp-numbers';
 import { productImages } from '@/lib/integrations/whatsapp-catalog';
 import { signedMediaUrl } from '@/lib/storage';
 
@@ -41,10 +42,10 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       {desc && <p className="mt-4 whitespace-pre-line leading-7">{desc}</p>}
       {p.priceFrom != null && <p className="mt-3 text-lg font-bold">يبدأ من {p.priceFrom.toFixed(digits)} {b.currency === 'BHD' ? 'د.ب' : b.currency}</p>}
       <div className="mt-6 space-y-3">
-        {locationsOf(b).map((l) => (
-          <a key={l.key} className="block rounded-xl bg-green-600 px-4 py-3 text-center font-bold text-white"
-            href={`https://wa.me/973${l.phone}?text=${encodeURIComponent(`مرحبا، أرغب بالاستفسار عن: ${p.titleAr}`)}`} target="_blank" rel="noopener noreferrer">
-            اطلب عبر واتساب — فرع {l.nameAr} ({l.phone})
+        {(await waNumbers()).filter((n) => n.showOnProductPage).map((n) => (
+          <a key={n.phone} className="block rounded-xl bg-green-600 px-4 py-3 text-center font-bold text-white"
+            href={waLink(n.phone, `مرحبا، أرغب بالاستفسار عن: ${p.titleAr}`)} target="_blank" rel="noopener noreferrer">
+            اطلب عبر واتساب — {n.label} <span dir="ltr">({displayWaPhone(n.phone)})</span>
           </a>
         ))}
       </div>

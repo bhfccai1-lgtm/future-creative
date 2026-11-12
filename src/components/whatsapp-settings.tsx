@@ -7,19 +7,22 @@ import { Button } from './ui';
 type Catalog = { enabled: boolean; catalogId: string; categoryIds: string[]; autoSyncDaily: boolean; lastSyncAt: string | null; lastSyncOk: boolean; lastSyncMessage: string | null };
 type Pack = { enabled: boolean; maxPerDay: number; accountIds: string[] };
 type Plan = { total: number; ready: number; missingPrice: number; missingImage: number; missingPriceSample: string[]; missingImageSample: string[] } | null;
-export type WhatsappStatus = { catalog: Catalog; statusPack: Pack; token: boolean; telegram: boolean; plan: Plan };
+type Num = { label: string; phone: string; accountIds: string[]; showOnProductPage: boolean; inCatalog: boolean };
+export type WhatsappStatus = { numbers: Num[]; numbersConfigured: boolean; catalog: Catalog; statusPack: Pack; token: boolean; telegram: boolean; plan: Plan };
 
 export function WhatsappSettings({ initial, categories, accounts }: { initial: WhatsappStatus; categories: { id: string; nameAr: string }[]; accounts: { id: string; name: string }[] }) {
   const [st, setSt] = useState(initial);
   const [cat, setCat] = useState(initial.catalog);
   const [pack, setPack] = useState(initial.statusPack);
   const [token, setToken] = useState('');
+  const [nums, setNums] = useState<Num[]>(initial.numbers);
+  const setNum = (i: number, patch: Partial<Num>) => setNums(nums.map((n, j) => (j === i ? { ...n, ...patch } : n)));
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const run = async (f: () => Promise<string>) => { setBusy(true); setMsg(null); try { setMsg({ ok: true, t: await f() }); } catch (x) { setMsg({ ok: false, t: (x as Error).message }); } finally { setBusy(false); } };
   const save = () => run(async () => {
-    const r = await apiCall<WhatsappStatus>('/api/settings/whatsapp', { method: 'PUT', body: { catalog: { enabled: cat.enabled, catalogId: cat.catalogId, categoryIds: cat.categoryIds, autoSyncDaily: cat.autoSyncDaily }, statusPack: pack, ...(token.trim() ? { token: token.trim() } : {}) } });
-    setSt(r); setToken(''); return 'تم الحفظ ✓';
+    const r = await apiCall<WhatsappStatus>('/api/settings/whatsapp', { method: 'PUT', body: { numbers: nums, catalog: { enabled: cat.enabled, catalogId: cat.catalogId, categoryIds: cat.categoryIds, autoSyncDaily: cat.autoSyncDaily }, statusPack: pack, ...(token.trim() ? { token: token.trim() } : {}) } });
+    setSt(r); setNums(r.numbers); setToken(''); return 'تم الحفظ ✓';
   });
   const act = (action: 'test' | 'sync' | 'status_test') => run(async () => {
     const r = await apiCall<{ name?: string; productCount?: number; sent?: number }>('/api/settings/whatsapp', { method: 'POST', body: { action } });
@@ -32,6 +35,28 @@ export function WhatsappSettings({ initial, categories, accounts }: { initial: W
   return (
     <div className="space-y-6 text-sm">
       <section className="space-y-3">
+        <h3 className="text-base font-extrabold">أرقام واتساب ({nums.length})</h3>
+        <p className="text-slate-600">الأرقام التي يراها الزبائن: أزرار «اطلب عبر واتساب» في صفحة المنتج، ووصف الكتالوج، ونص حزمة الحالة. للبحرين اكتب 8 أرقام، ولغيرها اكتب الرقم مع مفتاح الدولة (مثل 9665xxxxxxxx). إن ربطت رقمًا بحسابات معينة، تستخدمه منشورات تلك الحسابات بدل الأرقام العامة.</p>
+        {!st.numbersConfigured && <p className="text-amber-700">حاليًا تُستخدم أرقام الفرعين تلقائيًا — أضف رقميك الآخرين ثم احفظ.</p>}
+        {nums.map((n, i) => (
+          <div key={i} className="space-y-2 rounded-xl border p-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div><label className="label">الاسم (مثل: فرع سار، قسم الشركات، السعودية)</label><input className="input" value={n.label} maxLength={40} onChange={(e) => setNum(i, { label: e.target.value })} /></div>
+              <div><label className="label">رقم واتساب</label><input className="input ltr" inputMode="tel" value={n.phone.startsWith('973') && n.phone.length === 11 ? n.phone.slice(3) : n.phone} onChange={(e) => setNum(i, { phone: e.target.value })} placeholder="33316319" /></div>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={n.showOnProductPage} onChange={(e) => setNum(i, { showOnProductPage: e.target.checked })} /> زر في صفحة المنتج</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={n.inCatalog} onChange={(e) => setNum(i, { inCatalog: e.target.checked })} /> في وصف الكتالوج</label>
+              <button type="button" className="text-red-700 underline" onClick={() => setNums(nums.filter((_, j) => j !== i))}>حذف</button>
+            </div>
+            <div><label className="label">خاص بالحسابات (بدون اختيار = رقم عام لكل الحسابات)</label>
+              <div className="flex flex-wrap gap-1">{accounts.map((a) => { const on = n.accountIds.includes(a.id); return <button key={a.id} type="button" onClick={() => setNum(i, { accountIds: toggle(n.accountIds, a.id) })} className={`rounded-full border px-2 py-0.5 text-xs ${on ? 'border-navy-800 bg-navy-800 text-white' : 'bg-white'}`}>{a.name}</button>; })}</div></div>
+          </div>
+        ))}
+        {nums.length < 10 && <Button type="button" variant="outline" onClick={() => setNums([...nums, { label: '', phone: '', accountIds: [], showOnProductPage: true, inCatalog: true }])}>+ إضافة رقم</Button>}
+      </section>
+
+      <section className="space-y-3 border-t pt-4">
         <h3 className="text-base font-extrabold">كتالوج واتساب (رسمي عبر Meta)</h3>
         <p className="text-slate-600">تُرسل منتجاتك إلى كتالوج Meta المرتبط برقم واتساب للأعمال، ويتحدث يوميًا تلقائيًا. يُرسل فقط المنتج الذي له <b>سعر يبدأ من</b> و<b>تصميم معتمد</b> (شرطان من Meta)، ويُزال من الكتالوج كل منتج متوقف. رابط كل منتج يفتح صفحة عامة فيها أزرار واتساب للفرعين.</p>
         {p && (

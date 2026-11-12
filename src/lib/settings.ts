@@ -120,6 +120,16 @@ export const SettingsSchema = z.object({
       lastSyncOk: z.boolean().default(false),
       lastSyncMessage: z.string().nullable().default(null),
     }).default({}),
+    /** WhatsApp numbers shown to customers (product page, catalogue text, status pack). Empty = the branch phones (+973). */
+    numbers: z.array(z.object({
+      label: z.string().min(1).max(40),
+      /** international digits without + (e.g. 97333316319, 9665xxxxxxxx) */
+      phone: z.string().regex(/^\d{10,15}$/),
+      /** accounts whose posts/status use this number (empty = all) */
+      accountIds: z.array(z.string()).default([]),
+      showOnProductPage: z.boolean().default(true),
+      inCatalog: z.boolean().default(true),
+    })).max(10).default([]),
     statusPack: z.object({
       enabled: z.boolean().default(false),
       maxPerDay: z.number().int().min(1).max(10).default(3),

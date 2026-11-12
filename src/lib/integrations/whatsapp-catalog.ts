@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { env } from '../env';
-import { getBusiness, locationsOf } from '../business';
+import { getBusiness } from '../business';
+import { displayWaPhone, waNumbers } from './whatsapp-numbers';
 import { getSecret, getSettings, secretStatus, updateSettings } from '../settings';
 import { signedMediaUrl } from '../storage';
 import { audit } from '../audit';
@@ -49,7 +50,7 @@ const describe = (p: { titleAr: string; titleEn: string; catalogDescription: str
 export async function planCatalog(): Promise<CatalogPlan> {
   const s = await getSettings();
   const b = await getBusiness();
-  const phones = locationsOf(b).map((l) => `${l.nameAr} ${l.phone}`).join(' · ');
+  const phones = (await waNumbers()).filter((n) => n.inCatalog).map((n) => `${n.label} ${displayWaPhone(n.phone)}`).join(' · ');
   const all = await prisma.product.findMany({ select: { id: true, slug: true, active: true, categoryId: true, titleAr: true, titleEn: true, priceFrom: true, catalogDescription: true, recommendedMessages: true } });
   const cats = s.whatsapp.catalog.categoryIds;
   const inScope = all.filter((p) => p.active && (!cats.length || cats.includes(p.categoryId)));
@@ -138,7 +139,7 @@ export async function whatsappStatus() {
   const s = await getSettings();
   const plan = await planCatalog().catch(() => null);
   return {
-    catalog: s.whatsapp.catalog, statusPack: s.whatsapp.statusPack,
+    catalog: s.whatsapp.catalog, statusPack: s.whatsapp.statusPack, numbers: await waNumbers(), numbersConfigured: s.whatsapp.numbers.length > 0,
     token: (await secretStatus('META_CATALOG_TOKEN')).configured,
     telegram: (await secretStatus('TELEGRAM_BOT_TOKEN')).configured && !!s.n8n.telegramChatId,
     plan: plan && { total: plan.total, ready: plan.items.length, missingPrice: plan.missingPrice.length, missingImage: plan.missingImage.length, missingPriceSample: plan.missingPrice.slice(0, 8).map((p) => p.title), missingImageSample: plan.missingImage.slice(0, 8).map((p) => p.title) },
