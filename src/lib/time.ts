@@ -25,3 +25,11 @@ export function inWindow(d: Date, start: string, end: string, tz = TZ) {
 /** Local wall-clock datetime string (no offset) — the format Metricool's publicationDate.dateTime expects. */
 export const localDateTime = (d: Date, tz = TZ) => formatInTimeZone(d, tz, "yyyy-MM-dd'T'HH:mm:ss");
 export { toZonedTime };
+
+/** First moment ≥ d inside the local posting window (d itself when already inside). */
+export function nextInWindow(d: Date, start: string, end: string, tz = TZ): Date {
+  if (inWindow(d, start, end, tz)) return d;
+  const day = formatInTimeZone(d, tz, 'yyyy-MM-dd');
+  const today = fromZonedTime(`${day}T${start}:00`, tz);
+  return today.getTime() > d.getTime() ? today : fromZonedTime(`${formatInTimeZone(new Date(d.getTime() + 86400_000), tz, 'yyyy-MM-dd')}T${start}:00`, tz);
+}

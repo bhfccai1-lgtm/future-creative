@@ -17,6 +17,8 @@ export const SettingsSchema = z.object({
     autoResubmitAfterAbsence: z.boolean().default(false),
     /** Minimum minutes between two posts on the same account (campaigns + automatic schedule + manual). */
     minGapMinutes: z.number().int().min(0).max(720).default(30),
+    /** Same-brand cross-promotion: a new feed/reel/carousel is shared as a branded story on the accounts chosen per account. */
+    crossPromo: z.object({ enabled: z.boolean().default(false), maxPerTargetPerDay: z.number().int().min(1).max(6).default(2), delayMinutes: z.number().int().min(0).max(720).default(45) }).default({}),
   }).default({}),
   killSwitchReason: z.string().nullable().default(null),
   duplicateWindowDays: z.number().int().min(1).max(365).default(30),

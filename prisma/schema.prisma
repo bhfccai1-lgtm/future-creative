@@ -177,6 +177,8 @@ model SocialAccount {
   business              Business         @relation(fields: [businessId], references: [id])
   name                  String
   platform              SocialPlatform
+  /// accounts that share this account's new posts in their story (transparent same-brand cross-promotion)
+  promoteToIds          String[]         @default([])
   handle                String?
   externalId            String? // provider brand/blog id or platform account id
   language              Language         @default(ar)

@@ -67,3 +67,13 @@ describe('campaign upgrade to new defaults', () => {
     expect(explicit.direction).toMatchObject({ audio: 'voiceover', renderMode: 'layered', designStyle: 'black_gold' });
   });
 });
+
+describe('posting window for campaign slots', () => {
+  it('a night slot moves to the next window opening; inside stays', async () => {
+    const { nextInWindow } = await import('@/lib/time');
+    const at = (s: string) => new Date(`${s}+03:00`);
+    expect(nextInWindow(at('2026-11-12T23:30:00'), '09:00', '22:00').toISOString()).toBe(at('2026-11-13T09:00:00').toISOString());
+    expect(nextInWindow(at('2026-11-13T06:00:00'), '09:00', '22:00').toISOString()).toBe(at('2026-11-13T09:00:00').toISOString());
+    expect(nextInWindow(at('2026-11-13T15:00:00'), '09:00', '22:00').toISOString()).toBe(at('2026-11-13T15:00:00').toISOString());
+  });
+});

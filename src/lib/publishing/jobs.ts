@@ -67,7 +67,7 @@ export async function rejectAdvertisement(adId: string, user: { id: string; emai
 }
 
 /** Autonomous path: only for QC-publishable ads; records an audit entry attributed to the scheduler. */
-export async function autoApproveAndQueue(adId: string) {
+export async function autoApproveAndQueue(adId: string, at?: Date) {
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId }, include: { schedule: true } });
   const qc = ad.qcReport as unknown as QcReport | null;
   if (!qc?.publishable || qc.requiresHuman || ad.dryRun) return null; // AI-drawn text always needs a human
@@ -75,7 +75,7 @@ export async function autoApproveAndQueue(adId: string) {
   if (!(await moveAd(adId, 'QUALITY_REVIEW', 'APPROVED'))) return null;
   await prisma.approvalRequest.create({ data: { advertisementId: adId, reason: 'AUTONOMOUS', status: 'APPROVED', decidedAt: new Date(), note: 'scheduler auto-approval (account authorised)', mediaSha256 } });
   await audit({ actorLabel: 'scheduler', action: 'ad.auto_approve', targetType: 'advertisement', targetId: adId, details: { mediaSha256 } });
-  const when = ad.schedule?.slotAt ?? new Date();
+  const when = at ?? ad.schedule?.slotAt ?? new Date();
   return createPublicationJob(adId, when, 'scheduler');
 }
 

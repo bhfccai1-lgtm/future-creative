@@ -1,5 +1,16 @@
 # Changelog
 
+## 8.18.0 — 2026-11-12 (same-brand cross-promotion; campaigns respect the posting window)
+- **Cross-promotion stories:** when a feed post, reel or carousel is verified published, the accounts chosen for it get a branded story.
+  - The story reads «جديد على حسابنا @handle», with the post image in a gold frame, the headline and a CTA, in the target account's language.
+  - It is transparent, with no fake comments or likes.
+  - It goes through approval or autonomy, the 30-minute gap, a per-target daily cap (default 2) and a delay (default 45 minutes).
+  - Stories and promotions are never promoted.
+  - Settings and per-account links are on the schedule page, with a suggested-linking button (niche accounts → general accounts).
+- **Campaign slots outside an account's posting window** (for example 23:30 or 00:00) now move to the window's next opening.
+  - Duplicates that land on the same opening collapse into one.
+- Migration `20261112150000_cross_promo` (additive).
+
 ## 8.17.1 — 2026-11-12 (editable campaigns)
 - **Campaigns can be edited** (`/campaigns/[id]`), with every field pre-filled.
   - Saving keeps the run history and recomputes the next slot.

@@ -4,6 +4,7 @@ import { getSettings } from '../settings';
 import { audit, notify } from '../audit';
 import { enq } from '../queue/queues';
 import { nextSlot, type SlotRule } from './slots';
+import { nextInWindow } from '../time';
 import type { Direction } from '../creative/options';
 
 export const ruleOf = (c: Pick<Campaign, 'scheduleType' | 'everyHours' | 'daysOfWeek' | 'timeMode' | 'startAt' | 'endAt' | 'maxRuns' | 'runs'>): SlotRule => ({
@@ -36,12 +37,17 @@ export async function runCampaignCycle(now = new Date()) {
     if (!slot) { await prisma.campaign.update({ where: { id: c.id }, data: { active: false, nextRunAt: null } }); continue; }
     if (slot.getTime() > now.getTime() + GENERATE_AHEAD_MS) { await prisma.campaign.update({ where: { id: c.id }, data: { nextRunAt: slot } }); continue; }
 
-    const paused = new Set((await prisma.socialAccount.findMany({ where: { id: { in: c.accountIds }, paused: true }, select: { id: true } })).map((a) => a.id));
+    const accs = await prisma.socialAccount.findMany({ where: { id: { in: c.accountIds } }, select: { id: true, paused: true, publishWindowStart: true, publishWindowEnd: true, timezone: true } });
+    const paused = new Set(accs.filter((a) => a.paused).map((a) => a.id));
+    const win = new Map(accs.map((a) => [a.id, a]));
     for (const accountId of c.accountIds) {
       if (paused.has(accountId)) continue; // per-account emergency pause
       let schedule;
       try {
-        schedule = await prisma.publicationSchedule.create({ data: { accountId, slotAt: slot, status: 'GENERATING', campaignId: c.id } });
+        // never at night: a slot outside the account's posting window moves to the window's next opening
+        const w = win.get(accountId);
+        const at = w ? nextInWindow(slot, w.publishWindowStart, w.publishWindowEnd, w.timezone) : slot;
+        schedule = await prisma.publicationSchedule.create({ data: { accountId, slotAt: at, status: 'GENERATING', campaignId: c.id } });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === 'P2002' || e.code === 'P2003')) continue; // already planned / account removed
         throw e;
