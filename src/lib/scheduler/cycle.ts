@@ -5,6 +5,7 @@ import { getSettings } from '../settings';
 import { audit } from '../audit';
 import { enq } from '../queue/queues';
 import { floorToHour, inWindow, startOfDayInTz } from '../time';
+import { peakHoursFor, shouldWaitForPeak } from '../growth/peak-hours';
 
 export interface CycleSummary { at: string; slotAt: string; skipped?: string; mode?: string; planned: string[]; ineligible: Record<string, string> }
 
@@ -31,6 +32,11 @@ export async function runSchedulerCycle(now = new Date()): Promise<CycleSummary>
     if (!c || c.status !== 'CONNECTED' || !c.canPublish) { base.ineligible[a.id] = 'NOT_CONNECTED'; continue; }
     if (!inWindow(slotAt, a.publishWindowStart, a.publishWindowEnd, a.timezone)) { base.ineligible[a.id] = 'OUTSIDE_WINDOW'; continue; }
     if (s.schedulerMode === 'A_PER_ACCOUNT_HOURLY' && a.nextPublishAt && a.nextPublishAt.getTime() > slotAt.getTime()) { base.ineligible[a.id] = 'NOT_DUE'; continue; }
+    // fast reach: a due account waits (max N hours) for its next peak hour instead of posting in a weak hour
+    if (s.growth.peakHours.enabled && s.schedulerMode === 'A_PER_ACCOUNT_HOURLY') {
+      const peak = await peakHoursFor(a, s.growth.peakHours.count);
+      if (shouldWaitForPeak(slotAt, peak.hours, a, s.growth.peakHours.maxDelayHours)) { base.ineligible[a.id] = 'WAITING_PEAK'; continue; }
+    }
     const pendingFuture = await prisma.publicationJob.count({ where: { accountId: a.id, state: { in: ['QUEUED', 'PUBLISHING', 'SCHEDULED', 'UNKNOWN'] }, scheduledFor: { gte: new Date(slotAt.getTime() - (a.publishIntervalMinutes * 60_000) / 2) } } });
     if (pendingFuture > 0) { base.ineligible[a.id] = 'ALREADY_HAS_SCHEDULED'; continue; }
     const today = await prisma.advertisement.count({ where: { accountId: a.id, createdAt: { gte: dayStart } } });

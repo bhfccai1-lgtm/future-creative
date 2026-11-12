@@ -21,6 +21,22 @@ export const SettingsSchema = z.object({
     crossPromo: z.object({ enabled: z.boolean().default(false), maxPerTargetPerDay: z.number().int().min(1).max(6).default(2), delayMinutes: z.number().int().min(0).max(720).default(45) }).default({}),
   }).default({}),
   killSwitchReason: z.string().nullable().default(null),
+  /** Fast-reach engine: learned peak hours per account + boosting proven winners. Off by default. */
+  growth: z.object({
+    peakHours: z.object({
+      enabled: z.boolean().default(false),
+      /** wait up to this many hours for a peak hour inside the account window */
+      maxDelayHours: z.number().int().min(1).max(6).default(3),
+      /** how many peak hours per day (top ranked) */
+      count: z.number().int().min(2).max(10).default(6),
+    }).default({}),
+    winners: z.object({
+      enabled: z.boolean().default(false),
+      /** reach at least this multiple of the account median (or top shares+saves) */
+      minMultiple: z.number().min(1.2).max(10).default(2),
+      maxPerWeek: z.number().int().min(1).max(14).default(3),
+    }).default({}),
+  }).default({}),
   duplicateWindowDays: z.number().int().min(1).max(365).default(30),
   scheduleLeadMinutes: z.number().int().min(5).max(240).default(20),
   /** Benefit badges shown on the gold poster design (admin-approved wording — keep them verifiable). */

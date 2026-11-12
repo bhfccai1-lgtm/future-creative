@@ -6,6 +6,8 @@ import { Card, PageHeader, Badge } from '@/components/ui';
 import { AutomationControls } from '@/components/automation-controls';
 import { RecommendedSetup } from '@/components/recommended-setup';
 import { CrossPromoSettings } from '@/components/cross-promo-settings';
+import { GrowthSettings } from '@/components/growth-settings';
+import { growthStatus } from '@/lib/growth/status';
 import { StateBadge, ConnBadge } from '@/components/state-badge';
 import { fmtLocal } from '@/lib/time';
 
@@ -22,6 +24,7 @@ export default async function SchedulePage() {
     <>
       <PageHeader title="جدول النشر الآلي" subtitle="المجدول يستيقظ كل ساعة؛ لكل حساب فترة نشر مستقلة. لا يتم أي نشر تلقائي دون تفعيل صريح." />
       <Card title="⭐ الإعداد الموصى به — ضغطة واحدة لكل الحسابات" className="mb-6"><RecommendedSetup /></Card>
+      <Card title="🚀 الانتشار السريع — ساعات الذروة وضاعف الناجح" className="mb-6"><GrowthSettings initial={await growthStatus()} /></Card>
       <Card title="الترويج المتبادل بين حساباتك (ستوري)" className="mb-6"><CrossPromoSettings cfg={s.publishing.crossPromo} accounts={accounts.map((a) => ({ id: a.id, name: a.name, promoteToIds: a.promoteToIds }))} /></Card>
       <Card title="التحكم في الأتمتة" className="mb-6">
         <AutomationControls s={s} accounts={accounts.map((a) => ({ id: a.id, name: a.name, eligible: a.autoPublishEnabled && a.connection?.status === 'CONNECTED' && !a.paused, reason: !a.connection || a.connection.status === 'NOT_CONNECTED' ? 'غير مرتبط بـ Metricool' : a.connection.status !== 'CONNECTED' || !a.connection.canPublish ? `الربط منقطع (${a.connection.status})` : a.paused ? 'موقوف طارئًا' : !a.autoPublishEnabled ? 'مرتبط ✓ — النشر الآلي غير مسموح بعد' : null, connected: a.connection?.status === 'CONNECTED' && !!a.connection.canPublish, everyHours: Math.round((a.publishIntervalMinutes / 60) * 10) / 10, autonomous: a.autonomousAuthorized }))} />

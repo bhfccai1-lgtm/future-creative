@@ -59,6 +59,7 @@ async function main() {
   await sched.upsertJobScheduler('weekly-report', { pattern: '40 8 * * 0', tz: TZ }, { name: 'weekly-report' }); // Sunday 08:40 Bahrain
   await sched.upsertJobScheduler('wa-catalog-daily', { pattern: '10 4 * * *', tz: TZ }, { name: 'wa-catalog', data: { daily: true } }); // WhatsApp catalogue (only if enabled)
   await sched.upsertJobScheduler('wa-status', { pattern: '10 9-21 * * *', tz: TZ }, { name: 'wa-status' }); // status pack → Telegram, max 1 per hour within the daily cap
+  await sched.upsertJobScheduler('winners', { pattern: '15 10 * * 0', tz: TZ }, { name: 'winners' }); // Sunday 10:15: boost proven winners (only if enabled)
   await sched.upsertJobScheduler('analytics', { pattern: '15 5,17 * * *', tz: TZ }, { name: 'analytics' }); // read-only metrics import twice a day
 
   const workers = [
@@ -87,6 +88,7 @@ async function main() {
         return syncWhatsappCatalog(job.data?.actor ?? 'worker');
       }
       if (job.name === 'wa-status') return sendStatusPacks();
+      if (job.name === 'winners') return (await import('../lib/growth/winners')).boostWinners();
       if (job.name === 'campaigns') return runCampaignCycle();
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };
       return undefined;
