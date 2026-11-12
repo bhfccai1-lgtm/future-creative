@@ -1,3 +1,4 @@
+import { fromZonedTime } from 'date-fns-tz';
 import type { SocialPlatform } from '@prisma/client';
 import type { ProviderProfile, PublishRequest, PublishingAdapter, RemoteStatus, SubmitOutcome } from './types';
 import { localDateTime } from '../time';
@@ -258,6 +259,22 @@ export class MetricoolAdapter implements PublishingAdapter {
     if (r.status === 404) return { kind: 'NOT_FOUND' };
     if (r.status !== 200) throw new Error(`Metricool status request failed (${r.status})`);
     return this.parseStatus(r.json, providerPostId);
+  }
+
+  async listScheduled(brandId: string, from: Date, to: Date, timezone: string) {
+    const r = await this.req('GET', ENDPOINTS.posts, { blogId: brandId, start: localDateTime(from, timezone), end: localDateTime(to, timezone), timezone });
+    if (r.status !== 200) throw new Error(`Metricool list request failed (${r.status})`);
+    const list = ((r.json as { data?: unknown[] })?.data ?? r.json ?? []) as Record<string, unknown>[];
+    if (!Array.isArray(list)) return [];
+    return list.map((p) => {
+      const pd = p.publicationDate as { dateTime?: string; timezone?: string } | undefined;
+      const prov = ((p.providers as { status?: string }[] | undefined) ?? [])[0];
+      const ig = p.instagramData as { type?: string } | undefined;
+      return {
+        id: String(p.id), at: pd?.dateTime ? fromZonedTime(pd.dateTime, pd.timezone ?? timezone) : null,
+        text: String(p.text ?? ''), media: ((p.media as string[] | undefined) ?? []).map(String), type: ig?.type ?? 'POST', status: prov?.status ?? 'UNKNOWN',
+      };
+    });
   }
 
   async findExisting(req: PublishRequest) {

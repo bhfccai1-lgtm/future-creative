@@ -1,5 +1,13 @@
 # Changelog
 
+## 8.16.1 — 2026-11-12 (outside-post watch; archive misconfiguration shown)
+- **Posts made outside the system are now detected:** every 2 hours the worker reads, read-only, each connected brand's Metricool planner from 12 h back to 48 h ahead.
+  - Posts that this system did not create are reported **once**, with their concrete risks: outside the posting window, banned price or claim phrases, speed or delivery promises, missing text.
+  - The report goes to the alerts page and to Telegram through n8n.
+  - Found live: 5 posts on bhfcc.india added from another tool, including 01:00 and 06:00 slots and a "fast" promise.
+- **Advisor:** an n8n archive with no Drive folder now shows up as a recommendation, instead of the template skipping silently.
+- Metricool adapter: `listScheduled`, parsed from the live response shape.
+
 ## 8.16.0 — 2026-11-12 (the owner's signature style plus a colour story by occasion and audience)
 - New default design style, **«توقيع المطبعة الإعلاني»** (the print shop's ad signature). It was extracted from the owner's own designs (style only):
   - glossy 3D look, hero product on a warm wooden table in a softly blurred real setting;

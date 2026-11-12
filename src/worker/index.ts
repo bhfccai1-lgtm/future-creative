@@ -47,6 +47,7 @@ async function main() {
   await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
   await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
+  await sched.upsertJobScheduler('foreign-posts', { pattern: '35 */2 * * *', tz: TZ }, { name: 'foreign-posts' }); // read-only Metricool watch
   await sched.upsertJobScheduler('webhooks', { every: 60_000 }, { name: 'webhooks' }); // n8n outbox delivery
   await sched.upsertJobScheduler('approval-reminders', { pattern: '20 * * * *', tz: TZ }, { name: 'approval-reminders' });
   await sched.upsertJobScheduler('competitors', { pattern: '20 6 * * *', tz: TZ }, { name: 'competitors' }); // daily read-only pull
@@ -65,6 +66,7 @@ async function main() {
       if (job.name === 'reconcile') return { stuck: await sweepStuckJobs(), ...(await reconcileSweep()) };
       if (job.name === 'analytics') return importMetrics(await getAdapter('metricool'));
       if (job.name === 'webhooks') return deliverPending();
+      if (job.name === 'foreign-posts') return (await import('../lib/ops/foreign-posts')).scanForeignPosts().then((r) => ({ scanned: r.scanned, foreign: r.foreign.length }));
       if (job.name === 'approval-reminders') return runApprovalReminders();
       if (job.name === 'daily-digest') return emitDailyDigest();
       if (job.name === 'health-snapshot') return recordHealthSnapshot();

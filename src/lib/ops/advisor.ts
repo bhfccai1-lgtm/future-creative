@@ -188,6 +188,7 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
   if (!s.metricool.lastCheckOk && (await secretStatus('METRICOOL_API_TOKEN')).configured) add({ id: 'metricool_check', category: 'integration', severity: 'medium', title: 'آخر تحقق من Metricool فشل', evidence: s.metricool.lastCheckMessage ?? '—', why: 'قد يعني انتهاء الرمز أو تغيّر الخطة.', steps: ['اضغط «اختبار الاتصال» في إعدادات الربط', 'أنشئ رمزًا جديدًا من Metricool إن لزم'], link: '/settings/integrations' });
   if (s.n8n.enabled) {
     const dead = await prisma.webhookDelivery.count({ where: { status: 'DEAD', createdAt: { gte: ago(1) } } });
+    if (s.n8n.events.includes('publication.published') && !s.n8n.gdriveFolderId) add({ id: 'archive_not_configured', category: 'integration', severity: 'low', title: 'أرشيف Google Drive لا يعمل — رابط المجلد غير محفوظ', evidence: 'n8n مفعّل لكن رابط مجلد Drive فارغ، فيتجاهل قالب الأرشيف كل منشور بصمت', why: 'بدون الأرشيف لا تُحفظ نسخة من كل منشور مؤكد ولا يُسجَّل في جدول Google Sheets.', steps: ['إعدادات الربط ← n8n ← الصق رابط مجلد الأرشيف ورابط الجدول ← حفظ', 'ثم في الكونسول نفّذ: bash scripts/n8n-setup.sh'], link: '/settings/integrations' });
     if (dead) add({ id: 'n8n_dead', category: 'integration', severity: 'medium', title: 'أحداث n8n لم تصل', evidence: `${dead} حدث فشل نهائيًا خلال 24 ساعة`, why: 'تفوتك تنبيهات تيليجرام والموافقات.', steps: ['تأكد أن n8n يعمل والـWorkflow مفعّل', '«إعادة إرسال الأحداث الفاشلة» في إعدادات الربط'], link: '/settings/integrations' });
   }
 
