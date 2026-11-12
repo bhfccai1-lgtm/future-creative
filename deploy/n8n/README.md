@@ -39,6 +39,13 @@ Future Creative ◀──(API: Bearer token + Idempotency-Key)──────
 3. Open `https://n8n.<DOMAIN>` and create the n8n owner account.
 4. Google Sheets and Drive (templates 04 and 06) are optional. Connect your Google account from the n8n editor, then publish those templates manually. The archive runs only when `GDRIVE_FOLDER_ID` is set.
 
+### Re-running the script keeps your accounts
+`bash scripts/n8n-setup.sh` is safe to run again at any time, for example after an update:
+- Before importing, `link-credentials.js` links every template to the accounts already connected in n8n, matched by type (Google Drive, Google Sheets, Telegram), so re-importing never wipes them.
+- Templates 06 (archive) and 04 (ideas) are **published automatically** once both of these are done:
+  - Google Drive and Google Sheets are connected in the n8n editor;
+  - the folder and sheet links are saved in the dashboard (**إعدادات الربط ← n8n**).
+
 ## Manual setup
 1. In the dashboard ← **إعدادات الربط** (Integrations) ← **n8n**:
    - Webhook URL: `http://n8n:5678/webhook/future-creative`.

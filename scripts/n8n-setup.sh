@@ -25,12 +25,18 @@ for i in $(seq 1 60); do docker compose exec -T n8n node -e "fetch('http://local
 docker compose exec -T n8n node -e "fetch('http://localhost:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1 || { echo "n8n لم يبدأ — راجع: docker compose logs --tail=50 n8n"; exit 1; }
 
 say "4/6 استيراد القوالب…"
-for f in 05-error-alerts 01-events-to-telegram 03-morning-health-check 02-telegram-bot 04-ideas-sheet-to-designs 06-archive-to-google-drive-sheets; do
-  docker compose exec -T n8n n8n import:workflow --input="/templates/$f.json" >/dev/null 2>&1 && echo "   ✓ $f" || echo "   ✗ $f"
-done
 if [ -n "$TG" ]; then
   printf '[{"id":"fctelegrambot001","name":"Telegram FC bot","type":"telegramApi","data":{"accessToken":"%s"}}]' "$TG" | docker compose exec -T n8n sh -c 'cat > /tmp/fc-cred.json && n8n import:credentials --input=/tmp/fc-cred.json >/dev/null 2>&1; rm -f /tmp/fc-cred.json' && echo "   ✓ بيانات دخول بوت تيليجرام"
 fi
+# keep the Google accounts already connected in the n8n editor: templates are linked to existing credentials before import
+links=$(docker compose exec -T n8n sh -c 'rm -rf /tmp/fcwf && mkdir -p /tmp/fcwf && (n8n export:credentials --all --output=/tmp/fcwf/creds.json >/dev/null 2>&1 || echo "[]" > /tmp/fcwf/creds.json) && node /templates/link-credentials.js /templates /tmp/fcwf/wf /tmp/fcwf/creds.json && rm -f /tmp/fcwf/creds.json')
+GDRIVE=$(printf '%s\n' "$links" | grep -c '^GOOGLE_DRIVE=1' || true)
+GSHEETS=$(printf '%s\n' "$links" | grep -c '^GOOGLE_SHEETS=1' || true)
+for f in 05-error-alerts 01-events-to-telegram 03-morning-health-check 02-telegram-bot 04-ideas-sheet-to-designs 06-archive-to-google-drive-sheets; do
+  docker compose exec -T n8n n8n import:workflow --input="/tmp/fcwf/wf/$f.json" >/dev/null 2>&1 && echo "   ✓ $f" || echo "   ✗ $f"
+done
+[ "$GDRIVE" = "1" ] && echo "   ✓ حساب Google Drive مربوط تلقائيًا" || echo "   • Google Drive غير مربوط بعد (اربطه من محرر n8n ← Credentials)"
+[ "$GSHEETS" = "1" ] && echo "   ✓ حساب Google Sheets مربوط تلقائيًا" || echo "   • Google Sheets غير مربوط بعد"
 
 say "5/6 تفعيل القوالب…"
 pub() { docker compose exec -T n8n n8n publish:workflow --id="$1" >/dev/null 2>&1 && echo "   ✓ $2" || echo "   ✗ $2"; }
@@ -38,7 +44,13 @@ pub ee8f61980fec7152 "تنبيهات الأخطاء"
 pub 17c4a16cbc23e9ea "الأحداث ← تيليجرام"
 pub 040ef7dda8d153f5 "فحص الصباح"
 [ -n "$TG" ] && pub d710aa8879acde85 "بوت تيليجرام (أزرار + أوامر)"
-echo "   (قالبا Google Sheets/Drive يحتاجان ربط حساب Google من محرر n8n ثم تفعيلهما يدويًا)"
+GD=$(grep -E '^GDRIVE_FOLDER_ID=.+' .env >/dev/null && echo 1 || echo 0); GS=$(grep -E '^GSHEET_ID=.+' .env >/dev/null && echo 1 || echo 0)
+if [ "$GDRIVE" = "1" ] && [ "$GSHEETS" = "1" ] && [ "$GD" = "1" ] && [ "$GS" = "1" ]; then
+  pub 794edf9e95c86533 "أرشيف Google Drive و Sheets"
+  pub 4cccf538f267b222 "أفكار Google Sheets ← تصاميم"
+else
+  echo "   (قالبا Google يُفعَّلان تلقائيًا بعد ربط حساب Google في n8n ولصق رابطي المجلد والجدول في لوحة التحكم)"
+fi
 docker compose restart n8n >/dev/null
 for i in $(seq 1 60); do docker compose exec -T n8n node -e "fetch('http://localhost:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1 && break; sleep 3; done
 sleep 5

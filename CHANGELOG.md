@@ -1,5 +1,11 @@
 # Changelog
 
+## 8.15.2 — 2026-11-12 (n8n: re-running setup keeps the Google accounts)
+- Problem seen live: re-running `n8n-setup.sh` re-imported the templates and cleared the Google accounts chosen in the editor, which caused "Credential not configured".
+  - Now `deploy/n8n/link-credentials.js` links each template's empty credential references to the existing n8n credentials (by type) before importing.
+- Templates 06 and 04 are published automatically when Drive and Sheets are connected and the folder and sheet IDs are set.
+- Template 06's Drive node is set explicitly to File → Upload.
+
 ## 8.15.1 — 2026-11-12 (fix: Malayalam and Indic hashtags)
 - **Live bug found in Metricool:** a Malayalam carousel on bhfcc.india was published with broken hashtags («#ബഹ #ക #വ #സ») and a stray line of fragments in the caption.
   - Cause: the hashtag pattern excluded combining marks (vowel signs, virama) and ZWJ/ZWNJ.
