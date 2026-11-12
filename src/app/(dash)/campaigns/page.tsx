@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db';
 import { requirePageUser } from '@/lib/auth/server';
 import { Card, PageHeader, Badge, Empty } from '@/components/ui';
 import { CampaignForm } from '@/components/campaign-form';
+import { CampaignUpgrade } from '@/components/campaign-upgrade';
+import Link from 'next/link';
 import { ActionButton } from '@/components/action-button';
 import { PLATFORM_AR } from '@/components/state-badge';
 import { directionSummaryAr, type Direction } from '@/lib/creative/options';
@@ -24,27 +26,32 @@ export default async function CampaignsPage() {
       <PageHeader title="الحملات المتكررة" subtitle="إعلان بتصميم جديد في كل موعد — مرة واحدة أو كل عدد ساعات، في الأيام التي تختارها، بأفضل وقت أو بوقت تحدده" />
       <Card title="الحملات" className="mb-6">
         {!campaigns.length ? <Empty>لا توجد حملات بعد. أنشئ أول حملة من النموذج أدناه.</Empty> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
-              <thead><tr><th className="th">الحملة</th><th className="th">الحسابات</th><th className="th">الجدولة</th><th className="th">الموعد القادم</th><th className="th">نُفذت</th><th className="th">الحالة</th><th className="th"></th></tr></thead>
-              <tbody>{campaigns.map((c) => (
-                <tr key={c.id} className="border-t">
-                  <td className="td"><div className="font-bold">{c.name}</div><div className="text-xs text-slate-500">{directionSummaryAr(c.direction as Direction).map(([, v]) => v).join(' · ')}</div></td>
-                  <td className="td text-xs">{c.accountIds.slice(0, 3).map((id) => accName[id] ?? '؟').join('، ')}{c.accountIds.length > 3 ? ` +${c.accountIds.length - 3}` : ''}</td>
-                  <td className="td text-xs">{c.scheduleType === 'ONCE' ? 'مرة واحدة' : `${every(c.everyHours)} · ${c.timeMode === 'BEST' ? 'أفضل وقت' : 'وقت محدد'}`}{c.daysOfWeek.length ? <div>{c.daysOfWeek.map((d) => DAYS[d]).join('، ')}</div> : null}{c.endAt ? <div>حتى {fmtLocal(c.endAt, undefined, 'yyyy-MM-dd')}</div> : null}</td>
-                  <td className="td text-xs">{fmtLocal(c.nextRunAt)}</td>
-                  <td className="td text-xs">{c.runs}{c.maxRuns ? ` / ${c.maxRuns}` : ''} موعد · {c._count.schedules} تصميم</td>
-                  <td className="td">{c.active ? <Badge tone="green">نشطة</Badge> : <Badge>متوقفة</Badge>}</td>
-                  <td className="td"><div className="flex gap-1">
-                    <ActionButton url={`/api/campaigns/${c.id}`} method="PATCH" body={{ active: !c.active }} label={c.active ? 'إيقاف' : 'تشغيل'} variant="outline" size="sm" />
-                    <ActionButton url={`/api/campaigns/${c.id}`} method="DELETE" label="حذف" variant="ghost" size="sm" confirm="حذف الحملة؟ التصاميم المولدة سابقًا تبقى في المكتبة." />
-                  </div></td>
-                </tr>
-              ))}</tbody>
-            </table>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {campaigns.map((c) => (
+              <div key={c.id} className={`rounded-xl border p-3 ${c.active ? 'bg-white' : 'bg-slate-50'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-extrabold text-navy-900">{c.name}</div>
+                  {c.active ? <Badge tone="green">نشطة</Badge> : <Badge>متوقفة</Badge>}
+                </div>
+                <div className="mt-1 text-xs text-slate-600">{directionSummaryAr(c.direction as Direction).map(([, v]) => v).join(' · ') || 'كل الاختيارات تلقائية'}</div>
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  <div><span className="text-slate-500">الحسابات: </span>{c.accountIds.slice(0, 4).map((id) => accName[id] ?? '؟').join('، ')}{c.accountIds.length > 4 ? ` +${c.accountIds.length - 4}` : ''}</div>
+                  <div><span className="text-slate-500">الجدولة: </span>{c.scheduleType === 'ONCE' ? 'مرة واحدة' : `${every(c.everyHours)} · ${c.timeMode === 'BEST' ? 'أفضل وقت' : 'وقت محدد'}`}{c.daysOfWeek.length ? ` · ${c.daysOfWeek.map((d) => DAYS[d]).join('، ')}` : ''}{c.endAt ? ` · حتى ${fmtLocal(c.endAt, undefined, 'yyyy-MM-dd')}` : ''}</div>
+                  <div><span className="text-slate-500">القادم: </span>{c.active ? fmtLocal(c.nextRunAt) : '—'}</div>
+                  <div><span className="text-slate-500">نُفذت: </span>{c.runs}{c.maxRuns ? ` / ${c.maxRuns}` : ''} موعد · {c._count.schedules} تصميم</div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  <Link href={`/campaigns/${c.id}`} className="rounded-lg bg-navy-800 px-3 py-1 text-xs font-bold text-white">تعديل</Link>
+                  <ActionButton url={`/api/campaigns/${c.id}`} method="PATCH" body={{ active: !c.active }} label={c.active ? 'إيقاف' : 'تشغيل'} variant="outline" size="sm" />
+                  <ActionButton url={`/api/campaigns/${c.id}/duplicate`} method="POST" label="نسخ" variant="outline" size="sm" />
+                  <ActionButton url={`/api/campaigns/${c.id}`} method="DELETE" label="حذف" variant="ghost" size="sm" confirm="حذف الحملة؟ التصاميم المولدة سابقًا تبقى في المكتبة." />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Card>
+      {campaigns.length > 0 && <Card title="ترقية الحملات القديمة للميزات الجديدة" className="mb-6"><CampaignUpgrade /></Card>}
       <Card title="حملة جديدة">
         <CampaignForm accounts={accounts.map((a) => ({ id: a.id, label: `${a.name} — ${PLATFORM_AR[a.platform]}` }))} products={products.map((p) => ({ id: p.id, label: p.titleAr, categoryId: p.categoryId }))} categories={categories.filter((c) => c._count.products > 0).map((c) => ({ id: c.id, label: `${c.nameAr} (${c._count.products})` }))} />
       </Card>

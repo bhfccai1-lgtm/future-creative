@@ -1,5 +1,16 @@
 # Changelog
 
+## 8.17.1 — 2026-11-12 (editable campaigns)
+- **Campaigns can be edited** (`/campaigns/[id]`), with every field pre-filled.
+  - Saving keeps the run history and recomputes the next slot.
+- **Copy** a campaign: the copy starts paused, ready to adjust for another occasion or set of accounts.
+- **«ترقية الحملات القديمة»** (upgrade old campaigns), with a preview:
+  - silent audio → the reel audio from settings;
+  - no design method → «تلقائي» (auto);
+  - per-account format → smart mix.
+  - Explicit choices are kept.
+- Campaign list shown as responsive cards, with the accounts, schedule, next run and runs fully visible on mobile.
+
 ## 8.17.0 — 2026-11-12 (professional designs for automatic posts)
 - **Colour story with three sources, in order:** occasion, then audience, then **product category** (new).
   - The new source covers automatic posts, which usually have no occasion or audience.

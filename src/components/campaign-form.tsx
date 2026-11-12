@@ -19,19 +19,32 @@ function Sel({ label, value, onChange, children }: { label: string; value: strin
   return <div><label className="label">{label}</label><select className="input" value={value} onChange={(e) => onChange(e.target.value)}>{children}</select></div>;
 }
 
-/** Create a one-off or recurring campaign: a NEW AI design for every slot, with the chosen creative direction. */
-export function CampaignForm({ accounts, products, categories = [] }: { accounts: Opt[]; products: Opt[]; categories?: Opt[] }) {
+export interface CampaignInitial {
+  id: string; name: string; accountIds: string[]; productId: string | null; format: string | null; language: string | null; direction: Record<string, unknown> | null;
+  scheduleType: string; everyHours: number; daysOfWeek: number[]; timeMode: string; startAt: string; endAt: string | null; maxRuns: number | null;
+}
+const str = (x: unknown) => (typeof x === 'string' ? x : '');
+
+/** Create — or edit (initial) — a one-off or recurring campaign: a NEW AI design for every slot, with the chosen creative direction. */
+export function CampaignForm({ accounts, products, categories = [], initial }: { accounts: Opt[]; products: Opt[]; categories?: Opt[]; initial?: CampaignInitial }) {
   const router = useRouter();
+  const d0 = (initial?.direction ?? {}) as Record<string, unknown>;
+  const startLocal = initial ? formatInTimeZone(new Date(initial.startAt), TZ, "yyyy-MM-dd'T'HH:mm") : nowLocal();
   const [v, setV] = useState({
-    name: '', accountIds: [] as string[], productId: '', categoryId: '', format: 'AUTO', language: '', ideaMode: 'auto' as 'auto' | 'custom',
-    contentType: '', market: '', segment: '', occasion: '', idea: '',
-    scheduleType: 'RECURRING' as 'ONCE' | 'RECURRING', everyHours: 24, daysOfWeek: [] as number[], timeMode: 'BEST' as 'BEST' | 'FIXED',
-    start: nowLocal(), end: '', maxRuns: '',
+    name: initial?.name ?? '', accountIds: initial?.accountIds ?? ([] as string[]), productId: initial?.productId ?? '', categoryId: str(d0.categoryId),
+    format: initial ? (initial.format ?? (d0.autoFormat ? 'AUTO' : '')) : 'AUTO', language: initial?.language ?? '', ideaMode: (str(d0.idea) ? 'custom' : 'auto') as 'auto' | 'custom',
+    contentType: str(d0.contentType), market: str(d0.market), segment: str(d0.segment), occasion: str(d0.occasion), idea: str(d0.idea),
+    scheduleType: (initial?.scheduleType ?? 'RECURRING') as 'ONCE' | 'RECURRING', everyHours: initial?.everyHours ?? 24, daysOfWeek: initial?.daysOfWeek ?? ([] as number[]), timeMode: (initial?.timeMode ?? 'BEST') as 'BEST' | 'FIXED',
+    start: startLocal, end: initial?.endAt ? formatInTimeZone(new Date(initial.endAt), TZ, 'yyyy-MM-dd') : '', maxRuns: initial?.maxRuns ? String(initial.maxRuns) : '',
   });
   const set = <K extends keyof typeof v>(k: K) => (val: (typeof v)[K]) => setV((x) => ({ ...x, [k]: val }));
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [design, setDesign] = useState<DesignValues>({ ...EMPTY_DESIGN, renderMode: 'auto', designStyle: 'auto' });
+  const [design, setDesign] = useState<DesignValues>(initial ? {
+    ...EMPTY_DESIGN, renderMode: str(d0.renderMode) || 'auto', designStyle: str(d0.designStyle), customPrompt: str(d0.customPrompt), layout: str(d0.layout), designType: str(d0.designType),
+    channels: Array.isArray(d0.channels) ? (d0.channels as string[]) : [], reelStyle: str(d0.reelStyle) || 'standard', reelDuration: d0.reelDuration ? String(d0.reelDuration) : '',
+    audio: str(d0.audio), audioQuery: str(d0.audioQuery), videoEngine: str(d0.videoEngine),
+  } : { ...EMPTY_DESIGN, renderMode: 'auto', designStyle: 'auto' });
   const fmt = v.format === 'AUTO' ? '' : v.format;
 
   const startAt = useMemo(() => { try { return fromZonedTime(v.start.length === 10 ? `${v.start}T00:00` : v.start, TZ); } catch { return null; } }, [v.start]);
@@ -52,13 +65,14 @@ export function CampaignForm({ accounts, products, categories = [] }: { accounts
       if (v.categoryId && !v.productId) direction.categoryId = v.categoryId;
       Object.assign(direction, designDirection(design, fmt));
       try {
-        await apiCall('/api/campaigns', { body: {
+        await apiCall(initial ? `/api/campaigns/${initial.id}` : '/api/campaigns', { method: initial ? 'PUT' : 'POST', body: {
           name: v.name, accountIds: v.accountIds, productId: v.productId || null, format: fmt || null, language: v.language || null,
           direction: Object.keys(direction).length ? direction : undefined,
           scheduleType: v.scheduleType, everyHours: v.everyHours, daysOfWeek: v.daysOfWeek, timeMode: v.scheduleType === 'ONCE' ? 'FIXED' : v.timeMode,
           startAt: startAt?.toISOString(), endAt: endAt?.toISOString() ?? null, maxRuns: v.maxRuns ? Number(v.maxRuns) : null,
         } });
-        setMsg({ ok: true, t: 'تم إنشاء الحملة ✓' }); router.refresh();
+        if (initial) { setMsg({ ok: true, t: 'تم حفظ التعديلات ✓' }); router.push('/campaigns'); router.refresh(); }
+        else { setMsg({ ok: true, t: 'تم إنشاء الحملة ✓' }); router.refresh(); }
       } catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
       setBusy(false);
     }}>
@@ -150,7 +164,7 @@ export function CampaignForm({ accounts, products, categories = [] }: { accounts
       </div>
 
       <div className="flex items-center gap-3">
-        <Button variant="gold" size="lg" disabled={busy || !v.accountIds.length || !preview.length}>{busy ? 'جارٍ الحفظ…' : 'إنشاء الحملة'}</Button>
+        <Button variant="gold" size="lg" disabled={busy || !v.accountIds.length || !preview.length}>{busy ? 'جارٍ الحفظ…' : initial ? 'حفظ التعديلات' : 'إنشاء الحملة'}</Button>
         {msg && <span className={msg.ok ? 'text-sm text-emerald-700' : 'rounded bg-red-50 p-2 text-sm text-red-700'}>{msg.t}</span>}
       </div>
     </form>

@@ -55,3 +55,15 @@ describe('campaign intervals 5 / 7 / 9 hours', () => {
     expect(s.map((d) => (d.getTime() - start.getTime()) / 3600_000)).toEqual([0, 7, 14]);
   });
 });
+
+describe('campaign upgrade to new defaults', () => {
+  it('silent → settings audio, no method → auto, per-account format → smart mix; explicit choices kept', async () => {
+    const { upgradePlan } = await import('@/lib/campaigns/upgrade');
+    const old = upgradePlan({ id: '1', name: 'old', format: null, direction: { audio: 'none', reelStyle: 'standard', occasion: 'ramadan' } });
+    expect(old.changes).toHaveLength(3);
+    expect(old.direction).toEqual({ occasion: 'ramadan', renderMode: 'auto', autoFormat: true });
+    const explicit = upgradePlan({ id: '2', name: 'x', format: 'REEL_VIDEO', direction: { audio: 'voiceover', renderMode: 'layered', designStyle: 'black_gold' } });
+    expect(explicit.changes).toEqual([]);
+    expect(explicit.direction).toMatchObject({ audio: 'voiceover', renderMode: 'layered', designStyle: 'black_gold' });
+  });
+});
