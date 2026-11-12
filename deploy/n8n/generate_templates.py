@@ -259,7 +259,7 @@ return $input.all().filter((i) => i.json.event === 'publication.published');"""
 w6 = wf(ARCHIVE_NAME, [
   node('From events router','n8n-nodes-base.executeWorkflowTrigger',1.1,[0,0],{'inputSource':'passthrough'}),
   node('Fetch published files','n8n-nodes-base.code',2,[240,0],{'jsCode':FETCH}),
-  node('Upload to Google Drive','n8n-nodes-base.googleDrive',3,[480,0],{'name':'={{ $json.fileName }}','driveId':{'__rl':True,'mode':'list','value':'My Drive'},'folderId':{'__rl':True,'mode':'id','value':'={{ $env.GDRIVE_FOLDER_ID }}'},'options':{}},creds={'googleDriveOAuth2Api':{'id':'','name':'Google Drive'}}),
+  node('Upload to Google Drive','n8n-nodes-base.googleDrive',3,[480,0],{'resource':'file','operation':'upload','inputDataFieldName':'data','name':'={{ $json.fileName }}','driveId':{'__rl':True,'mode':'list','value':'My Drive'},'folderId':{'__rl':True,'mode':'id','value':'={{ $env.GDRIVE_FOLDER_ID }}'},'options':{}},creds={'googleDriveOAuth2Api':{'id':'','name':'Google Drive'}}),
   node('Log row','n8n-nodes-base.code',2,[720,0],{'jsCode':ROW}),
   node('Append to Google Sheet','n8n-nodes-base.googleSheets',4.5,[960,0],{'operation':'append','documentId':{'__rl':True,'mode':'id','value':'={{ $env.GSHEET_ID }}'},'sheetName':{'__rl':True,'mode':'name','value':'published'},'columns':{'mappingMode':'autoMapInputData','value':{}},'options':{}},creds={'googleSheetsOAuth2Api':{'id':'','name':'Google Sheets'}}),
 ], chain('From events router','Fetch published files','Upload to Google Drive','Log row','Append to Google Sheet'))

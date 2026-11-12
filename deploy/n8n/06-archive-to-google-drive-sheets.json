@@ -30,6 +30,9 @@
     },
     {
       "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
         "name": "={{ $json.fileName }}",
         "driveId": {
           "__rl": true,
