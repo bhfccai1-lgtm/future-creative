@@ -11,6 +11,7 @@ const Body = z.object({
   imageQuality: z.enum(['low', 'medium', 'high']), monthlyBudgetUsd: z.number().min(0).max(100000),
   alertThresholdPct: z.number().min(1).max(100), maxDailyAds: z.number().int().min(0).max(1000), maxRetries: z.number().int().min(0).max(5),
   creativeStyle: z.string().min(10).max(1000), languages: z.array(z.enum(['ar', 'en', 'ml'])).min(1), useAiReview: z.boolean().default(false), aiFullRequiresApproval: z.boolean().default(true),
+  autoRenderMode: z.enum(['auto', 'layered', 'ai_full']).default('auto'), autoDesignStyle: z.string().max(40).default('fc_signature'),
   qualityByFormat: z.object(Object.fromEntries(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'IMAGE_CAROUSEL', 'REEL_VIDEO'].map((f) => [f, z.enum(['', 'low', 'medium', 'high']).default('')])) as Record<'IMAGE_STORY' | 'IMAGE_FEED' | 'IMAGE_SQUARE' | 'IMAGE_CAROUSEL' | 'REEL_VIDEO', z.ZodDefault<z.ZodEnum<['', 'low', 'medium', 'high']>>>).optional(),
   pricing: z.object({ textInputPer1M: z.number().min(0), textOutputPer1M: z.number().min(0), imageLow: z.number().min(0), imageMedium: z.number().min(0), imageHigh: z.number().min(0) }),
 });

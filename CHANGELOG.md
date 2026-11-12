@@ -1,5 +1,16 @@
 # Changelog
 
+## 8.17.0 — 2026-11-12 (professional designs for automatic posts)
+- **Colour story with three sources, in order:** occasion, then audience, then **product category** (new).
+  - The new source covers automatic posts, which usually have no occasion or audience.
+  - It covers 11 category families: weddings, kids and schools, corporate, restaurants, gifts and mugs, luxury, perfumes and candles, sports, initiatives, home businesses, signage.
+- **Automatic designs** (schedule, campaigns, n8n) that don't choose a method or style now use settings:
+  - `ai.autoRenderMode`, default `auto`: full signature AI poster for stories and reels on approval-mode accounts, verified layers on autonomous ones;
+  - `ai.autoDesignStyle`, default `fc_signature`.
+  - Both are editable in the AI settings.
+- Tests keep the layered path explicitly. A new test covers the production default.
+- 234 tests passing.
+
 ## 8.16.1 — 2026-11-12 (outside-post watch; archive misconfiguration shown)
 - **Posts made outside the system are now detected:** every 2 hours the worker reads, read-only, each connected brand's Metricool planner from 12 h back to 48 h ahead.
   - Posts that this system did not create are reported **once**, with their concrete risks: outside the posting window, banned price or claim phrases, speed or delivery promises, missing text.

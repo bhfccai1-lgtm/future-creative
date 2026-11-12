@@ -49,6 +49,9 @@ export const SettingsSchema = z.object({
     useAiReview: z.boolean().default(false),
     /** Full-AI posters (AI-drawn text): require a human approval before publishing. Admin may turn it off. */
     aiFullRequiresApproval: z.boolean().default(true),
+    /** Automatic designs (schedule, campaigns, n8n) that don't choose: design method and style. 'auto' method = full AI poster for vertical formats on approval-mode accounts, verified layers for autonomous ones. */
+    autoRenderMode: z.enum(['auto', 'layered', 'ai_full']).default('auto'),
+    autoDesignStyle: z.string().max(40).default('fc_signature'),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),

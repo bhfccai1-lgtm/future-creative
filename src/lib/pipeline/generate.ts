@@ -105,6 +105,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     }
     if (auto.length) p = { ...p, direction: { ...dir, autoPicked: auto } };
   }
+  // automatic designs that didn't choose a method/style use the settings (default: signature style, «تلقائي» method)
+  if (!p.direction?.renderMode || !p.direction?.designStyle) {
+    p = { ...p, direction: { ...(p.direction ?? {}), renderMode: p.direction?.renderMode ?? s.ai.autoRenderMode, designStyle: p.direction?.designStyle ?? s.ai.autoDesignStyle } };
+  }
   // «تلقائي» design style / design method: resolved here and recorded, so reports can compare what was picked.
   if (p.direction?.designStyle === 'auto' || p.direction?.renderMode === 'auto') {
     const dir: Direction = { ...p.direction };
@@ -126,7 +130,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   let dtype = designTypeOf(d.designType);
   // colour story by occasion / audience — only when the user didn't pick a specific look (default, auto, or the signature style)
   const styleOpen = !d.designStyle || d.designStyle === 'fc_signature' || (d.autoPicked ?? []).includes('designStyle');
-  const palette = styleOpen ? paletteFor(d) : null;
+  const categoryName = (await prisma.productCategory.findUnique({ where: { id: product.categoryId }, select: { nameAr: true } }))?.nameAr;
+  const palette = styleOpen ? paletteFor(d, categoryName) : null;
   const signature = !d.designStyle || d.designStyle === 'fc_signature';
   const creativeStyle = (style?.prompt ?? s.ai.creativeStyle) + (palette ? ` Colour story: ${palette.decor}.` : '');
   const reelDuration = d.reelDuration ?? account.reelDurationSec;

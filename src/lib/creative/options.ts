@@ -153,8 +153,27 @@ export const PALETTES: Record<string, { decor: string; theme: 'navy_gold' | 'bla
   gift_buyers: { theme: 'festive_red', decor: 'rich red and gold gift-wrap tones with satin ribbons' },
   restaurants_cafes: { theme: 'black_gold', decor: 'warm espresso brown, cream and gold' },
 };
-export function paletteFor(d: { occasion?: string; segment?: string }) {
-  return (d.occasion && d.occasion !== 'everyday' && PALETTES[d.occasion]) || (d.segment && PALETTES[d.segment]) || null;
+/** Product-category colour story (the «idea» of the product) when there is no occasion or audience. */
+const CATEGORY_PALETTES: [RegExp, keyof typeof PALETTES | { decor: string; theme: (typeof PALETTES)[string]['theme'] }][] = [
+  [/أعراس|حفلات|مناسبات/, 'couples_weddings'],
+  [/أطفال|مدارس|تعليم/, 'schools'],
+  [/شركات|موظف|مكتب|عقار|معارض|مؤتمر|مخازن/, 'companies'],
+  [/مطاعم|مقاهي/, 'restaurants_cafes'],
+  [/هدايا|أكواب/, 'gift_buyers'],
+  [/فاخر/, { theme: 'black_gold', decor: 'black velvet and brushed gold foil, luxury stationery mood' }],
+  [/عطور|بخور|شموع/, { theme: 'black_gold', decor: 'deep plum-black with warm amber candlelight and gold' }],
+  [/رياض|بطول|فرق/, { theme: 'navy_gold', decor: 'energetic royal blue and bright green stadium tones with gold' }],
+  [/حملات|مبادرات/, { theme: 'emerald_gold', decor: 'fresh teal and green community tones with gold' }],
+  [/منزلية/, { theme: 'festive_red', decor: 'warm terracotta, cream and gold, homemade feel' }],
+  [/واجهات|بنرات|لوحات|ملصقات/, { theme: 'navy_gold', decor: 'bold royal blue and sunny yellow street-signage energy with gold' }],
+];
+export function paletteFor(d: { occasion?: string; segment?: string }, categoryName?: string) {
+  const byCat = () => {
+    if (!categoryName) return null;
+    const hit = CATEGORY_PALETTES.find(([re]) => re.test(categoryName))?.[1];
+    return !hit ? null : typeof hit === 'string' ? PALETTES[hit] : hit;
+  };
+  return (d.occasion && d.occasion !== 'everyday' && PALETTES[d.occasion]) || (d.segment && PALETTES[d.segment]) || byCat() || null;
 }
 
 /** Compositions safe for the layered templates (text zones top and bottom). */

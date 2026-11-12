@@ -62,4 +62,16 @@ describe('«تلقائي» format / design style / design method', () => {
     expect(art.composition).toBe('macro_detail');
     expect(['85mm', '50mm']).toContain(art.lens);
   });
+  it('production default for automatic designs: signature style; «auto» method = full AI poster for stories on approval accounts, layered on autonomous ones; colour by category', async () => {
+    const { accounts } = await seedBase({ autoRenderMode: 'auto' });
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler', format: 'IMAGE_STORY' });
+    const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { direction: { renderMode: string; designStyle: string } };
+    expect(o.direction).toMatchObject({ renderMode: 'ai_full', designStyle: 'fc_signature' });
+    await prisma.socialAccount.update({ where: { id: accounts[1].id }, data: { autonomousAuthorized: true } });
+    const r2 = await generateAdvertisement({ accountId: accounts[1].id, createdBy: 'scheduler', format: 'IMAGE_STORY' });
+    expect(((await prisma.advertisement.findUniqueOrThrow({ where: { id: r2.advertisement.id } })).options as { direction: { renderMode: string } }).direction.renderMode).toBe('layered');
+    const { paletteFor } = await import('@/lib/creative/options');
+    expect(paletteFor({}, 'الأعراس والحفلات')!.decor).toMatch(/blush/);
+    expect(paletteFor({ occasion: 'bahrain_national_day' }, 'الأعراس والحفلات')!.theme).toBe('festive_red'); // occasion wins
+  });
 });
