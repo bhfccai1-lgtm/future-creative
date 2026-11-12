@@ -76,8 +76,10 @@ describe('publishing channels', () => {
   it('targets the account platform by default and validates channels against the brand', () => {
     expect(targetNetworks('instagram', [])).toEqual(['instagram']);
     expect(targetNetworks('instagram', ['facebook', 'instagram'])).toEqual(['instagram', 'facebook']);
-    expect(unavailableChannels(['instagram', 'tiktok'], { networks: [{ network: 'instagram' }] }, 'IMAGE_STORY')).toEqual(['tiktok: غير مرتبط بالعلامة في Metricool']);
-    expect(unavailableChannels(['youtube'], { networks: [{ network: 'youtube' }] }, 'IMAGE_STORY')).toEqual(['youtube: يتطلب فيديو (Reel)']);
+    expect(unavailableChannels(['instagram', 'tiktok'], { networks: [{ network: 'instagram' }] }, 'IMAGE_FEED')).toEqual(['tiktok: غير مرتبط بالعلامة في Metricool']);
+    expect(unavailableChannels(['youtube'], { networks: [{ network: 'youtube' }] }, 'IMAGE_FEED')).toEqual(['youtube: يتطلب فيديو (Reel)']);
+    // stories exist only on Instagram/Facebook (Google Business takes the image as a normal update)
+    expect(unavailableChannels(['instagram', 'tiktok', 'gmb'], { networks: [{ network: 'instagram' }, { network: 'tiktok' }, { network: 'gmb' }] }, 'IMAGE_STORY')).toEqual(['tiktok: لا يدعم الستوري']);
   });
 });
 

@@ -201,7 +201,7 @@ export class MetricoolAdapter implements PublishingAdapter {
       if (net === 'youtube') body.youtubeData = { title: [...title].slice(0, 100).join(''), type: 'short', privacy: 'public', madeForKids: false, isAiGeneratedContent: req.aiGenerated, tags: (req.tags ?? []).slice(0, 15), category: 'PEOPLE_BLOGS' };
       // Google Business Profile: "publication" = text update (+image); video can only go to the gallery as "photo" (no text)
       if (net === 'gmb') body.gmbData = { type: isVideo ? 'photo' : 'publication' };
-      if (net === 'pinterest') body.pinterestData = { pinTitle: title, isAiGenerated: req.aiGenerated };
+      if (net === 'pinterest') body.pinterestData = { pinTitle: [...title].slice(0, 100).join(''), isAiGenerated: req.aiGenerated, ...(req.pinterestBoard ? { boardId: req.pinterestBoard } : {}), ...(req.link ? { pinLink: req.link } : {}) };
       if (net === 'linkedin') body.linkedinData = { type: 'post' };
       if (net === 'threads') body.threadsData = {};
       if (net === 'twitter') body.twitterData = { tags: [] };

@@ -1,4 +1,5 @@
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
+import { autoChannelsFor } from '../publishing/channels';
 import { prisma } from '../db';
 import { getSecret, getSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
@@ -151,7 +152,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const ad = await prisma.advertisement.create({
     data: {
       accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId,
-      channels: await withAutoGbp(account, format, (d.channels ?? []) as import('@prisma/client').SocialPlatform[]),
+      channels: await withAutoGbp(account, format, withAutoChannels(account, format, (d.channels ?? []) as import('@prisma/client').SocialPlatform[])),
       options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? s.ai.audio.defaultReelAudio) : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
     },
   });
@@ -471,4 +472,12 @@ export async function withAutoGbp(account: { id: string; platform: import('@pris
   const week = await prisma.advertisement.count({ where: { accountId: account.id, channels: { has: 'gmb' }, createdAt: { gte: new Date(Date.now() - 7 * 86400_000) }, state: { notIn: ['REJECTED', 'FAILED'] } } });
   if (week >= account.gbpPerWeek) return channels;
   return [...(channels.length ? channels : [account.platform]), 'gmb' as const];
+}
+
+/** Adds the account's automatic channels (linked + format-compatible) to the chosen ones; the own platform stays first. */
+export function withAutoChannels(account: Parameters<typeof autoChannelsFor>[0], format: MediaFormat, chosen: import('@prisma/client').SocialPlatform[]): import('@prisma/client').SocialPlatform[] {
+  const extra = autoChannelsFor(account, format);
+  if (!extra.length) return chosen;
+  const base = chosen.length ? chosen : [account.platform];
+  return [...new Set([...base, ...extra])];
 }

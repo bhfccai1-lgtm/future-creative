@@ -55,7 +55,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
           {!connected && <p className="mt-2 text-xs text-amber-700">الحساب غير مرتبط — لا يمكن التفويض.</p>}
         </Card>
       </div>
-      <Card title="إعدادات الحساب" className="mt-6"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} account={{ ...a }} /></Card>
+      <Card title="إعدادات الحساب" className="mt-6"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} account={{ ...a }} linked={((a.connection?.providerSnapshot as { networks?: { network: string }[] } | null)?.networks ?? []).map((n) => n.network)} /></Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card title="سجل المحتوى">
           <table className="w-full"><tbody>{ads.map((ad) => <tr key={ad.id} className="border-t"><td className="td"><Link className="text-navy-700 hover:underline" href={`/ads/${ad.id}`}>{ad.headline ?? ad.product.titleAr}</Link><div className="text-xs text-slate-500">{fmtLocal(ad.createdAt)}</div></td><td className="td"><StateBadge state={ad.state} /></td></tr>)}</tbody></table>

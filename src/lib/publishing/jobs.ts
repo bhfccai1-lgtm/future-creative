@@ -1,4 +1,5 @@
 import type { AdState, PublicationJob } from '@prisma/client';
+import { splitJobs } from './channels';
 import { prisma } from '../db';
 import { getSettings } from '../settings';
 import { audit } from '../audit';
@@ -101,13 +102,12 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
 
   const existing = await prisma.publicationJob.findUnique({ where: { idempotencyKey } });
   if (existing) return existing;
-  // Google Business Profile has different text rules (no phones/hashtags) -> its own satellite job.
+  // Google Business Profile (no phones/hashtags) and short-text networks get their own satellite jobs.
   const nets = targetNetworks(ad.account.platform, ad.channels);
-  const main = nets.filter((n) => n !== 'gmb');
-  const withGbp = nets.includes('gmb');
+  const [main, ...satellites] = splitJobs(nets);
 
   let job: PublicationJob;
-  let satelliteId: string | null = null;
+  const satelliteIds: string[] = [];
   let slot = when;
   try {
     job = await prisma.$transaction(async (tx) => {
@@ -116,8 +116,9 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
       slot = await spacedTime(tx, ad.accountId, when, s.publishing.minGapMinutes);
       const moved = await tx.advertisement.updateMany({ where: { id: ad.id, state: 'APPROVED' }, data: { state: 'QUEUED' } });
       if (moved.count !== 1) throw new AppError('BAD_STATE', 'يجب أن يكون الإعلان معتمدًا قبل جدولته.', 409);
-      const primary = await tx.publicationJob.create({ data: { idempotencyKey, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: slot, networks: main.length ? main : ['gmb'] } });
-      if (withGbp && main.length) satelliteId = (await tx.publicationJob.create({ data: { idempotencyKey: `${idempotencyKey}:gmb`, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: slot, networks: ['gmb'], primary: false } })).id;
+      const primary = await tx.publicationJob.create({ data: { idempotencyKey, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: slot, networks: main } });
+      // short-text networks (X, Threads, Pinterest) and Google Business get their own satellite job → text fitted to each network
+      for (const sat of satellites) satelliteIds.push((await tx.publicationJob.create({ data: { idempotencyKey: `${idempotencyKey}:${sat[0]}`, advertisementId: ad.id, accountId: ad.accountId, provider: conn.provider, state: 'QUEUED', scheduledFor: slot, networks: sat, primary: false } })).id);
       return primary;
     });
   } catch (e) {
@@ -127,7 +128,7 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
   }
   await audit({ actorLabel: actor, action: 'publication.queue', targetType: 'publication_job', targetId: job.id, details: { adId, scheduledFor: slot.toISOString(), ...(slot.getTime() !== when.getTime() ? { requestedFor: when.toISOString(), movedForGap: true } : {}) } });
   await enq.publish(job.id);
-  if (satelliteId) await enq.publish(satelliteId);
+  for (const id of satelliteIds) await enq.publish(id);
   return job;
 }
 

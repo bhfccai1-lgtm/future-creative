@@ -21,6 +21,7 @@ export default async function AccountsPage() {
       <PageHeader title="الحسابات الاجتماعية" subtitle={`${accounts.length} حساب — كل حساب له إعداداته وسجله المستقل`} />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <ActionButton url="/api/accounts/verify-all" method="POST" label="فحص كل الحسابات الآن" variant="outline" size="sm" />
+        <ActionButton url="/api/accounts/auto-channels" method="POST" label="انشر على كل القنوات المرتبطة" variant="outline" size="sm" confirm="كل حساب سينشر تلقائيًا على جميع الشبكات المرتبطة بعلامته في Metricool (حسب ما تدعمه كل صيغة). متابعة؟" />
         <span className="text-xs text-slate-500">يقرأ من Metricool الشبكات المربوطة بكل علامة (إنستغرام، Google التجاري، تيك توك…)</span>
       </div>
       <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -33,7 +34,7 @@ export default async function AccountsPage() {
                 <ConnBadge status={a.connection?.status} />
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
-                {nets.length ? nets.map((n) => <Badge key={n} tone={n === 'gmb' ? 'green' : 'blue'}>{NET_AR[n] ?? n}</Badge>) : <span className="text-xs text-slate-400">لا توجد شبكات — اضغط «فحص كل الحسابات»</span>}
+                {nets.length ? nets.map((n) => { const active = n === 'gmb' || n === a.platform || a.autoChannels.includes(n as never); return <Badge key={n} tone={n === 'gmb' ? 'green' : active ? 'blue' : 'slate'}>{NET_AR[n] ?? n}{active ? '' : ' (غير مفعّل)'}</Badge>; }) : <span className="text-xs text-slate-400">لا توجد شبكات — اضغط «فحص كل الحسابات»</span>}
                 {nets.includes('gmb') && <Badge tone={a.gbpAuto ? 'gold' : 'slate'}>{a.gbpAuto ? `Google تلقائي ${a.gbpPerWeek}/أسبوع` : 'Google: النشر التلقائي غير مفعّل'}</Badge>}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">

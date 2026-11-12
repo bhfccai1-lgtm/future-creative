@@ -185,6 +185,7 @@ export const CHANNELS = [
   { value: 'tiktok', ar: 'تيك توك', video: false },
   { value: 'threads', ar: 'ثريدز', video: false },
   { value: 'youtube', ar: 'يوتيوب شورتس (فيديو فقط)', video: true },
+  { value: 'pinterest', ar: 'بنترست (يحتاج لوحة في إعدادات الحساب)', video: false },
   { value: 'linkedin', ar: 'لينكدإن', video: false },
   { value: 'twitter', ar: 'X (تويتر)', video: false },
   { value: 'gmb', ar: 'ملف Google التجاري (خرائط وبحث Google)', video: false },

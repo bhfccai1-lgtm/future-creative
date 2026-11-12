@@ -180,6 +180,10 @@ model SocialAccount {
   /// automatic Google Business Profile updates (when GBP is linked to the brand in Metricool)
   gbpAuto               Boolean          @default(false)
   gbpPerWeek            Int              @default(2)
+  /// networks linked on the Metricool brand that every compatible post also goes to (stories: Instagram/Facebook only)
+  autoChannels      SocialPlatform[] @default([])
+  /// Pinterest board (numeric id or exact name) — Pinterest pins need one
+  pinterestBoard    String?
   /// accounts that share this account's new posts in their story (transparent same-brand cross-promotion)
   promoteToIds          String[]         @default([])
   handle                String?

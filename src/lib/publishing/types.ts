@@ -20,6 +20,9 @@ export interface PublishRequest {
   firstComment?: string;
   /** YouTube tags (hashtags without #). */
   tags?: string[];
+  /** Pinterest board (id or exact name) and the pin's click-through link */
+  pinterestBoard?: string;
+  link?: string;
 }
 
 export type SubmitOutcome =

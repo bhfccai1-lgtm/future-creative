@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { env } from '../env';
 import { prisma } from '../db';
 import { audit, notify } from '../audit';
 import { getAdapter } from './registry';
@@ -51,13 +52,15 @@ export function targetNetworks(own: SocialPlatform, chosen: SocialPlatform[] | n
 }
 
 /** Channels the provider brand actually has linked (from the verified connection snapshot). */
-export function unavailableChannels(networks: SocialPlatform[], snapshot: unknown, format: string): string[] {
+export function unavailableChannels(networks: SocialPlatform[], snapshot: unknown, format: string, pinterestBoard?: string | null): string[] {
   const linked = ((snapshot as { networks?: { network: string }[] } | null)?.networks ?? []).map((n) => n.network);
   const out: string[] = [];
   for (const n of networks) {
     if (linked.length && !linked.includes(n)) out.push(`${n}: غير مرتبط بالعلامة في Metricool`);
     if (n === 'youtube' && format !== 'REEL_VIDEO') out.push('youtube: يتطلب فيديو (Reel)');
+    if (n === 'pinterest' && pinterestBoard === null) out.push('pinterest: حدّد لوحة Pinterest في إعدادات الحساب');
     if (format === 'IMAGE_CAROUSEL' && !['instagram', 'facebook', 'linkedin', 'threads'].includes(n)) out.push(`${n}: لا يدعم منشورات الكاروسيل`);
+    if (format === 'IMAGE_STORY' && !['instagram', 'facebook', 'gmb'].includes(n)) out.push(`${n}: لا يدعم الستوري`);
   }
   return out;
 }
@@ -91,6 +94,8 @@ export async function buildPublishRequest(jobId: string): Promise<PublishRequest
     thumbnailUrl: thumb ? signedMediaUrl(thumb.storageKey) : undefined,
     title: ad.headline ?? undefined,
     aiGenerated: true,
+    // Pinterest: the board, and a click-through to the public product page (traffic → WhatsApp orders)
+    ...(networks.includes('pinterest') ? { pinterestBoard: job.account.pinterestBoard ?? undefined, link: ad.product ? new URL(`/p/${encodeURIComponent(ad.product.slug)}`, env().PUBLIC_BASE_URL).toString() : undefined } : {}),
   };
 }
 
@@ -137,7 +142,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
     await prisma.socialConnection.update({ where: { id: conn.id }, data: { status: 'EXPIRED', canPublish: false } });
     await fail(job.id, ad.id, 'انتهت صلاحية رمز الوصول للحساب.', job.accountId); return 'FAILED';
   }
-  const bad = unavailableChannels(job.networks.length ? job.networks : targetNetworks(job.account.platform, ad.channels), conn.providerSnapshot, ad.format);
+  const bad = unavailableChannels(job.networks.length ? job.networks : targetNetworks(job.account.platform, ad.channels), conn.providerSnapshot, ad.format, job.account.pinterestBoard ?? null);
   if (bad.length) { await fail(job.id, ad.id, `قنوات نشر غير متاحة: ${bad.join('؛ ')}`, job.accountId); return 'FAILED'; }
   const list = publishableMedia(ad);
   if (!list.length || (ad.format === 'IMAGE_CAROUSEL' && list.length < 4)) { await fail(job.id, ad.id, 'ملفات الوسائط النهائية غير مكتملة.', job.accountId); return 'FAILED'; }

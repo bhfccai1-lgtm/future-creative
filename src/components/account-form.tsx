@@ -8,12 +8,15 @@ type Product = { id: string; titleAr: string; categoryId?: string };
 type Category = { id: string; nameAr: string; count?: number };
 type Account = {
   id?: string; name: string; platform: string; handle?: string | null; language: string; businessCategory?: string | null; allowedProductIds: string[]; allowedCategoryIds?: string[];
-  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string; gbpAuto?: boolean; gbpPerWeek?: number;
+  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string; gbpAuto?: boolean; gbpPerWeek?: number; autoChannels?: string[]; pinterestBoard?: string | null;
 };
 
 const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], allowedCategoryIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 4, formatStrategy: 'GROWTH_MIX' };
 
-export function AccountForm({ account, products, categories = [] }: { account?: Account; products: Product[]; categories?: Category[] }) {
+const NET_AR: Record<string, string> = { instagram: 'إنستغرام', facebook: 'فيسبوك', tiktok: 'تيك توك', threads: 'ثريدز', youtube: 'يوتيوب Shorts', pinterest: 'بنترست', linkedin: 'لينكدإن', twitter: 'X' };
+const NET_NOTE: Record<string, string> = { youtube: 'الريلز فقط', tiktok: 'ريلز وصور', pinterest: 'صور وريلز + رابط صفحة المنتج', linkedin: 'جمهور الشركات', twitter: 'نص قصير خاص', threads: 'نص قصير خاص', facebook: 'منشور/ريلز/ستوري' };
+
+export function AccountForm({ account, products, categories = [], linked = [] }: { account?: Account; products: Product[]; categories?: Category[]; linked?: string[] }) {
   const router = useRouter();
   const [a, setA] = useState<Account>(account ?? EMPTY);
   const [pq, setPq] = useState('');
@@ -58,6 +61,21 @@ export function AccountForm({ account, products, categories = [] }: { account?: 
       <div><label className="label">مدة الـReel (ثانية)</label><input type="number" min={6} max={60} className="input" value={a.reelDurationSec} onChange={(e) => set('reelDurationSec', Number(e.target.value))} /></div>
       <div><label className="label">الحد الأقصى اليومي</label><input type="number" min={1} max={48} className="input" value={a.maxDailyAds} onChange={(e) => set('maxDailyAds', Number(e.target.value))} /></div>
       <div><label className="label">المنطقة الزمنية</label><input className="input ltr" value={a.timezone} onChange={(e) => set('timezone', e.target.value)} /></div>
+      <div className="rounded-lg border p-3 md:col-span-3">
+        <div className="text-sm font-bold">القنوات التلقائية — كل تصميم يُنشر أيضًا على:</div>
+        <p className="mb-2 text-xs text-slate-500">تظهر هنا الشبكات المرتبطة بعلامة هذا الحساب في Metricool. يُرسل كل تصميم فقط للقنوات التي تدعم صيغته (الستوري لإنستغرام وفيسبوك فقط، يوتيوب للريلز فقط)، ولكل قناة قصيرة النص (X، ثريدز، بنترست) نص مُفصّل لها دون قص نص إنستغرام.</p>
+        <div className="flex flex-wrap gap-2">
+          {Object.keys(NET_AR).filter((n) => n !== a.platform).map((n) => { const on = (a.autoChannels ?? []).includes(n); const ok = linked.includes(n); return (
+            <label key={n} className={`flex items-center gap-1 rounded-full border px-3 py-1 text-sm ${on ? 'border-navy-700 bg-navy-50' : ''} ${ok ? '' : 'opacity-50'}`} title={ok ? '' : 'غير مرتبط بالعلامة في Metricool'}>
+              <input type="checkbox" disabled={!ok && !on} checked={on} onChange={(e) => set('autoChannels', e.target.checked ? [...(a.autoChannels ?? []), n] : (a.autoChannels ?? []).filter((x) => x !== n))} />
+              {NET_AR[n]} <span className="text-xs text-slate-500">({ok ? NET_NOTE[n] ?? 'مرتبط' : 'غير مرتبط'})</span>
+            </label>); })}
+        </div>
+        {(a.autoChannels ?? []).includes('pinterest') && (
+          <div className="mt-2"><label className="label">لوحة Pinterest (رقم اللوحة أو اسمها كما هو)</label><input className="input" style={{ maxWidth: '24rem' }} value={a.pinterestBoard ?? ''} onChange={(e) => set('pinterestBoard', e.target.value || null)} placeholder="مثل: هدايا مطبوعة" /></div>
+        )}
+        {!linked.length && <p className="mt-2 text-xs text-amber-700">لا توجد بيانات شبكات لهذا الحساب بعد — اضغط «فحص كل الحسابات الآن» في صفحة الحسابات.</p>}
+      </div>
       <div className="rounded-lg border p-3 md:col-span-3">
         <label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={!!a.gbpAuto} onChange={(e) => set('gbpAuto', e.target.checked)} /> نشر تلقائي على ملف Google التجاري (خرائط وبحث Google)</label>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
