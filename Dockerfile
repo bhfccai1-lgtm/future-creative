@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # One image, two roles: `web` (Next.js) and `worker` (BullMQ scheduler/generation/publishing).
-FROM node:22-bookworm-slim AS base
+FROM node:25-bookworm-slim AS base
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg fontconfig openssl ca-certificates tini \
