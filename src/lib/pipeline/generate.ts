@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
 import { autoChannelsFor } from '../publishing/channels';
 import { tasteProfile, withoutBlocked } from '../creative/taste';
+import { aiTextCheck } from '../qc';
 import { prisma } from '../db';
 import { getSecret, getSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
@@ -202,6 +203,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Step 7: AI scene (no text, no logo) ──
     let artDirector: { candidates: number; best: number; scores: number[]; reason: string } | null = null;
+    let textCheck: { attempts: number; passed: boolean; missing: string[] } | null = null;
     await assertBudget(s, estimateImageCost(s, imgQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
@@ -216,22 +218,48 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         candidates.push(img);
       }
-      if (candidates.length === 1) return candidates[0];
+      // Self-correcting full-AI poster: read the drawn text BEFORE composing; misspelled/missing words → re-draw with an exact correction note
+      let pool = candidates;
+      if (aiFull && provider.readText && !provider.isDryRun) {
+        const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? ''].filter((x) => x.trim());
+        const spell = async (c: (typeof candidates)[number]) => {
+          try {
+            await assertBudget(s, estimateTextCost(s, 1500, 200));
+            const rt = await provider.readText!(await sharp(c.png).jpeg({ quality: 85 }).toBuffer(), s.ai.textModel);
+            await recordUsage({ jobId, provider: provider.name, model: rt.model, kind: 'text', inputTokens: rt.usage.inputTokens, outputTokens: rt.usage.outputTokens, costUsd: estimateTextCost(s, rt.usage.inputTokens, rt.usage.outputTokens) });
+            return aiTextCheck(expected, rt.text);
+          } catch { return null; } // reading unavailable → no correction loop, QC still asks a human
+        };
+        const checks = await Promise.all(candidates.map(spell));
+        for (let r = 0; r < s.ai.aiFullTextRetries && checks.every((c) => c && !c.ok); r++) {
+          await assertBudget(s, estimateImageCost(s, imgQuality));
+          const wrong = [...new Set(checks.flatMap((c) => c?.missing ?? []))];
+          const fix = `${prompt}\nSPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.`;
+          const img = await retrying(s.ai.maxRetries, () => provider.generateScene(fix, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-fix${r}` }));
+          await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+          candidates.push(img); checks.push(await spell(img));
+        }
+        const passing = candidates.filter((_, i) => checks[i]?.ok);
+        const fewest = checks.reduce((b, c, i) => ((c?.missing.length ?? 99) < (checks[b]?.missing.length ?? 99) ? i : b), 0);
+        pool = passing.length ? passing : [candidates[fewest]];
+        textCheck = { attempts: candidates.length, passed: passing.length > 0, missing: passing.length ? [] : (checks[fewest]?.missing ?? []) };
+      }
+      if (pool.length === 1) return pool[0];
       try {
-        const thumbs = await Promise.all(candidates.map((c) => sharp(c.png).resize(512).jpeg({ quality: 80 }).toBuffer()));
+        const thumbs = await Promise.all(pool.map((c) => sharp(c.png).resize(512).jpeg({ quality: 80 }).toBuffer()));
         const j = await provider.judgeImages!(thumbs, `${brief!.headline} — ${brief!.sceneDescription}`.slice(0, 1500), s.ai.textModel);
         await recordUsage({ jobId, provider: provider.name, model: j.model, kind: 'text', inputTokens: j.usage.inputTokens, outputTokens: j.usage.outputTokens, costUsd: estimateTextCost(s, j.usage.inputTokens, j.usage.outputTokens) });
-        artDirector = { candidates: candidates.length, best: j.best, scores: j.scores, reason: j.reason };
-        return candidates[j.best] ?? candidates[0];
+        artDirector = { candidates: pool.length, best: j.best, scores: j.scores, reason: j.reason };
+        return pool[j.best] ?? pool[0];
       } catch (e) {
-        artDirector = { candidates: candidates.length, best: 0, scores: [], reason: `judge failed: ${(e as Error).message.slice(0, 120)}` };
-        return candidates[0];
+        artDirector = { candidates: pool.length, best: 0, scores: [], reason: `judge failed: ${(e as Error).message.slice(0, 120)}` };
+        return pool[0];
       }
     });
 
-    if (artDirector) {
+    if (artDirector || textCheck) {
       const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), artDirector } as Prisma.InputJsonValue } });
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}) } as Prisma.InputJsonValue } });
     }
 
     // ── Step 9: deterministic layered composition ──

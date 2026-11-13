@@ -82,6 +82,8 @@ export const SettingsSchema = z.object({
     ownerGuidance: z.string().max(600).default(''),
     /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */
     creativeConcepts: z.boolean().default(true),
+    /** full-AI posters: re-draw up to N times when the machine-read text is misspelled/missing (each retry = 1 image + 1 read) */
+    aiFullTextRetries: z.number().int().min(0).max(3).default(2),
     /** art director: generate N candidate images and keep the best (vision-scored). 1 = off. Each extra candidate costs one image. */
     bestOf: z.number().int().min(1).max(3).default(1),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
