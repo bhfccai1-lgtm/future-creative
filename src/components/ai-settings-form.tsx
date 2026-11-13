@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; aiFullTextRetries?: number; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -30,8 +30,8 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div className="grid gap-3 rounded-lg border p-3 md:col-span-3 md:grid-cols-2">
           <div className="md:col-span-2 text-sm font-extrabold text-navy-800">تصاميم النشر الآلي (الجدولة، الحملات، n8n)</div>
           <div><label className="label">طريقة التصميم</label><select className="input" value={v.autoRenderMode ?? 'auto'} onChange={(e) => setV({ ...v, autoRenderMode: e.target.value })}>
-            <option value="auto">تلقائي (موصى به) — ملصق كامل احترافي للستوري والريلز في حسابات الموافقة، ونص مضمون للحسابات الذاتية</option>
-            <option value="ai_full">ملصق كامل بالذكاء الاصطناعي دائمًا (يحتاج موافقتك)</option>
+            <option value="auto">تلقائي (موصى به) — ملصق كامل بالذكاء الاصطناعي لكل الصيغ مع تدقيق إملائي وإعادة رسم تلقائية (ريلز Veo بطبقات)</option>
+            <option value="ai_full">ملصق كامل بالذكاء الاصطناعي دائمًا</option>
             <option value="layered">قالب بطبقات ونص مضمون 100% دائمًا</option></select></div>
           <div><label className="label">أسلوب التصميم</label><select className="input" value={v.autoDesignStyle ?? 'fc_signature'} onChange={(e) => setV({ ...v, autoDesignStyle: e.target.value })}>
             <option value="fc_signature">توقيع المطبعة الإعلاني (من نماذجك) — ألوان الخلفية تتغير حسب المناسبة والجمهور والمنتج</option>
@@ -43,6 +43,9 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div><label className="label">جودة الصور</label><select className="input" value={v.imageQuality} onChange={(e) => setV({ ...v, imageQuality: e.target.value as Ai['imageQuality'] })}><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option></select></div>
         <fieldset className="rounded-lg border-2 border-gold-300 p-3 md:col-span-3">
           <legend className="px-1 text-sm font-bold text-navy-800">✨ استوديو الإبداع</legend>
+          <div className="mb-3"><label className="label">🧭 توجيهك الدائم للمصمم (يُطبَّق على كل تصميم وفكرة)</label>
+            <textarea rows={2} maxLength={600} className="input" value={v.ownerGuidance ?? ''} onChange={(e) => setV({ ...v, ownerGuidance: e.target.value })} placeholder="مثال: ألوان فاتحة ومبهجة، بدون وجوه أشخاص، أبرز اسم المنتج بخط كبير، لا خلفيات سوداء" />
+            <p className="mt-1 text-xs text-slate-500">ومعه: أسباب رفضك للتصاميم السابقة تُرسل للمصمم تلقائيًا، والأفكار والأساليب التي ترفضها مرارًا تخرج من التناوب.</p></div>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.creativeConcepts ?? true} onChange={(e) => setV({ ...v, creativeConcepts: e.target.checked })} /><span><b>فكرة بصرية مميزة لكل تصميم</b> — 10 أفكار إبداعية تتناوب لكل حساب: طبيعة صامتة فاخرة، المنتج يطفو، لحظة حركة مجمّدة، عالم مصغّر، ورق مقصوص، لون جريء وأشكال هندسية، تراث خليجي فاخر، لقطة سينمائية، مجسّمات ناعمة، مفاجأة الحجم. حسابات الشركات تأخذ الأفكار الرسمية فقط.</span></label>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div><label className="label">المخرج الفني: عدد الصور المولدة لكل تصميم</label>
@@ -50,6 +53,13 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
                 <option value={1}>صورة واحدة (الأوفر)</option><option value={2}>صورتان ويُختار الأفضل (موصى به)</option><option value={3}>3 صور ويُختار الأفضل</option>
               </select></div>
             <p className="text-xs text-slate-500">يقيّم الذكاء الاصطناعي كل صورة كمخرج فني (دقة شكل المنتج، الجمال، قوة التكوين، خلوها من الحروف) ويحتفظ بالأقوى. كل صورة إضافية = تكلفة صورة.</p>
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div><label className="label">✍️ تصحيح إملاء التصميم الكامل بالذكاء الاصطناعي</label>
+              <select className="input" style={{ width: '16rem' }} value={v.aiFullTextRetries ?? 2} onChange={(e) => setV({ ...v, aiFullTextRetries: Number(e.target.value) })}>
+                <option value={0}>بدون إعادة (تحذير فقط)</option><option value={1}>إعادة رسم مرة عند الخطأ</option><option value={2}>حتى مرتين (موصى به)</option><option value={3}>حتى 3 مرات</option>
+              </select></div>
+            <p className="text-xs text-slate-500">يقرأ النظام النص الذي رسمه الذكاء الاصطناعي قبل إنهاء التصميم؛ إذا وجد كلمة خاطئة أو ناقصة يعيد الرسم بتصحيح دقيق. كل إعادة = تكلفة صورة.</p>
           </div>
           <button type="button" className="mt-3 rounded-lg bg-navy-800 px-3 py-1.5 text-xs font-bold text-white" onClick={() => setV({ ...v, creativeConcepts: true, bestOf: 2, qualityByFormat: { IMAGE_STORY: 'medium', IMAGE_FEED: 'high', IMAGE_SQUARE: 'high', IMAGE_CAROUSEL: 'high', REEL_VIDEO: 'high' } })}>⭐ تطبيق «الجودة الاحترافية»: عالية للريلز والمنشورات والكاروسيل · متوسطة للستوري · صورتان ويُختار الأفضل</button>
           <p className="mt-1 text-xs text-slate-500">ثم اضغط «حفظ الإعدادات». راجع الحد الشهري للإنفاق أدناه — التكلفة لكل تصميم تزيد تقريبًا 2–4 أضعاف.</p>

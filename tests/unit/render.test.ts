@@ -76,3 +76,28 @@ describe('layered advertisement composition', () => {
     }
   });
 });
+
+describe('full AI poster on every format', () => {
+  for (const [format, h, size] of [['IMAGE_STORY', 1920, '1024x1536'], ['IMAGE_FEED', 1350, '1024x1024'], ['IMAGE_CAROUSEL', 1350, '1024x1024'], ['IMAGE_SQUARE', 1080, '1024x1024']] as const) {
+    it(`${format}: whole AI design + official logo, CTA and both phones in the verified band (${h}px)`, async () => {
+      const { aiPosterImageSize, aiPosterGeometry } = await import('@/lib/render/poster');
+      expect(aiPosterImageSize(h)).toBe(size);
+      const scene = (await new DryRunProvider().generateScene('', { size, seedHint: 'ai-' + format })).png;
+      const c = await composeAdvertisement({ scene, format, templateKey: 'ai-poster', lang: 'ar', headline: 'اطبع فكرتك بإبداع', supportingCopy: null, cta: 'اطلب الآن', logo: await logoPng(), contacts });
+      expect([c.width, c.height]).toEqual([1080, h]);
+      expect(c.templateKey).toBe('ai-poster');
+      const g = aiPosterGeometry(h);
+      const byId = (id: string) => c.manifest.layers.find((l) => l.id === id);
+      expect(byId('contact:saar:phone')?.text).toBe('33316319');
+      expect(byId('contact:salmabad:phone')?.text).toBe('34315316');
+      // the logo sits in the empty top zone of the design; CTA and phones inside the band, never on the AI art
+      expect(byId('logo')!.rect.top + byId('logo')!.rect.height).toBeLessThanOrEqual(Math.round(h * (g.topPct + 1) / 100));
+      for (const id of ['cta', 'contact:saar:phone', 'contact:salmabad:phone']) {
+        expect(byId(id)!.rect.top).toBeGreaterThanOrEqual(Math.round(h * (100 - g.bottomPct) / 100));
+        expect(byId(id)!.rect.top + byId(id)!.rect.height).toBeLessThanOrEqual(h);
+      }
+      expect(checkLayout(c.manifest).every((x) => x.passed)).toBe(true);
+    });
+  }
+});
+

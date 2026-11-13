@@ -10,6 +10,7 @@ import { IDEA_ANGLES, OCCASIONS, type Direction } from '../creative/options';
 import { analyse, labelOf, loadSamples } from '../analytics/insights';
 import { marketOf, upcomingOccasions } from '../creative/planner';
 import { pickLeastRecent } from '../pipeline/generate';
+import { tasteProfile } from '../creative/taste';
 import { audit } from '../audit';
 import type { Lang } from '../render/fonts';
 
@@ -47,11 +48,12 @@ export async function generateIdeas(accountId: string, opts: { count?: number; p
   const angles: string[] = [];
   for (let i = 0; i < count; i++) angles.push(pickLeastRecent(IDEA_ANGLES.map((a) => a.value as string).filter((a) => !angles.includes(a)), [...angles, ...prevAngles].reverse()));
   const history = await recentIdeas(accountId, s.duplicateWindowDays);
+  const taste = await tasteProfile();
   const banked = await prisma.idea.findMany({ where: { accountId, status: { in: ['NEW', 'APPROVED'] } }, select: { title: true, idea: true }, take: 60 });
   const r = await provider.suggestIdeas({
     language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
     accountName: account.name, businessCategory: account.businessCategory, creativeStyle: s.ai.creativeStyle,
-    defaultCta: ctaFor(await getBusiness(), lang), avoidIdeas: [...history.ideas, ...banked.map((b) => b.idea)], avoidHeadlines: [...history.headlines, ...banked.map((b) => b.title)],
+    defaultCta: ctaFor(await getBusiness(), lang), avoidIdeas: [...history.ideas, ...banked.map((b) => b.idea), ...taste.avoid.ideas], avoidHeadlines: [...history.headlines, ...banked.map((b) => b.title), ...taste.avoid.headlines], ownerFeedback: taste.feedback,
     attempt: Math.floor(Math.random() * 1000), ideaContext: { winners: ctx.winners, upcoming: ctx.upcoming, angles: angles.map((a) => `${a}: ${IDEA_ANGLES.find((x) => x.value === a)!.prompt}`) },
   }, s.ai.textModel, count);
   if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });

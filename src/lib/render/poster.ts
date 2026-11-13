@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { FORMAT_SIZE } from './templates';
 import { renderText, type RenderedText } from './text';
 import type { Lang } from './fonts';
 import type { ComposeInput, ComposeResult, LayerManifest, PlacedLayer } from './compose';
@@ -176,67 +177,95 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
 }
 
 export const AI_POSTER_KEY = 'ai-poster';
-const AI_H = 1620; // 1024×1536 (2:3) → 1080×1620, no cropping of AI-drawn text
-const BAND = H - AI_H; // 300 px verified band
+/**
+ * Full-AI poster geometry per output height — full-bleed like a hand-made agency poster: the AI design fills the
+ * whole frame (story 2:3 → 9:16 trims ~8 % per side, feed 1:1 → 4:5 trims ~12 % per side, square exact; the prompt
+ * keeps all drawn text inside the safe central width). The model leaves the top zone empty for the ORIGINAL logo and
+ * the bottom zone as plain background, where the system overlays the gold order button and the glass phone panel.
+ */
+export function aiPosterGeometry(h: number) {
+  if (h === 1920) return { H: 1920, topPct: 15, bottomPct: 20, safeWidthPct: 80, logo: { w: 430, h: 230, y: 34 }, cta: { w: 600, h: 104, y: 1574 }, panel: { y: 1700, h: 186 } };
+  if (h === 1350) return { H: 1350, topPct: 14, bottomPct: 24, safeWidthPct: 74, logo: { w: 330, h: 160, y: 22 }, cta: { w: 540, h: 92, y: 1036 }, panel: { y: 1146, h: 182 } };
+  return { H: h, topPct: 13, bottomPct: 28, safeWidthPct: 90, logo: { w: 280, h: 124, y: 18 }, cta: { w: 500, h: 84, y: h - 280 }, panel: { y: h - 182, h: 166 } };
+}
+/** The image size to request from the model for a full-AI poster of this format height. */
+export const aiPosterImageSize = (h: number): '1024x1536' | '1024x1024' => (h === 1920 ? '1024x1536' : '1024x1024');
 
-/** Background for the full-AI poster: the AI design untouched on top + verified navy band below + soft logo backdrop. */
-export async function buildAiPosterBackground(poster: Buffer): Promise<Buffer> {
-  const art = await sharp(poster).resize(W, AI_H, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
-  const band = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>
-      <linearGradient id="pb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}"/><stop offset="1" stop-color="${NAVY}"/></linearGradient>${goldGrad('gg')}${goldLine('gl')}
-      <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.45"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></radialGradient></defs>
-    <ellipse cx="${W / 2}" cy="120" rx="360" ry="150" fill="url(#lg)"/>
-    <path d="M0 ${AI_H + 26} Q ${W / 2} ${AI_H - 30} ${W} ${AI_H + 26} L ${W} ${H} L 0 ${H} Z" fill="url(#pb)"/>
-    <path d="M0 ${AI_H + 26} Q ${W / 2} ${AI_H - 30} ${W} ${AI_H + 26}" fill="none" stroke="url(#gg)" stroke-width="8"/>
-    <rect x="${W / 2 - 1}" y="${AI_H + 130}" width="2" height="150" fill="url(#gl)" opacity="0.8"/>
-    <rect x="0" y="${H - 10}" width="${W}" height="10" fill="url(#gg)"/>
+/** Gold ribbon swooshes rising from both bottom corners (behind the panel), like the reference posters. */
+const ribbons = (H: number) => {
+  const side = (m: 1 | -1) => { const x = (v: number) => (m === 1 ? v : W - v);
+    return `<path d="M${x(-30)} ${H - 330} C ${x(60)} ${H - 250} ${x(40)} ${H - 120} ${x(190)} ${H - 30} C ${x(110)} ${H - 60} ${x(-10)} ${H - 170} ${x(-30)} ${H - 250} Z" fill="url(#rg)" opacity="0.95"/>
+    <path d="M${x(-30)} ${H - 200} C ${x(90)} ${H - 120} ${x(220)} ${H - 40} ${x(420)} ${H + 10}" fill="none" stroke="url(#rg)" stroke-width="10" opacity="0.9"/>`; };
+  return `${side(1)}${side(-1)}<path d="M-20 ${H - 8} C 300 ${H - 46} 760 ${H + 14} ${W + 20} ${H - 30}" fill="none" stroke="url(#gl)" stroke-width="6"/>`;
+};
+
+/** Background for the full-AI poster: the AI design full-bleed + soft legibility gradient + glass phone panel + ribbons. */
+export async function buildAiPosterBackground(poster: Buffer, height = 1920): Promise<Buffer> {
+  const g = aiPosterGeometry(height), H = g.H;
+  const art = await sharp(poster).resize(W, H, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
+  const zone = g.cta.y - 60, px = 70, pw = W - 2 * px;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
+      <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
+      <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}" stop-opacity="0.94"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.96"/></linearGradient>
+      <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset="0.5" stop-color="#e6c25a"/><stop offset="1" stop-color="#9c6f1c"/></linearGradient>
+      <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.35"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></radialGradient></defs>
+    <ellipse cx="${W / 2}" cy="${g.logo.y + g.logo.h / 2}" rx="${g.logo.w * 0.75}" ry="${g.logo.h * 0.8}" fill="url(#lg)"/>
+    <rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>
+    ${ribbons(H)}
+    <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
+    <rect x="${px + 24}" y="${g.panel.y + 6}" width="${pw - 48}" height="2" fill="#ffffff" opacity="0.18"/>
+    <rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>
   </svg>`;
-  return sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
-    .composite([{ input: art, left: 0, top: 0 }, { input: Buffer.from(band) }]).png().toBuffer();
+  return sharp(art).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
 }
 
 /**
  * Full-AI poster: the image model drew the whole design; the system adds only what must be exact —
- * the ORIGINAL logo (top reserved zone), the CTA and the verified branch phone numbers (bottom band).
+ * the ORIGINAL logo (top reserved zone), the order button and the verified branch phone numbers (glass panel).
  */
 export async function composeAiPoster(input: ComposeInput): Promise<ComposeResult> {
   const lang = input.lang;
-  const background = await buildAiPosterBackground(input.scene);
+  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h), H = g.H;
+  const background = await buildAiPosterBackground(input.scene, H);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
-  const lb = { x: 300, y: 22, w: 480, h: 190 };
+  // the original logo, large, in the empty top zone
+  const lb = { x: Math.round((W - g.logo.w) / 2), y: g.logo.y, w: g.logo.w, h: g.logo.h };
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
   layers.push(place('logo', logoPng, lb.x + (lb.w - lm.width!) / 2, lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
 
-  // CTA
-  const cw = 620, chh = 96, cy = AI_H + 34;
-  const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: 58, minSize: 28, boxW: cw - 170, boxH: 80, maxLines: 1 });
-  const cart = `<g transform="translate(${lang === 'ar' ? 46 : cw - 116} 16) scale(0.66)" fill="none" stroke="${NAVY}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">${CART}</g>`;
-  const csvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${chh}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${cw - 4}" height="${chh - 4}" rx="${(chh - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="4"/><rect x="14" y="8" width="${cw - 28}" height="${chh * 0.36}" rx="${chh * 0.18}" fill="#fff" opacity="0.28"/>${cart}</svg>`;
-  const tx = lang === 'ar' ? Math.round(135 + (cw - 170 - t.width) / 2) : Math.round(35 + (cw - 170 - t.width) / 2);
-  const cpng = await sharp(await svgPng(csvg)).composite([{ input: t.png, left: Math.max(10, tx), top: Math.round((chh - t.height) / 2) }]).png().toBuffer();
-  layers.push(place('cta', cpng, (W - cw) / 2, cy, cw, chh, { x: (W - cw) / 2, y: cy, w: cw, h: chh }, t, input.cta, NAVY, true));
+  // glossy gold order button with a cart and sparkle rays
+  const cw = g.cta.w, chh = g.cta.h, cy = g.cta.y, rays = 70, tw = cw + 2 * rays;
+  const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(chh * 0.6), minSize: 28, boxW: cw - 170, boxH: chh - 20, maxLines: 1 });
+  const cs = chh / 96;
+  const cart = `<g transform="translate(${rays + (lang === 'ar' ? 50 * cs : cw - 120 * cs)} ${16 * cs}) scale(${0.66 * cs})" fill="none" stroke="${NAVY}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">${CART}</g>`;
+  const ray = (x: number, dir: number) => [-22, 0, 22].map((dy) => `<line x1="${x}" y1="${chh / 2 + dy * 0.9}" x2="${x + dir * (dy === 0 ? 44 : 34)}" y2="${chh / 2 + dy * 1.7}" stroke="#f6d77a" stroke-width="5" stroke-linecap="round"/>`).join('');
+  const csvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${chh}"><defs>${goldGrad('g')}</defs>${ray(rays - 14, -1)}${ray(rays + cw + 14, 1)}
+    <rect x="${rays + 2}" y="2" width="${cw - 4}" height="${chh - 4}" rx="${(chh - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="4"/>
+    <rect x="${rays + 2}" y="2" width="${cw - 4}" height="${chh - 4}" rx="${(chh - 4) / 2}" fill="none" stroke="#8a6417" stroke-width="2" opacity="0.7"/>
+    <rect x="${rays + 16}" y="8" width="${cw - 32}" height="${chh * 0.36}" rx="${chh * 0.18}" fill="#fff" opacity="0.32"/>${cart}</svg>`;
+  const tx = rays + (lang === 'ar' ? Math.round(135 * cs + (cw - 170 * cs - t.width) / 2) : Math.round(35 * cs + (cw - 170 * cs - t.width) / 2));
+  const cpng = await sharp(await svgPng(csvg)).composite([{ input: t.png, left: Math.max(rays + 10, tx), top: Math.round((chh - t.height) / 2) }]).png().toBuffer();
+  layers.push(place('cta', cpng, (W - tw) / 2, cy, tw, chh, { x: (W - tw) / 2, y: cy, w: tw, h: chh }, t, input.cta, NAVY, true));
 
-  // branches
+  // branches inside the glass panel: gold branch name, then the number in a gold pill
   const order = lang === 'ar' ? [...input.contacts].reverse() : input.contacts;
-  const col = W / Math.max(1, order.length);
+  const inner = W - 140, col = inner / Math.max(1, order.length);
+  const labelH = Math.round(g.panel.h * 0.3), pillH = Math.round(g.panel.h * 0.44);
+  const labelY = g.panel.y + Math.round(g.panel.h * 0.08), pillY = g.panel.y + g.panel.h - pillH - Math.round(g.panel.h * 0.1);
   for (let i = 0; i < order.length; i++) {
-    const c = order[i]; const cx = col * i + col / 2;
-    const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: NAVY, maxSize: 34, minSize: 24, boxW: 260, boxH: 48, maxLines: 1 });
-    const pw = Math.min(col - 80, lt.width + 100), ph = 58;
-    const pinX = lang === 'ar' ? pw - 56 : 14;
-    const psvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${(ph - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="3"/><g transform="translate(${pinX} 8) scale(0.44)" fill="${NAVY}">${PIN}</g></svg>`;
-    const lpng = await sharp(await svgPng(psvg)).composite([{ input: lt.png, left: Math.round(lang === 'ar' ? (pw - 56 - lt.width) / 2 + 4 : 56 + (pw - 56 - lt.width) / 2 - 4), top: Math.round((ph - lt.height) / 2) }]).png().toBuffer();
-    layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lpng, cx - pw / 2, AI_H + 142, pw, ph, { x: Math.round(cx - pw / 2), y: AI_H + 142, w: pw, h: ph }, lt, c.label, NAVY, true));
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 70, minSize: 44, boxW: 320, boxH: 80, maxLines: 1, ltr: true });
-    const iconD = 66, gap = 14, rw = Math.round(iconD + gap + nt.width), rh = Math.max(iconD, nt.height);
-    const icon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${iconD}" height="${iconD}"><defs>${goldGrad('g')}</defs><circle cx="${iconD / 2}" cy="${iconD / 2}" r="${iconD / 2 - 2}" fill="url(#g)"/><g transform="translate(15 15) scale(0.36)" fill="${NAVY}">${PHONE}</g></svg>`);
-    const ppng = await sharp({ create: { width: rw, height: rh, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-      .composite([{ input: icon, left: 0, top: Math.round((rh - iconD) / 2) }, { input: nt.png, left: iconD + gap, top: Math.round((rh - nt.height) / 2) }]).png().toBuffer();
-    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - rw / 2, AI_H + 210, rw, rh, { x: Math.round(cx - col / 2 + 20), y: AI_H + 210, w: Math.round(col - 40), h: 80 }, { ...nt, fits: nt.fits && rw <= col - 30 }, c.phone, WHITE));
+    const c = order[i]; const cx = 70 + col * i + col / 2;
+    const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: '#f6d77a', maxSize: Math.round(labelH * 0.78), minSize: 24, boxW: Math.round(col - 60), boxH: labelH, maxLines: 1 });
+    layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, labelY + (labelH - lt.height) / 2, lt.width, lt.height, { x: Math.round(cx - col / 2 + 30), y: labelY, w: Math.round(col - 60), h: labelH }, lt, c.label, '#f6d77a'));
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 150), boxH: pillH - 8, maxLines: 1, ltr: true });
+    const iconD = Math.round(pillH * 0.62), pw = Math.min(Math.round(col - 30), nt.width + iconD + 70);
+    const psvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${pillH}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${pillH - 4}" rx="${(pillH - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="3"/>
+      <rect x="12" y="6" width="${pw - 24}" height="${pillH * 0.34}" rx="${pillH * 0.17}" fill="#fff" opacity="0.28"/>
+      <g transform="translate(24 ${(pillH - iconD) / 2}) scale(${iconD / 100})" fill="${NAVY}">${PHONE}</g></svg>`;
+    const ppng = await sharp(await svgPng(psvg)).composite([{ input: nt.png, left: Math.round(24 + iconD + (pw - 24 - iconD - nt.width) / 2 - 6), top: Math.round((pillH - nt.height) / 2) }]).png().toBuffer();
+    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - pw / 2, pillY, pw, pillH, { x: Math.round(cx - col / 2 + 15), y: pillY, w: Math.round(col - 30), h: pillH }, { ...nt, fits: nt.fits && pw <= col - 20 }, c.phone, NAVY, true));
   }
-  void BAND;
 
   const png = await sharp(background).composite(layers.map((l) => ({ input: l.png, left: l.left, top: l.top }))).png().toBuffer();
   const manifest: LayerManifest = {

@@ -72,9 +72,7 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
 
   if (q.aiText) {
     const t = q.aiText.transcript;
-    const norm = (x: string) => normalizeText(x).replace(/\s+/g, '');
-    const missing = t ? q.aiText.expected.filter((e) => e.trim() && !norm(t).includes(norm(e))) : q.aiText.expected;
-    const garbled = t ? (t.match(/\[\?\]/g)?.length ?? 0) : 0;
+    const { missing, garbled } = aiTextCheck(q.aiText.expected, t);
     checks.push({
       id: 'ai_text_review', label: 'مراجعة النص المرسوم بالذكاء الاصطناعي (قراءة آلية — تحتاج تأكيدك)', severity: 'WARNING',
       passed: !!t && missing.length === 0 && garbled === 0,
@@ -115,3 +113,12 @@ export function qcVerdict(r: QcReport | null | undefined): QcVerdict {
   return 'PASS';
 }
 export const QC_VERDICT_AR: Record<QcVerdict, string> = { PASS: 'ناجح', NEEDS_REVIEW: 'يحتاج مراجعة', NEEDS_ASSET: 'ينقصه ملف/أصل', REJECTED: 'مرفوض' };
+
+/** Does the text an image model drew match the verified copy? (machine reading; `[?]` marks illegible words) */
+export function aiTextCheck(expected: string[], transcript: string | null | undefined): { ok: boolean; missing: string[]; garbled: number } {
+  const norm = (x: string) => normalizeText(x).replace(/\s+/g, '');
+  const t = transcript ?? '';
+  const missing = t ? expected.filter((e) => e.trim() && !norm(t).includes(norm(e))) : expected.filter((e) => e.trim());
+  const garbled = t ? (t.match(/\[\?\]/g)?.length ?? 0) : 0;
+  return { ok: !!t && missing.length === 0 && garbled === 0, missing, garbled };
+}

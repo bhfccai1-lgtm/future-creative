@@ -77,6 +77,16 @@ const NETWORK: Record<SocialPlatform, string> = {
 
 type FetchFn = typeof fetch;
 
+/** The Metricool API token is only ever sent to Metricool: anything else (typo, tampered setting) falls back to the official API. */
+export const METRICOOL_DEFAULT_BASE = 'https://app.metricool.com/api';
+export function isMetricoolUrl(url: string | null | undefined): boolean {
+  try {
+    const u = new URL(String(url ?? ''));
+    return u.protocol === 'https:' && (u.hostname === 'app.metricool.com' || u.hostname.endsWith('.metricool.com')) && !u.username && !u.password && !u.port;
+  } catch { return false; }
+}
+export const safeMetricoolBase = (url: string | null | undefined) => (isMetricoolUrl(url) ? String(url).replace(/\/$/, '') : METRICOOL_DEFAULT_BASE);
+
 export class MetricoolAdapter implements PublishingAdapter {
   readonly name = 'metricool';
   constructor(private cfg: { token: string; userId: string; baseUrl: string; fetchImpl?: FetchFn; timeoutMs?: number }) {}

@@ -15,6 +15,7 @@ export function briefSystemPrompt() {
     '- Proofread carefully; correct spelling and grammar are mandatory.',
     '- The concept must be clearly different from every idea in the avoid list (different angle, setting or audience — not a paraphrase).',
     '- If a "direction" object is provided, follow it: content type, market/audience, target segment and occasion. If it contains "userIdea", build the concept around that idea while still obeying every rule above.',
+    '- If "ownerFeedback" is given, it is the business owner\'s own taste and the reasons they rejected earlier designs: follow it strictly (it overrides style defaults, never the hard rules above).',
     '- Occasions must be handled respectfully and culturally appropriately for Bahrain and the Gulf.',
     '- If the direction market is Saudi Arabia, write for Saudi customers: never mention Bahrain, Bahraini places or Bahrain-only occasions in the design, caption or hashtags.',
     '',
@@ -35,7 +36,7 @@ export function briefUserPrompt(r: BriefRequest) {
   return JSON.stringify({
     task: 'Create a new advertisement concept.',
     format: r.format ?? 'IMAGE_STORY',
-    formatNote: r.format === 'IMAGE_CAROUSEL' ? 'Carousel post: the cover uses headline/badge/supportingCopy; fill `slides` with 3-4 genuinely useful slides (saves and shares come from useful carousels). End the caption by inviting people to save the post.' : 'Return slides as [].',
+    formatNote: r.format === 'REEL_VIDEO' ? 'Reel: the first frame is the hook (sceneDescription = the hook shot). Fill `storyboard` with 3-4 shots in order hook → context → product → benefit that tell ONE short story around this idea (different setting/angle per shot, the same product). Return slides as [].' : r.format === 'IMAGE_CAROUSEL' ? 'Carousel post: the cover uses headline/badge/supportingCopy; fill `slides` with 3-4 genuinely useful slides (saves and shares come from useful carousels). End the caption by inviting people to save the post.' : 'Return slides as [].',
     targetLanguage: LANG_NAME[r.language],
     account: { name: r.accountName, category: r.businessCategory },
     product: {
@@ -50,6 +51,7 @@ export function briefUserPrompt(r: BriefRequest) {
     variationAttempt: r.attempt,
     direction: r.direction,
     ...(r.ideaContext ? { ideaContext: r.ideaContext } : {}),
+    ...(r.ownerFeedback?.length ? { ownerFeedback: r.ownerFeedback.slice(0, 9) } : {}),
   });
 }
 
@@ -60,6 +62,7 @@ export function ideasSystemPrompt() {
     'Never mention prices, discounts, offers, free items, delivery times, guarantees or rankings. Never include phone numbers. No fake giveaways.',
     'Each idea must be clearly different from the others and from the avoid list. Write title, idea, hook and why in the target language. Title max 6 words, idea max 30 words.',
     'If ideaContext.angles is given, use a DIFFERENT angle for each idea, in that order, and put the angle key in "angle". Otherwise choose varied angles.',
+    'If ownerFeedback is given, it is the owner\'s taste and reasons for rejecting past designs — respect it in every idea.',
     'If ideaContext.winners is given, lean into what has already worked on this account (without copying). If ideaContext.upcoming is given, make at least one idea timely for the nearest occasion.',
     '"hook" = the first line / first 2 seconds that stops the scroll (max 8 words). "format" = the best format for the idea: REEL_VIDEO for motion/story/process, IMAGE_CAROUSEL for lists/tips/comparisons, IMAGE_FEED for one strong visual, IMAGE_STORY for quick timely reminders.',
     '"score" = your honest 1-10 prediction of reach & saves/shares for this audience; "why" = one short reason. Be critical — most ideas are 5-7.',
@@ -91,11 +94,12 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string;
+  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
 }) {
   const S = SCRIPT_NAME[p.lang];
+  const square = p.aspect === 'square';
   return [
-    'Design a complete, finished, world-class vertical advertising poster for a premium print shop in Bahrain (portrait 2:3). Luxury Gulf commercial style, professional graphic design, social-media ready.',
+    `Design a complete, finished, world-class ${square ? 'square advertising poster for a premium print shop in Bahrain (square 1:1, Instagram feed post)' : 'vertical advertising poster for a premium print shop in Bahrain (portrait 2:3)'}. Luxury Gulf commercial style, professional graphic design, social-media ready.`,
     p.customPrompt?.trim() ? `Client brief (follow it closely): ${p.customPrompt.trim()}` : `Art direction: ${p.style}`,
     p.layout ? `Layout: ${p.layout}.` : '',
     p.concept ? `Creative concept for the product scene (striking, scroll-stopping, product stays the accurate hero): ${p.concept}.` : '',
@@ -105,12 +109,16 @@ export function fullPosterPrompt(p: {
     `  • kicker line near the top: "${p.headline}"`,
     p.badge ? `  • big hero keyword inside a glossy 3D gold pill badge with small sparkle rays: "${p.badge}"` : '',
     p.support ? `  • tagline under the badge: "${p.support}"` : '',
+    ...(p.productText ?? []).map((t) => `  • printed ON the product itself as its design (exact words, same spelling and punctuation): "${t}"`),
     p.features.length ? `  • a row of ${p.features.length} elegant gold line icons in circles with these labels under them: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',
-    '  • The TOP 14% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).',
-    '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately below the poster).',
+    `  • The TOP ${p.topPct ?? 15}% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).`,
+    `  • The BOTTOM ${p.bottomPct ?? 20}% must be calm background only (the table/surface, soft bokeh, elegant gold ribbon swooshes rising from the two bottom corners) — no text, no badges, no icons there: the official gold order button and the branch phone panel are overlaid on it.`,
+    `  • Keep every drawn text, the badge and the product inside the central ${p.safeWidthPct ?? 80}% of the width (the sides may be trimmed); fill the full frame edge to edge with the scene, no borders or frames around the poster.`,
+    '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately).',
+    '  • Spelling and grammar must be flawless: copy every quoted text letter-for-letter, no extra or invented words, no pseudo-letters; keep all text fully inside the poster with comfortable margins, never cut at the edges.',
   ].filter(Boolean).join('\n');
 }
 
@@ -124,6 +132,7 @@ export function voiceoverSystemPrompt() {
     'Stay faithful to the verified ad copy (headline, badge, supporting line, CTA) and the product. Do not invent features, materials, timings or results.',
     'Never say numbers or digits, prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "number one"), phone numbers, branch names, websites or hashtags.',
     'Match the persona (e.g. a child uses simple words, a sports commentator is excited, a storyteller starts like a tale). Keep it tasteful and respectful.',
+    'If `storyboard` is given, the script follows those shots in order (one short phrase per shot): the hook line lands on the first shot, the call to action on the last.',
     'Return JSON: {"script": "..."} with the script only — no stage directions, no quotes, no emojis.',
   ].join('\n');
 }
