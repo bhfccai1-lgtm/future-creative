@@ -53,6 +53,8 @@ export interface BriefRequest {
   occasionKey?: string;
   /** Target format (IMAGE_CAROUSEL needs slides). */
   format?: string;
+  /** The owner's own words: standing guidance + reasons they gave when rejecting designs. */
+  ownerFeedback?: string[];
   /** Idea bank context: what worked on this account, upcoming occasions, angles to cover. */
   ideaContext?: { winners?: string[]; upcoming?: string[]; angles?: string[] };
 }

@@ -6,6 +6,7 @@ import { getSettings } from '@/lib/settings';
 import { getAiProvider } from '@/lib/ai';
 import { assertBudget, estimateTextCost, recordUsage } from '@/lib/ai/cost';
 import { recentIdeas } from '@/lib/dedup';
+import { tasteProfile } from '@/lib/creative/taste';
 import { getBusiness, ctaFor } from '@/lib/business';
 import { selectProductForAccount } from '@/lib/creative/selector';
 import { directionForPrompt } from '@/lib/creative/options';
@@ -30,11 +31,12 @@ export const POST = api('ads:create', async (req, { user }) => {
   const provider = await getAiProvider(s);
   if (!provider.isDryRun) await assertBudget(s, estimateTextCost(s, 2000, 600));
   const history = await recentIdeas(account.id, s.duplicateWindowDays);
+  const taste = await tasteProfile();
   try {
     const r = await provider.suggestIdeas({
       language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
       accountName: account.name, businessCategory: account.businessCategory, creativeStyle: s.ai.creativeStyle,
-      defaultCta: ctaFor(await getBusiness(), lang), avoidIdeas: history.ideas, avoidHeadlines: history.headlines,
+      defaultCta: ctaFor(await getBusiness(), lang), avoidIdeas: [...history.ideas, ...taste.avoid.ideas], avoidHeadlines: [...history.headlines, ...taste.avoid.headlines], ownerFeedback: taste.feedback,
       attempt: Math.floor(Math.random() * 1000), direction: directionForPrompt(b.direction), occasionKey: b.direction?.occasion,
     }, s.ai.textModel, 3);
     if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });

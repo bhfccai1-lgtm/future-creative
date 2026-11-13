@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -43,6 +43,9 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div><label className="label">جودة الصور</label><select className="input" value={v.imageQuality} onChange={(e) => setV({ ...v, imageQuality: e.target.value as Ai['imageQuality'] })}><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option></select></div>
         <fieldset className="rounded-lg border-2 border-gold-300 p-3 md:col-span-3">
           <legend className="px-1 text-sm font-bold text-navy-800">✨ استوديو الإبداع</legend>
+          <div className="mb-3"><label className="label">🧭 توجيهك الدائم للمصمم (يُطبَّق على كل تصميم وفكرة)</label>
+            <textarea rows={2} maxLength={600} className="input" value={v.ownerGuidance ?? ''} onChange={(e) => setV({ ...v, ownerGuidance: e.target.value })} placeholder="مثال: ألوان فاتحة ومبهجة، بدون وجوه أشخاص، أبرز اسم المنتج بخط كبير، لا خلفيات سوداء" />
+            <p className="mt-1 text-xs text-slate-500">ومعه: أسباب رفضك للتصاميم السابقة تُرسل للمصمم تلقائيًا، والأفكار والأساليب التي ترفضها مرارًا تخرج من التناوب.</p></div>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.creativeConcepts ?? true} onChange={(e) => setV({ ...v, creativeConcepts: e.target.checked })} /><span><b>فكرة بصرية مميزة لكل تصميم</b> — 10 أفكار إبداعية تتناوب لكل حساب: طبيعة صامتة فاخرة، المنتج يطفو، لحظة حركة مجمّدة، عالم مصغّر، ورق مقصوص، لون جريء وأشكال هندسية، تراث خليجي فاخر، لقطة سينمائية، مجسّمات ناعمة، مفاجأة الحجم. حسابات الشركات تأخذ الأفكار الرسمية فقط.</span></label>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div><label className="label">المخرج الفني: عدد الصور المولدة لكل تصميم</label>

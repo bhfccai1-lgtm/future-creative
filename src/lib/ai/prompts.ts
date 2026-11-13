@@ -15,6 +15,7 @@ export function briefSystemPrompt() {
     '- Proofread carefully; correct spelling and grammar are mandatory.',
     '- The concept must be clearly different from every idea in the avoid list (different angle, setting or audience — not a paraphrase).',
     '- If a "direction" object is provided, follow it: content type, market/audience, target segment and occasion. If it contains "userIdea", build the concept around that idea while still obeying every rule above.',
+    '- If "ownerFeedback" is given, it is the business owner\'s own taste and the reasons they rejected earlier designs: follow it strictly (it overrides style defaults, never the hard rules above).',
     '- Occasions must be handled respectfully and culturally appropriately for Bahrain and the Gulf.',
     '- If the direction market is Saudi Arabia, write for Saudi customers: never mention Bahrain, Bahraini places or Bahrain-only occasions in the design, caption or hashtags.',
     '',
@@ -50,6 +51,7 @@ export function briefUserPrompt(r: BriefRequest) {
     variationAttempt: r.attempt,
     direction: r.direction,
     ...(r.ideaContext ? { ideaContext: r.ideaContext } : {}),
+    ...(r.ownerFeedback?.length ? { ownerFeedback: r.ownerFeedback.slice(0, 9) } : {}),
   });
 }
 
@@ -60,6 +62,7 @@ export function ideasSystemPrompt() {
     'Never mention prices, discounts, offers, free items, delivery times, guarantees or rankings. Never include phone numbers. No fake giveaways.',
     'Each idea must be clearly different from the others and from the avoid list. Write title, idea, hook and why in the target language. Title max 6 words, idea max 30 words.',
     'If ideaContext.angles is given, use a DIFFERENT angle for each idea, in that order, and put the angle key in "angle". Otherwise choose varied angles.',
+    'If ownerFeedback is given, it is the owner\'s taste and reasons for rejecting past designs — respect it in every idea.',
     'If ideaContext.winners is given, lean into what has already worked on this account (without copying). If ideaContext.upcoming is given, make at least one idea timely for the nearest occasion.',
     '"hook" = the first line / first 2 seconds that stops the scroll (max 8 words). "format" = the best format for the idea: REEL_VIDEO for motion/story/process, IMAGE_CAROUSEL for lists/tips/comparisons, IMAGE_FEED for one strong visual, IMAGE_STORY for quick timely reminders.',
     '"score" = your honest 1-10 prediction of reach & saves/shares for this audience; "why" = one short reason. Be critical — most ideas are 5-7.',

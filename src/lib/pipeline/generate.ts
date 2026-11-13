@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
 import { autoChannelsFor } from '../publishing/channels';
+import { tasteProfile, withoutBlocked } from '../creative/taste';
 import { prisma } from '../db';
 import { getSecret, getSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
@@ -109,6 +110,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   }
   // Saudi accounts: market context defaults to Saudi/GCC (no Bahrain references or #البحرين)
   if (marketOf(account) === 'KSA' && !p.direction?.market) p = { ...p, direction: { ...(p.direction ?? {}), market: 'gcc_saudi' } };
+  // «يتعلم من ذوقك»: the owner's approvals/rejections (human decisions only)
+  const taste = await tasteProfile();
   // automatic designs that didn't choose a method/style use the settings (default: signature style, «تلقائي» method)
   if (!p.direction?.renderMode || !p.direction?.designStyle) {
     p = { ...p, direction: { ...(p.direction ?? {}), renderMode: p.direction?.renderMode ?? s.ai.autoRenderMode, designStyle: p.direction?.designStyle ?? s.ai.autoDesignStyle } };
@@ -119,7 +122,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const auto = [...(dir.autoPicked ?? [])];
     if (dir.designStyle === 'auto') {
       const recent = await prisma.advertisement.findMany({ where: { accountId: account.id }, orderBy: { createdAt: 'desc' }, take: 20, select: { options: true } });
-      dir.designStyle = pickLeastRecent(DESIGN_STYLES.map((x) => x.value), recent.map((r) => ((r.options ?? {}) as { designStyle?: string | null }).designStyle ?? null));
+      dir.designStyle = pickLeastRecent(withoutBlocked(DESIGN_STYLES.map((x) => x.value), taste.blocked.designStyle), recent.map((r) => ((r.options ?? {}) as { designStyle?: string | null }).designStyle ?? null));
       auto.push('designStyle');
     }
     if (dir.renderMode === 'auto') {
@@ -144,7 +147,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
   const formal = /business|corporate|b2b|شركات/i.test(`${account.name} ${account.handle ?? ''} ${account.businessCategory ?? ''}`);
-  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined, concept: d.concept, concepts: s.ai.creativeConcepts, formal });
+  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined, concept: d.concept, concepts: s.ai.creativeConcepts, formal, blockedConcepts: taste.blocked.concept });
   if (!dtype) dtype = designTypeOf(art.composition);
   const lightingP = LIGHTING.find((x) => x.value === art.lighting)?.prompt, lensP = LENSES.find((x) => x.value === art.lens)?.prompt;
   const conceptP = CONCEPTS.find((x) => x.value === art.concept)?.prompt;
@@ -164,8 +167,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   try {
     // ── Steps 4–8: concept, audience, occasion, brief & copy (with 30-day idea de-duplication) ──
     const history = await recentIdeas(account.id, s.duplicateWindowDays);
-    const avoidIdeas = [...history.ideas];
-    const avoidHeadlines = [...history.headlines];
+    const avoidIdeas = [...history.ideas, ...taste.avoid.ideas];
+    const avoidHeadlines = [...history.headlines, ...taste.avoid.headlines];
     let brief: CreativeBriefOut | null = null;
     let ideaFp = '';
     const maxConceptTries = s.ai.maxRetries + 3;
@@ -176,7 +179,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
           accountName: account.name, businessCategory: account.businessCategory, creativeStyle,
           defaultCta: ctaFor(business, lang), avoidIdeas, avoidHeadlines, attempt,
-          direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format,
+          direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format, ownerFeedback: taste.feedback,
         }, s.ai.textModel));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: out.model, kind: 'text', inputTokens: out.usage.inputTokens, outputTokens: out.usage.outputTokens, costUsd: estimateTextCost(s, out.usage.inputTokens, out.usage.outputTokens) });
         return out;
@@ -469,7 +472,7 @@ export function pickLeastRecent(options: string[], recent: (string | null)[]) {
 }
 
 /** Least-recently-used art recipe for this account (last 12 designs). A user-chosen composition is kept. */
-export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean; concept?: string; concepts?: boolean; formal?: boolean }): Promise<Art> {
+export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[] }): Promise<Art> {
   const recent = await prisma.advertisement.findMany({ where: { accountId }, orderBy: { createdAt: 'desc' }, take: 12, select: { options: true } });
   const prev = recent.map((r) => ((r.options ?? {}) as { direction?: { art?: Art } | null }).direction?.art ?? {});
   const comps = o.aiFull ? DESIGN_TYPES.map((x) => x.value) : LAYERED_COMPOSITIONS;
@@ -510,10 +513,10 @@ export function withAutoChannels(account: Parameters<typeof autoChannelsFor>[0],
 }
 
 /** Big visual idea: user choice, «none», or least-recently-used (formal accounts only get formal concepts). Macro shots keep the pure product look. */
-function conceptOf(o: { composition?: string; concept?: string; concepts?: boolean; formal?: boolean }, prev: Art[]): { concept?: string } {
+function conceptOf(o: { composition?: string; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[] }, prev: Art[]): { concept?: string } {
   if (o.concept === 'none') return {};
   if (o.concept && o.concept !== 'auto') return CONCEPTS.some((c) => c.value === o.concept) ? { concept: o.concept } : {};
   if (o.concepts === false || o.composition === 'macro_detail') return {};
-  const pool = CONCEPTS.filter((c) => !o.formal || c.formal).map((c) => c.value as string);
+  const pool = withoutBlocked(CONCEPTS.filter((c) => !o.formal || c.formal).map((c) => c.value as string), o.blockedConcepts ?? []);
   return { concept: pickLeastRecent(pool, prev.map((a) => a.concept ?? null)) };
 }
