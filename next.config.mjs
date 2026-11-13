@@ -11,6 +11,10 @@ const nextConfig = {
         { key: 'X-Content-Type-Options', value: 'nosniff' },
         { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        // safe CSP directives that don't depend on Next's inline scripts: no framing (clickjacking), no plugins, no <base> hijack, forms post only to us
+        { key: 'Content-Security-Policy', value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" },
+        { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+        { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
       ],
     }];
   },

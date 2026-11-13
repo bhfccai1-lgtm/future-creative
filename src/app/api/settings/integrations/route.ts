@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
+import { isMetricoolUrl } from '@/lib/publishing/metricool';
 import { z } from 'zod';
 import { api } from '@/lib/auth/server';
 import { getSettings, secretStatus, setSecret, updateSettings } from '@/lib/settings';
 import { audit } from '@/lib/audit';
 
-const Body = z.object({ token: z.string().max(400).optional(), userId: z.string().regex(/^\d*$/).max(30), baseUrl: z.string().url(), requestsPerMinute: z.number().int().min(1).max(600), hashtagsInFirstComment: z.boolean().default(false) });
+const Body = z.object({ token: z.string().max(400).optional(), userId: z.string().regex(/^\d*$/).max(30), baseUrl: z.string().url().refine(isMetricoolUrl, 'العنوان يجب أن يكون على app.metricool.com (https)'), requestsPerMinute: z.number().int().min(1).max(600), hashtagsInFirstComment: z.boolean().default(false) });
 
 export const GET = api('settings:integrations', async () => {
   const s = await getSettings();

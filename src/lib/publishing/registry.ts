@@ -1,4 +1,5 @@
 import { getSecret, getSettings } from '../settings';
+import { safeMetricoolBase } from './metricool';
 import { ConfigurationError } from '../errors';
 import { MetricoolAdapter } from './metricool';
 import type { PublishingAdapter } from './types';
@@ -14,5 +15,5 @@ export async function getAdapter(provider: string): Promise<PublishingAdapter> {
   const token = await getSecret('METRICOOL_API_TOKEN');
   const userId = s.metricool.userId || process.env.METRICOOL_USER_ID || '';
   if (!token || !userId) throw new ConfigurationError('بيانات Metricool غير مكتملة (الرمز ورقم المستخدم). أكملها من إعدادات الربط.');
-  return new MetricoolAdapter({ token, userId, baseUrl: s.metricool.baseUrl || process.env.METRICOOL_BASE_URL || 'https://app.metricool.com/api' });
+  return new MetricoolAdapter({ token, userId, baseUrl: safeMetricoolBase(s.metricool.baseUrl || process.env.METRICOOL_BASE_URL) });
 }
