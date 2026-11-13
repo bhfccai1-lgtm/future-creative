@@ -41,6 +41,7 @@ export function GenerateForm({ accounts, products, initialIdea = '' }: { account
   const [bank, setBank] = useState<Idea[]>([]);
   const [ideas, setIdeas] = useState<Idea[] | null>(null);
   const [ideasBusy, setIdeasBusy] = useState(false);
+  const [ideasNote, setIdeasNote] = useState<{ kind: 'warn' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [err, setErr] = useState<string | null>(null);
@@ -137,12 +138,19 @@ export function GenerateForm({ accounts, products, initialIdea = '' }: { account
           )}
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" disabled={ideasBusy || !v.accountId} onClick={async () => {
-              setErr(null); setIdeasBusy(true);
-              try { const r = await apiCall<{ ideas: Idea[] }>('/api/ads/suggest-ideas', { body: common() }); setIdeas(r.ideas); } catch (x) { setErr((x as Error).message); }
+              setIdeasNote(null); setIdeasBusy(true);
+              try {
+                const r = await apiCall<{ ideas: Idea[]; warning?: string }>('/api/ads/suggest-ideas', { body: common() });
+                setIdeas(r.ideas);
+                if (r.warning) setIdeasNote({ kind: 'warn', text: r.warning });
+                else if (!r.ideas.length) setIdeasNote({ kind: 'warn', text: 'لم تصل أفكار هذه المرة — جرّب مرة أخرى أو اكتب فكرتك.' });
+              } catch (x) { setIdeasNote({ kind: 'error', text: (x as Error).message || 'تعذّر جلب الأفكار' }); }
               setIdeasBusy(false);
             }}><Sparkles size={16} />{ideasBusy ? 'جارٍ التفكير…' : 'اقترح 3 أفكار جديدة'}</Button>
             <span className="text-xs text-slate-500">تراعي ذوقك وأسباب رفضك السابقة، ولا تكرر أفكار آخر 30 يومًا.</span>
           </div>
+          {ideasBusy && <p className="text-sm text-slate-500" role="status">يفكّر المخرج الإبداعي في 3 أفكار… قد يستغرق ذلك حتى 30 ثانية.</p>}
+          {ideasNote && <p role="alert" className={`rounded-lg p-2 text-sm ${ideasNote.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}>{ideasNote.text}</p>}
           {ideas && <div className="grid gap-2 md:grid-cols-3">{ideas.map((it, i) => <IdeaCard key={i} it={it} selected={!!v.idea && v.idea.startsWith(it.title)} onPick={() => pickIdea(it)} />)}</div>}
           <Field label="الفكرة" hint="اكتب فكرتك، أو اختر فكرة أعلاه، أو اتركها فارغة ليبتكر المخرج الإبداعي فكرة. لا تذكر أسعارًا أو خصومات أو مدد تسليم.">
             <textarea rows={3} maxLength={500} className="input" value={v.idea} onChange={(e) => set('idea')(e.target.value)} placeholder="مثال: كوب مطبوع بصورة العائلة على طاولة إفطار رمضاني" />
