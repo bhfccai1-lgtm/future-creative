@@ -18,3 +18,5 @@ body { @apply bg-slate-50 text-slate-900 antialiased; overflow-x: clip; -webkit-
   /* finger-sized chips and toggles (account pickers, filters, categories) */
   button.rounded-full, a.rounded-full, label.rounded-full { min-height: 2.25rem; display: inline-flex; align-items: center; }
 }
+
+@keyframes fcToast { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

@@ -39,7 +39,7 @@ export function MobileTabBar({ pendingApprovals }: { pendingApprovals: number })
             <div className="mb-3 flex items-center justify-between"><b className="text-navy-800">كل الصفحات</b><button onClick={() => setOpen(false)} aria-label="إغلاق" className="rounded-full p-2 hover:bg-slate-100"><X size={20} /></button></div>
             <div className="grid grid-cols-3 gap-2">
               {NAV.map(([href, label, Icon]) => (
-                <Link key={href} href={href} className={cn('flex flex-col items-center gap-1 rounded-xl border p-3 text-center text-xs font-bold', active(href) ? 'border-gold-500 bg-gold-300/20 text-navy-900' : 'text-slate-700')}>
+                <Link key={href} href={href} onClick={() => setOpen(false)} className={cn('flex flex-col items-center gap-1 rounded-xl border p-3 text-center text-xs font-bold', active(href) ? 'border-gold-500 bg-gold-300/20 text-navy-900' : 'text-slate-700')}>
                   <Icon size={22} />{label}
                 </Link>
               ))}

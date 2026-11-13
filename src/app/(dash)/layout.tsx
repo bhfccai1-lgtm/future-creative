@@ -5,6 +5,7 @@ import { getSettings, secretStatus } from '@/lib/settings';
 import { Sidebar } from '@/components/sidebar';
 import { MobileTabBar, MobileTopBar } from '@/components/mobile-shell';
 import { CollapseOnMobile } from '@/components/collapse-on-mobile';
+import { Toaster } from '@/components/toaster';
 import { Badge } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
         <main className="mx-auto max-w-7xl p-4 pb-28 lg:p-6">{children}</main>
         <MobileTabBar pendingApprovals={pending} />
         <CollapseOnMobile />
+        <Toaster />
       </div>
     </div>
   );

@@ -61,10 +61,10 @@ export default async function ApprovalsPage() {
               </div>
               <div className="grid grid-cols-3 gap-2 border-t bg-slate-50 p-2">
                 {qc?.publishable
-                  ? <ActionButton url={`/api/ads/${ad.id}/publish-now`} label="✓ نشر" variant="success" size="lg" block />
-                  : ad.qcPassed ? <ActionButton url={`/api/ads/${ad.id}/approve`} label="✓ اعتماد" variant="success" size="lg" block /> : <span />}
+                  ? <ActionButton url={`/api/ads/${ad.id}/publish-now`} label="✓ نشر" variant="success" size="lg" block success="أُرسل للنشر — سيُنشر في أقرب وقت آمن" />
+                  : ad.qcPassed ? <ActionButton url={`/api/ads/${ad.id}/approve`} label="✓ اعتماد" variant="success" size="lg" block success="تم اعتماد التصميم" /> : <span />}
                 <Link href={`/ads/${ad.id}`} className="flex items-center justify-center rounded-lg border bg-white text-sm font-bold text-navy-800">✎ تعديل</Link>
-                <ActionButton url={`/api/ads/${ad.id}/reject`} label="✗ رفض" variant="danger" size="lg" block prompt="سبب الرفض (اختياري — يحسّن التصاميم القادمة)" promptKey="note" />
+                <ActionButton url={`/api/ads/${ad.id}/reject`} label="✗ رفض" variant="danger" size="lg" block success="تم الرفض — سنتجنّب هذا الأسلوب" prompt="سبب الرفض (اختياري — يحسّن التصاميم القادمة)" promptKey="note" />
               </div>
             </article>
           );
