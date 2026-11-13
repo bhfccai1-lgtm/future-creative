@@ -94,7 +94,7 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; topPct?: number; bottomPct?: number; safeWidthPct?: number;
+  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
 }) {
   const S = SCRIPT_NAME[p.lang];
   const square = p.aspect === 'square';
@@ -109,6 +109,7 @@ export function fullPosterPrompt(p: {
     `  • kicker line near the top: "${p.headline}"`,
     p.badge ? `  • big hero keyword inside a glossy 3D gold pill badge with small sparkle rays: "${p.badge}"` : '',
     p.support ? `  • tagline under the badge: "${p.support}"` : '',
+    ...(p.productText ?? []).map((t) => `  • printed ON the product itself as its design (exact words, same spelling and punctuation): "${t}"`),
     p.features.length ? `  • a row of ${p.features.length} elegant gold line icons in circles with these labels under them: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,

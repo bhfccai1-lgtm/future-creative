@@ -45,6 +45,7 @@ export function GenerateForm({ accounts, products, initialIdea = '' }: { account
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  const [stuck, setStuck] = useState(false);
 
   useEffect(() => {
     if (!v.accountId) return;
@@ -66,13 +67,15 @@ export function GenerateForm({ accounts, products, initialIdea = '' }: { account
   const pickIdea = (it: Idea) => setV((x) => ({ ...x, idea: [it.title, it.idea, it.hook ? `الافتتاحية: ${it.hook}` : ''].filter(Boolean).join(' — ').slice(0, 500), ...(it.productId ? { productId: it.productId } : {}), ...(it.format && !x.format ? { format: it.format } : {}) }));
 
   const create = async () => {
-    setErr(null); setBusy(true); setElapsed(0);
+    setErr(null); setBusy(true); setElapsed(0); setStuck(false);
     try {
       const { jobId } = await apiCall<{ jobId: string }>('/api/ads/generate', { body: { ...common(), format: v.format || undefined } });
       for (let i = 0; i < 180; i++) {
         await new Promise((r) => setTimeout(r, 2000));
         const j = await apiCall<{ state: string; result: { adId: string } | null; failedReason: string | null }>(`/api/jobs/${jobId}`).catch(() => null);
         if (!j) continue;
+        // still queued after ~40 s → the background worker is not taking jobs (stopped/crashed) — say so instead of spinning
+        setStuck(i >= 20 && (j.state === 'waiting' || j.state === 'delayed' || j.state === 'prioritized'));
         if (j.state === 'completed' && j.result) { router.push(`/ads/${j.result.adId}`); return; }
         if (j.state === 'failed') { setErr(j.failedReason ?? 'فشل التوليد'); setBusy(false); return; }
       }
@@ -89,6 +92,7 @@ export function GenerateForm({ accounts, products, initialIdea = '' }: { account
         <div className="text-lg font-extrabold text-navy-900">جارٍ إنشاء التصميم…</div>
         <p className="mt-1 text-sm text-slate-500">{elapsed} ثانية · عادة 30–90 ثانية (الريلز أطول)</p>
         <ol className="mx-auto mt-5 max-w-xs space-y-2 text-right text-sm text-slate-600">{PHASES.map((p, i) => <li key={p} className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-bold">{i + 1}</span>{p}</li>)}</ol>
+        {stuck && <p role="alert" className="mx-auto mt-4 max-w-md rounded-lg bg-amber-50 p-3 text-sm text-amber-800">الطلب ما زال في الانتظار ولم يبدأ — غالبًا العامل الخلفي (worker) متوقف. افتح <a className="font-bold underline" href="/diagnostics">تشخيص النظام</a>، أو أعد التشغيل على السيرفر: <code dir="ltr">bash scripts/update.sh</code></p>}
         <p className="mt-4 text-xs text-slate-500">يمكنك مغادرة الصفحة — سيظهر التصميم في طابور الموافقات عند انتهائه.</p>
       </div>
     );

@@ -209,9 +209,11 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     let artDirector: { candidates: number; best: number; scores: number[]; reason: string } | null = null;
     let textCheck: { attempts: number; passed: boolean; missing: string[] } | null = null;
     await assertBudget(s, estimateImageCost(s, imgQuality));
+    // a phrase the owner put in quotes («…» / "…") must appear letter-for-letter (e.g. printed on the mug) and is spell-checked too
+    const quoted = quotedPhrases(d.idea);
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
       const n = !provider.isDryRun && provider.judgeImages ? s.ai.bestOf : 1;
@@ -225,7 +227,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       // Self-correcting full-AI poster: read the drawn text BEFORE composing; misspelled/missing words → re-draw with an exact correction note
       let pool = candidates;
       if (aiFull && provider.readText && !provider.isDryRun) {
-        const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? ''].filter((x) => x.trim());
+        const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted].filter((x) => x.trim());
         const spell = async (c: (typeof candidates)[number]) => {
           try {
             await assertBudget(s, estimateTextCost(s, 1500, 200));
@@ -554,4 +556,12 @@ function conceptOf(o: { composition?: string; concept?: string; concepts?: boole
   if (o.concepts === false || o.composition === 'macro_detail') return {};
   const pool = withoutBlocked(CONCEPTS.filter((c) => !o.formal || c.formal).map((c) => c.value as string), o.blockedConcepts ?? []);
   return { concept: pickLeastRecent(pool, prev.map((a) => a.concept ?? null)) };
+}
+
+/** Exact phrases the owner quoted in the idea («…», "…", “…”) — max 2, 3–120 characters each. */
+export function quotedPhrases(idea?: string | null): string[] {
+  if (!idea) return [];
+  const out: string[] = [];
+  for (const m of idea.matchAll(/[«"“]([^«»"“”]{3,120})[»"”]/g)) { const t = m[1].trim().replace(/[.،,]+$/, ''); if (t && !out.includes(t)) out.push(t); }
+  return out.slice(0, 2);
 }
