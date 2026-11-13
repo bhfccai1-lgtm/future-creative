@@ -1,16 +1,26 @@
-# Every push is checked exactly like the server's Docker build (clean `npm ci`), so a broken update
-# is caught here — not on the server. Green ✓ on the commit = safe to run `bash scripts/update.sh`.
+# Quality gate for every push / pull request. A green ✓ on the commit = safe to run `bash scripts/update.sh` on the server.
+#   build        — clean `npm ci`, typecheck, unit tests, production build (lint included)
+#   integration  — the full integration suite against real PostgreSQL 16 + Redis 7 (publishing, approvals, campaigns…)
+#   docker       — builds the exact production image the server builds (catches Dockerfile / dependency breaks)
 name: CI
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      NEXT_TELEMETRY_DISABLED: '1'
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v4
@@ -26,3 +36,45 @@ jobs:
         run: npm run test:unit
       - name: Production build (same as the Docker image, includes lint)
         run: npm run build
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: fc, POSTGRES_PASSWORD: fc, POSTGRES_DB: fcap_test }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fc" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Integration tests (PostgreSQL + Redis)
+        run: npm run test:integration
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image (not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

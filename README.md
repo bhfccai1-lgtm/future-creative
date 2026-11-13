@@ -1,4 +1,7 @@
 # FUTURE CREATIVE AI PUBLISHING SYSTEM v1.0
+[![CI](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/ci.yml/badge.svg)](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/ci.yml) [![CodeQL](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/codeql.yml/badge.svg)](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/codeql.yml)
+
+> **Server update:** `bash scripts/update.sh` — only when the latest commit shows a green ✓ in GitHub Actions.
 **مطبعة إبداع المستقبل — Future Creative Printing (Bahrain)**
 
 A self-hosted platform that plans, designs, quality-checks, schedules and publishes printing-service advertisements to many social accounts. The dashboard is Arabic and right-to-left. Ads can be produced in Arabic, English or Malayalam. All scheduling runs on Asia/Bahrain time.
