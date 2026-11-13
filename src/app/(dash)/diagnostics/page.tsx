@@ -95,7 +95,7 @@ export default async function DiagnosticsPage() {
         </div>
       </div>
 
-      <Card title={`توصيات المحترف (${adv.advice.length}) — مرتبة حسب الأولوية`} className="mb-6">
+      <Card collapsible title={`توصيات المحترف (${adv.advice.length}) — مرتبة حسب الأولوية`} className="mb-6">
         {!adv.advice.length ? <p className="text-sm text-emerald-700">لا توجد توصيات — النظام في حالة ممتازة ✅</p> : (
           <div className="grid gap-5 lg:grid-cols-2">
             {[...byCat.entries()].map(([cat, list]) => (
@@ -108,7 +108,7 @@ export default async function DiagnosticsPage() {
         )}
       </Card>
 
-      <Card title="الفحوصات الفنية المباشرة" className="overflow-x-auto">
+      <Card collapsible title="الفحوصات الفنية المباشرة" className="overflow-x-auto">
         <table className="w-full min-w-[720px]"><thead><tr><th className="th">الفحص</th><th className="th">الحالة</th><th className="th">التفاصيل</th><th className="th">الإجراء المطلوب</th></tr></thead>
           <tbody>{d.checks.map((c) => <tr key={c.id} className="border-t"><td className="td font-bold">{c.label}</td><td className="td"><Badge tone={TONE[c.status]}>{AR[c.status]}</Badge></td><td className="td text-xs">{c.detail}</td><td className="td text-xs text-navy-700">{c.action ?? '—'}{c.command && <code dir="ltr" className="mt-1 block rounded bg-slate-100 px-2 py-1 text-left text-[11px]">{c.command}</code>}</td></tr>)}</tbody>
         </table>

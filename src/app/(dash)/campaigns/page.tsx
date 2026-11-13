@@ -24,7 +24,7 @@ export default async function CampaignsPage() {
   return (
     <>
       <PageHeader title="الحملات المتكررة" subtitle="إعلان بتصميم جديد في كل موعد — مرة واحدة أو كل عدد ساعات، في الأيام التي تختارها، بأفضل وقت أو بوقت تحدده" />
-      <Card title="الحملات" className="mb-6">
+      <Card collapsible title="الحملات" className="mb-6">
         {!campaigns.length ? <Empty>لا توجد حملات بعد. أنشئ أول حملة من النموذج أدناه.</Empty> : (
           <div className="grid gap-3 lg:grid-cols-2">
             {campaigns.map((c) => (
@@ -51,8 +51,8 @@ export default async function CampaignsPage() {
           </div>
         )}
       </Card>
-      {campaigns.length > 0 && <Card title="ترقية الحملات القديمة للميزات الجديدة" className="mb-6"><CampaignUpgrade /></Card>}
-      <Card title="حملة جديدة">
+      {campaigns.length > 0 && <Card collapsible title="ترقية الحملات القديمة للميزات الجديدة" className="mb-6"><CampaignUpgrade /></Card>}
+      <Card collapsible title="حملة جديدة">
         <CampaignForm accounts={accounts.map((a) => ({ id: a.id, label: `${a.name} — ${PLATFORM_AR[a.platform]}` }))} products={products.map((p) => ({ id: p.id, label: p.titleAr, categoryId: p.categoryId }))} categories={categories.filter((c) => c._count.products > 0).map((c) => ({ id: c.id, label: `${c.nameAr} (${c._count.products})` }))} />
       </Card>
     </>

@@ -60,7 +60,7 @@ export function WhatsappSettings({ initial, categories, accounts }: { initial: W
         <h3 className="text-base font-extrabold">كتالوج واتساب (رسمي عبر Meta)</h3>
         <p className="text-slate-600">تُرسل منتجاتك إلى كتالوج Meta المرتبط برقم واتساب للأعمال، ويتحدث يوميًا تلقائيًا. يُرسل فقط المنتج الذي له <b>سعر يبدأ من</b> و<b>تصميم معتمد</b> (شرطان من Meta)، ويُزال من الكتالوج كل منتج متوقف. رابط كل منتج يفتح صفحة عامة فيها أزرار واتساب للفرعين.</p>
         {p && (
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg border p-2"><div className="text-xs text-slate-500">منتجات في النطاق</div><b className="text-lg">{p.total}</b></div>
             <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2"><div className="text-xs text-slate-500">جاهزة للكتالوج</div><b className="text-lg">{p.ready}</b></div>
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-2"><div className="text-xs text-slate-500">بلا سعر</div><b className="text-lg">{p.missingPrice}</b>{p.missingPriceSample.length > 0 && <div className="text-xs text-slate-500">{p.missingPriceSample.join('، ')}…</div>}</div>

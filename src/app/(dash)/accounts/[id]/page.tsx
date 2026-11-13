@@ -36,7 +36,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             : <ActionButton url={`/api/accounts/${id}`} method="PATCH" body={{ autoPublishEnabled: true }} label="السماح بالنشر الآلي لهذا الحساب" variant="success" />}
         </>} />
       <div className="grid gap-6 xl:grid-cols-3">
-        <Card title="الربط مع مزود النشر" className="xl:col-span-2">
+        <Card collapsible title="الربط مع مزود النشر" className="xl:col-span-2">
           <dl className="mb-4 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
             <div><dt className="text-slate-500">المزود</dt><dd className="font-bold">{c?.provider ?? '—'}</dd></div>
             <div><dt className="text-slate-500">Brand ID</dt><dd className="font-bold ltr">{c?.providerBrandId ?? '—'}</dd></div>
@@ -47,7 +47,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
           <ConnectPanel accountId={id} platform={a.platform} currentBrandId={c?.providerBrandId} />
           {c && c.status !== 'DISCONNECTED' && <div className="mt-4"><ActionButton url={`/api/accounts/${id}/disconnect`} label="فصل هذا الحساب" variant="danger" size="sm" confirm="سيتم فصل هذا الحساب وإلغاء مهامه غير المرسلة فقط. متابعة؟" /></div>}
         </Card>
-        <Card title="النشر الذاتي (Autonomous)">
+        <Card collapsible title="النشر الذاتي (Autonomous)">
           <p className="mb-3 text-sm text-slate-600">يتطلب: ربط مؤكد + تفويض هذا الحساب + تفعيل الوضع الذاتي عامًا. بدون ذلك تذهب كل التصاميم إلى طابور الموافقات.</p>
           {a.autonomousAuthorized
             ? <><Badge tone="red">مفوّض منذ {fmtLocal(a.autonomousAuthorizedAt)} بواسطة {a.autonomousAuthorizedBy}</Badge><div className="mt-3"><ActionButton url={`/api/accounts/${id}/autonomy`} body={{ authorized: false }} label="سحب التفويض" variant="outline" /></div></>
@@ -55,13 +55,13 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
           {!connected && <p className="mt-2 text-xs text-amber-700">الحساب غير مرتبط — لا يمكن التفويض.</p>}
         </Card>
       </div>
-      <Card title="إعدادات الحساب" className="mt-6"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} account={{ ...a }} linked={((a.connection?.providerSnapshot as { networks?: { network: string }[] } | null)?.networks ?? []).map((n) => n.network)} /></Card>
+      <Card collapsible title="إعدادات الحساب" className="mt-6"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} account={{ ...a }} linked={((a.connection?.providerSnapshot as { networks?: { network: string }[] } | null)?.networks ?? []).map((n) => n.network)} /></Card>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <Card title="سجل المحتوى">
+        <Card collapsible title="سجل المحتوى">
           <table className="w-full"><tbody>{ads.map((ad) => <tr key={ad.id} className="border-t"><td className="td"><Link className="text-navy-700 hover:underline" href={`/ads/${ad.id}`}>{ad.headline ?? ad.product.titleAr}</Link><div className="text-xs text-slate-500">{fmtLocal(ad.createdAt)}</div></td><td className="td"><StateBadge state={ad.state} /></td></tr>)}</tbody></table>
           {!ads.length && <p className="text-sm text-slate-500">لا يوجد محتوى بعد.</p>}
         </Card>
-        <Card title="نتائج النشر والأخطاء">
+        <Card collapsible title="نتائج النشر والأخطاء">
           <table className="w-full"><tbody>{jobs.map((j) => <tr key={j.id} className="border-t"><td className="td text-xs">{fmtLocal(j.scheduledFor)}</td><td className="td"><StateBadge state={j.state} /></td><td className="td text-xs">{j.result?.publicUrl ? <a className="text-navy-700 underline" href={j.result.publicUrl} target="_blank" rel="noreferrer">رابط المنشور</a> : j.lastError ?? ''}</td></tr>)}</tbody></table>
           {errors.map((n) => <p key={n.id} className="mt-2 rounded bg-slate-50 p-2 text-xs"><b>{n.title}</b> — {n.message}</p>)}
         </Card>

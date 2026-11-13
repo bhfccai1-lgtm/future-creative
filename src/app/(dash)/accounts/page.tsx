@@ -52,7 +52,7 @@ export default async function AccountsPage() {
           );
         })}
       </div>
-      <Card title="إضافة حساب جديد"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} /></Card>
+      <Card collapsible title="إضافة حساب جديد"><AccountForm categories={cats.map((c) => ({ id: c.id, nameAr: c.nameAr, count: c._count.products }))} products={products} /></Card>
     </>
   );
 }

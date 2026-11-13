@@ -15,4 +15,6 @@ body { @apply bg-slate-50 text-slate-900 antialiased; overflow-x: clip; -webkit-
 @media (max-width: 639px) {
   .input { font-size: 16px; padding-top: 0.6rem; padding-bottom: 0.6rem; }
   .td, .th { padding-left: 0.5rem; padding-right: 0.5rem; }
+  /* finger-sized chips and toggles (account pickers, filters, categories) */
+  button.rounded-full, a.rounded-full, label.rounded-full { min-height: 2.25rem; display: inline-flex; align-items: center; }
 }

@@ -15,7 +15,7 @@ export const buttonVariants = cva('inline-flex items-center justify-center gap-2
       success: 'bg-emerald-600 text-white hover:bg-emerald-700',
       ghost: 'text-slate-700 hover:bg-slate-100',
     },
-    size: { sm: 'px-3 py-1.5 text-xs', md: '', lg: 'px-6 py-3 text-base' },
+    size: { sm: 'px-3 py-2.5 text-xs sm:py-1.5', md: '', lg: 'px-6 py-3 text-base' },
   },
   defaultVariants: { variant: 'primary', size: 'md' },
 });
@@ -24,7 +24,19 @@ export function Button({ className, variant, size, ...p }: React.ButtonHTMLAttri
   return <button className={cn(buttonVariants({ variant, size }), className)} {...p} />;
 }
 
-export function Card({ className, title, actions, children }: { className?: string; title?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
+export function Card({ className, title, actions, children, collapsible }: { className?: string; title?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode; collapsible?: boolean }) {
+  if (collapsible && title) {
+    // open on desktop; <CollapseOnMobile/> folds it on phones (tap the title to open)
+    return (
+      <details open data-mcollapse className={cn('card group min-w-0 overflow-x-auto p-4 sm:p-5', className)}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+          <h2 className="text-base font-extrabold text-navy-900">{title}</h2>
+          <span className="flex items-center gap-2">{actions}<span className="text-slate-400 transition group-open:rotate-180" aria-hidden>▾</span></span>
+        </summary>
+        <div className="mt-4">{children}</div>
+      </details>
+    );
+  }
   return (
     <section className={cn('card min-w-0 overflow-x-auto p-4 sm:p-5', className)}>
       {(title || actions) && <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-extrabold text-navy-900">{title}</h2>{actions}</div>}

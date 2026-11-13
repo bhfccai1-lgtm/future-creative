@@ -16,7 +16,7 @@ export default async function AccountAuditPage() {
   return (
     <>
       <PageHeader title="🩺 تدقيق حسابات إنستغرام" subtitle="آخر 14 يومًا: ما نُشر فعلًا (مؤكد من المزود)، مزيج الصيغ، الوصول لكل صيغة من مقاييس Metricool، الأخطاء والإعدادات — مع إصلاح لكل مشكلة. الأسوأ أولًا." />
-      <div className="mb-6 grid gap-3 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">متوسط صحة الحسابات</div><b className="text-2xl">{avgScore}/100</b></div>
         <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">منشورات مؤكدة (14 يومًا)</div><b className="text-2xl">{totals.posted}</b></div>
         <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">منها ريلز</div><b className="text-2xl">{totals.reels}</b></div>
@@ -24,7 +24,8 @@ export default async function AccountAuditPage() {
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
         {audits.map((a) => (
-          <Card key={a.id} title={<span className="flex items-center gap-2"><Badge tone={GRADE_TONE[a.grade]}>{a.grade} · {a.score}</Badge><Link className="underline" href={`/accounts/${a.id}`}>{a.name}</Link>{a.handle && <span className="ltr text-xs text-slate-500">@{a.handle}</span>}</span>}>
+          <Card collapsible key={a.id} title={<span className="flex items-center gap-2"><Badge tone={GRADE_TONE[a.grade]}>{a.grade} · {a.score}</Badge>{a.name}{a.issues.length > 0 && <span className="text-xs font-normal text-slate-500">· {a.issues.length} مشكلة</span>}</span>}>
+            <Link className="mb-3 inline-block text-xs font-bold text-navy-700 underline" href={`/accounts/${a.id}`}>فتح إعدادات الحساب{a.handle ? ` (@${a.handle})` : ''}</Link>
             <div className="mb-3 grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
               <div><div className="text-slate-500">مؤكد</div><b>{a.kpi.posted}{a.kpi.expected ? `/${a.kpi.expected}` : ''}</b></div>
               <div><div className="text-slate-500">ريلز</div><b>{a.kpi.reels}</b></div>
@@ -43,7 +44,7 @@ export default async function AccountAuditPage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {i.fix.map((f) => f.action
                       ? <ActionButton key={f.label} url={f.action.url} method={f.action.method} body={f.action.body} label={f.label} size="sm" variant="outline" />
-                      : <Link key={f.label} href={f.href!} className="rounded-lg border px-2 py-1 text-xs font-bold hover:bg-slate-50">{f.label}</Link>)}
+                      : <Link key={f.label} href={f.href!} className="rounded-lg border px-3 py-2 text-xs font-bold hover:bg-slate-50 sm:py-1">{f.label}</Link>)}
                   </div>
                 </li>
               ))}

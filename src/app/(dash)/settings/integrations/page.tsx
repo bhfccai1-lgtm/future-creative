@@ -27,21 +27,21 @@ export default async function IntegrationsPage() {
   return (
     <>
       <PageHeader title="إعدادات الربط" subtitle="Metricool هو بوابة النشر الأساسية. لا تُستخدم كلمات مرور الحسابات ولا واجهات غير رسمية." />
-      <Card title="Metricool" className="mb-6" actions={s.metricool.lastCheckAt ? <Badge tone={s.metricool.lastCheckOk ? 'green' : 'red'}>{s.metricool.lastCheckOk ? 'متصل' : 'فشل التحقق'} · {fmtLocal(new Date(s.metricool.lastCheckAt))}</Badge> : <Badge>لم يُختبر</Badge>}>
+      <Card collapsible title="Metricool" className="mb-6" actions={s.metricool.lastCheckAt ? <Badge tone={s.metricool.lastCheckOk ? 'green' : 'red'}>{s.metricool.lastCheckOk ? 'متصل' : 'فشل التحقق'} · {fmtLocal(new Date(s.metricool.lastCheckAt))}</Badge> : <Badge>لم يُختبر</Badge>}>
         {s.metricool.lastCheckMessage && <p className="mb-3 text-sm text-slate-600">{s.metricool.lastCheckMessage}</p>}
         <IntegrationsForm m={s.metricool} token={token} />
       </Card>
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card title="ربط الحسابات بالمزود">
+        <Card collapsible title="ربط الحسابات بالمزود">
           <table className="w-full"><tbody>{conns.map((c) => <tr key={c.id} className="border-t"><td className="td">{c.account.name}<div className="text-xs text-slate-500">{PLATFORM_AR[c.account.platform]}</div></td><td className="td ltr text-xs">{c.provider} / {c.providerBrandId}</td><td className="td"><ConnBadge status={c.status} /></td><td className="td text-xs text-red-700">{c.lastError}</td></tr>)}</tbody></table>
           {!conns.length && <p className="text-sm text-slate-500">لم يُربط أي حساب بعد.</p>}
         </Card>
-        <Card title="حالة المطابقة (Reconciliation)">
+        <Card collapsible title="حالة المطابقة (Reconciliation)">
           <ul className="text-sm">{['SCHEDULED', 'UNKNOWN', 'FAILED'].map((st) => <li key={st} className="flex justify-between border-t py-2"><span>{st}</span><b>{recon.find((r) => r.state === st)?._count ?? 0}</b></li>)}</ul>
           <p className="mt-2 text-xs text-slate-500">تُطابق المهام كل 5 دقائق مع المزود. لا يُعرض «منشور» إلا بعد تأكيد المزود.</p>
         </Card>
       </div>
-      <Card title="n8n — الأتمتة" className="mt-6" actions={<Badge tone={s.n8n.enabled ? 'green' : 'slate'}>{s.n8n.enabled ? 'مفعّل' : 'غير مفعّل'}</Badge>}>
+      <Card collapsible title="n8n — الأتمتة" className="mt-6" actions={<Badge tone={s.n8n.enabled ? 'green' : 'slate'}>{s.n8n.enabled ? 'مفعّل' : 'غير مفعّل'}</Badge>}>
         <p className="mb-3 text-sm text-slate-600">يرسل النظام أحداثًا موقّعة (HMAC) إلى n8n مع إعادة المحاولة تلقائيًا، ويستقبل من n8n طلبات بمفتاح API. النشر يبقى دائمًا عبر مسار النظام المحمي. قوالب جاهزة: <span className="ltr">deploy/n8n/</span></p>
         <N8nForm n8n={s.n8n} events={EVENTS} secret={n8nSecret.configured} telegram={tgStatus.configured} token={n8nToken.configured} apiBase={env().PUBLIC_BASE_URL.replace(/\/$/, '')} />
         <div className="mt-4 overflow-x-auto">
@@ -52,11 +52,11 @@ export default async function IntegrationsPage() {
           {!deliveries.length && <p className="text-sm text-slate-500">لا توجد أحداث بعد.</p>}
         </div>
       </Card>
-      <Card title="أرشيف Google Drive و Sheets (مباشر)" className="mt-6"><GoogleArchiveForm configured={(await secretStatus('GOOGLE_ARCHIVE_URL')).configured} /></Card>
-      <Card title="واتساب — الكتالوج وحزمة الحالة" className="mt-6">
+      <Card collapsible title="أرشيف Google Drive و Sheets (مباشر)" className="mt-6"><GoogleArchiveForm configured={(await secretStatus('GOOGLE_ARCHIVE_URL')).configured} /></Card>
+      <Card collapsible title="واتساب — الكتالوج وحزمة الحالة" className="mt-6">
         <WhatsappSettings initial={await whatsappStatus()} categories={await prisma.productCategory.findMany({ select: { id: true, nameAr: true }, orderBy: { nameAr: 'asc' } })} accounts={await prisma.socialAccount.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } })} />
       </Card>
-      <Card title="مزودات أخرى" className="mt-6">
+      <Card collapsible title="مزودات أخرى" className="mt-6">
         <p className="text-sm text-slate-600">واجهة المحوّل (PublishingAdapter) جاهزة لإضافة الواجهات الرسمية مباشرة (Meta Graph API، TikTok Content Posting API، YouTube Data API …). غير مفعّلة في هذا الإصدار — راجع docs/FEATURES.md.</p>
       </Card>
     </>
