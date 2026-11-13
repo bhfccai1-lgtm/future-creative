@@ -36,7 +36,7 @@ export function briefUserPrompt(r: BriefRequest) {
   return JSON.stringify({
     task: 'Create a new advertisement concept.',
     format: r.format ?? 'IMAGE_STORY',
-    formatNote: r.format === 'IMAGE_CAROUSEL' ? 'Carousel post: the cover uses headline/badge/supportingCopy; fill `slides` with 3-4 genuinely useful slides (saves and shares come from useful carousels). End the caption by inviting people to save the post.' : 'Return slides as [].',
+    formatNote: r.format === 'REEL_VIDEO' ? 'Reel: the first frame is the hook (sceneDescription = the hook shot). Fill `storyboard` with 3-4 shots in order hook → context → product → benefit that tell ONE short story around this idea (different setting/angle per shot, the same product). Return slides as [].' : r.format === 'IMAGE_CAROUSEL' ? 'Carousel post: the cover uses headline/badge/supportingCopy; fill `slides` with 3-4 genuinely useful slides (saves and shares come from useful carousels). End the caption by inviting people to save the post.' : 'Return slides as [].',
     targetLanguage: LANG_NAME[r.language],
     account: { name: r.accountName, category: r.businessCategory },
     product: {
@@ -127,6 +127,7 @@ export function voiceoverSystemPrompt() {
     'Stay faithful to the verified ad copy (headline, badge, supporting line, CTA) and the product. Do not invent features, materials, timings or results.',
     'Never say numbers or digits, prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "number one"), phone numbers, branch names, websites or hashtags.',
     'Match the persona (e.g. a child uses simple words, a sports commentator is excited, a storyteller starts like a tale). Keep it tasteful and respectful.',
+    'If `storyboard` is given, the script follows those shots in order (one short phrase per shot): the hook line lands on the first shot, the call to action on the last.',
     'Return JSON: {"script": "..."} with the script only — no stage directions, no quotes, no emojis.',
   ].join('\n');
 }

@@ -73,6 +73,7 @@ export class DryRunProvider implements AiProvider {
       hashtags: lang === 'ar' ? ['#البحرين', '#مطبعة', '#طباعة'] : ['#Bahrain', '#Printing'],
       styleNotes: 'dry-run procedural preview',
       // carousel: approved product messages become slides (pipeline tops up to 3 with truthful generic slides)
+      storyboard: req.format === 'REEL_VIDEO' ? (['hook', 'context', 'product', 'benefit'] as const).map((beat, i) => ({ beat, scene: `${req.product.titleEn} — ${beat} shot ${i + 1}, premium commercial photo` })) : [],
       slides: req.format === 'IMAGE_CAROUSEL' ? msgs.slice(0, 4).map((m, i) => ({ title: `${title} ${i + 1}`.slice(0, 40), body: m.slice(0, 200) })) : [],
     };
     return { brief, model: 'dry-run', usage: { inputTokens: 0, outputTokens: 0 } };

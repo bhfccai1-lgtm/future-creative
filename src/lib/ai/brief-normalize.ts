@@ -5,7 +5,7 @@
  * - Lists are capped (hashtags, slides).
  * Content rules (claims, phones, spelling…) are still enforced later by QC — this only fixes length/shape.
  */
-export const BRIEF_LIMITS = { idea: 400, ideaKey: 120, audience: 200, occasion: 120, sceneDescription: 1500, headline: 60, badge: 24, supportingCopy: 110, cta: 30, caption: 1800, styleNotes: 400, hashtag: 40, hashtags: 12, slideTitle: 60, slideBody: 220, slides: 5 } as const;
+export const BRIEF_LIMITS = { idea: 400, ideaKey: 120, audience: 200, occasion: 120, sceneDescription: 1500, headline: 60, badge: 24, supportingCopy: 110, cta: 30, caption: 1800, styleNotes: 400, hashtag: 40, hashtags: 12, slideTitle: 60, slideBody: 220, slides: 5, shot: 600, shots: 4 } as const;
 
 export function fitText(s: unknown, max: number): string {
   const t = String(s ?? '').replace(/\s+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
@@ -41,6 +41,10 @@ export function normalizeBrief(raw: unknown, defaultCta: string): { brief: Recor
   }
   if (Array.isArray(b.slides)) {
     b.slides = (b.slides as { title?: unknown; body?: unknown }[]).slice(0, L.slides).map((s) => ({ title: fitText(s?.title, L.slideTitle), body: fitText(s?.body, L.slideBody) }));
+  }
+  if (Array.isArray(b.storyboard)) {
+    const BEATS = ['hook', 'context', 'product', 'benefit'];
+    b.storyboard = (b.storyboard as { beat?: unknown; scene?: unknown }[]).filter((x) => BEATS.includes(String(x?.beat)) && String(x?.scene ?? '').trim()).slice(0, L.shots).map((x) => ({ beat: String(x.beat), scene: fitText(x.scene, L.shot) }));
   }
   return { brief: b, adjusted };
 }

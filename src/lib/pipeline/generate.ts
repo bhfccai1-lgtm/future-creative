@@ -254,11 +254,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       'Third shot of the same product: being used naturally in a lifestyle setting.',
       'Fourth shot of the same product: wide establishing shot in its real environment.',
     ];
+    // the idea's own storyboard (hook → context → product → benefit); generic angles only as a fallback
+    const story = (brief.storyboard ?? []).filter((x) => x.scene.trim());
+    const shotFor = (i: number) => (story[i]?.scene ? `${story[i].scene} Same product as the first shot: ${brief!.sceneDescription.slice(0, 300)}` : `${brief!.sceneDescription} ${SHOTS[(i - 1) % SHOTS.length]}`);
     const extraScenes: { png: Buffer; model: string }[] = [];
     for (let i = 1; i < sceneCount; i++) {
       await assertBudget(s, estimateImageCost(s, imgQuality));
       extraScenes.push(await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(`${brief!.sceneDescription} ${SHOTS[(i - 1) % SHOTS.length]}`, creativeStyle), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(`${shotFor(i)}`, creativeStyle, { lighting: lightingP, concept: conceptP }), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         return img;
       }));
@@ -317,7 +320,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           let script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });
           try {
             if (provider.writeVoiceover) {
-              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr } }, s.ai.textModel);
+              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr } }, s.ai.textModel);
               if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: w.model, kind: 'text', inputTokens: w.usage.inputTokens, outputTokens: w.usage.outputTokens, costUsd: estimateTextCost(s, w.usage.inputTokens, w.usage.outputTokens) });
               script = sanitizeScript(w.script, maxWords) ?? script; // rule-breaking script → verified copy instead
             }

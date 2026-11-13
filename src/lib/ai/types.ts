@@ -15,13 +15,15 @@ export const CreativeBriefSchema = z.object({
   styleNotes: z.string().max(400),
   /** Carousel only: 3–4 teaching/benefit slides; empty for other formats. */
   slides: z.array(z.object({ title: z.string().max(60), body: z.string().max(220) })).max(5).default([]),
+  /** Reel only: the shot-by-shot story (hook → context → product → benefit); empty for other formats. */
+  storyboard: z.array(z.object({ beat: z.enum(['hook', 'context', 'product', 'benefit']), scene: z.string().max(600) })).max(4).default([]),
 });
 export type CreativeBriefOut = z.infer<typeof CreativeBriefSchema>;
 
 /** JSON schema for OpenAI structured outputs (strict mode — all fields required). */
 export const CreativeBriefJsonSchema = {
   type: 'object', additionalProperties: false,
-  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'badge', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes', 'slides'],
+  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'badge', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes', 'slides', 'storyboard'],
   properties: {
     idea: { type: 'string', description: 'One-sentence advertising concept, in English' },
     ideaKey: { type: 'string', description: 'short kebab-case English key summarising the concept angle, e.g. "mug-morning-ritual-gift"' },
@@ -36,6 +38,7 @@ export const CreativeBriefJsonSchema = {
     hashtags: { type: 'array', items: { type: 'string' }, description: '8-12 hashtags, each starting with #: local reach + niche product + occasion + 1-2 English' },
     styleNotes: { type: 'string' },
     slides: { type: 'array', description: 'ONLY when format is IMAGE_CAROUSEL: 3-4 swipeable slides in the target language that teach or help (ideas, use-cases, how to choose, how to order) — title max 5 words, body max 20 words, no prices/times/promises/phone numbers. For every other format return [].', items: { type: 'object', additionalProperties: false, required: ['title', 'body'], properties: { title: { type: 'string' }, body: { type: 'string' } } } },
+    storyboard: { type: 'array', description: 'ONLY when format is REEL_VIDEO: 3-4 shots IN ORDER — hook (the scroll-stopping first frame), context (the moment/person it is for), product (the SAME product being used or revealed, close detail), benefit (the result/emotion). Each scene is an English photo brief of the same hero product with its own setting/angle; no text, letters, logos or people\'s faces as the focus. For every other format return [].', items: { type: 'object', additionalProperties: false, required: ['beat', 'scene'], properties: { beat: { type: 'string', enum: ['hook', 'context', 'product', 'benefit'] }, scene: { type: 'string' } } } },
   },
 } as const;
 
@@ -75,6 +78,8 @@ export interface VoiceoverRequest {
   language: string; persona: string; seconds: number; maxWords: number;
   copy: { headline: string; badge?: string | null; support?: string | null; cta?: string | null; caption?: string | null };
   product: { titleEn: string; titleAr: string };
+  /** the reel's shots in order (beat: scene) — the voice-over follows them */
+  storyboard?: string[];
 }
 
 export interface AiProvider {

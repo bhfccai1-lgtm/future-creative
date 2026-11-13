@@ -71,6 +71,11 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
                 <div><dt className="text-slate-500">الفكرة</dt><dd>{ad.brief.idea}</dd></div>
                 <div><dt className="text-slate-500">الجمهور / المناسبة</dt><dd>{ad.brief.audience} / {ad.brief.occasion}</dd></div>
                 <div className="md:col-span-2"><dt className="text-slate-500">وصف المشهد (للنموذج)</dt><dd className="ltr text-xs">{ad.brief.sceneDescription}</dd></div>
+                {(((ad.brief.rawJson as { storyboard?: { beat: string; scene: string }[] } | null)?.storyboard) ?? []).length > 0 && (
+                  <div className="md:col-span-2"><dt className="text-slate-500">🎬 القصة المصورة للريلز</dt>
+                    <dd><ol className="mt-1 space-y-1">{((ad.brief.rawJson as { storyboard: { beat: string; scene: string }[] }).storyboard).map((x, i) => (
+                      <li key={i} className="flex gap-2 text-xs"><span className="shrink-0 rounded bg-navy-800 px-2 py-0.5 font-bold text-white">{i + 1}. {({ hook: 'الافتتاحية', context: 'الموقف', product: 'المنتج', benefit: 'الفائدة' } as Record<string, string>)[x.beat] ?? x.beat}</span><span className="ltr">{x.scene}</span></li>))}</ol></dd></div>
+                )}
                 <div className="md:col-span-2"><dt className="text-slate-500">النص المرافق</dt><dd className="whitespace-pre-wrap">{ad.caption}</dd></div>
                 {directionSummaryAr((ad.brief.rawJson as { direction?: Direction } | null)?.direction).map(([k, val]) => (
                   <div key={k}><dt className="text-slate-500">{k}</dt><dd>{val}</dd></div>
