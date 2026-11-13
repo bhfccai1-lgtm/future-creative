@@ -1,12 +1,12 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Lightbulb, Repeat, LayoutDashboard, Users, PlusCircle, Sparkles, Package, Images, CalendarClock, CheckSquare, CalendarDays, History, BarChart3, AlertTriangle, BadgeCheck, Bot, PlugZap, LogOut, FileBarChart, Stethoscope, Swords, PartyPopper } from 'lucide-react';
+import { Rocket, Lightbulb, Repeat, LayoutDashboard, Users, PlusCircle, Sparkles, Package, Images, CalendarClock, CheckSquare, CalendarDays, History, BarChart3, AlertTriangle, BadgeCheck, Bot, PlugZap, LogOut, FileBarChart, Stethoscope, Swords, PartyPopper } from 'lucide-react';
 import { cn } from './ui';
 import { apiCall } from '@/lib/client/api';
 
 export const NAV = [
-  ['/', 'لوحة التحكم', LayoutDashboard], ['/accounts', 'الحسابات الاجتماعية', Users], ['/create', 'إنشاء تصميم جديد', PlusCircle], ['/ideas', 'بنك الأفكار', Lightbulb],
+  ['/', 'لوحة التحكم', LayoutDashboard], ['/setup', 'مركز التفعيل', Rocket], ['/accounts', 'الحسابات الاجتماعية', Users], ['/create', 'إنشاء تصميم جديد', PlusCircle], ['/ideas', 'بنك الأفكار', Lightbulb],
   ['/ai-designer', 'مصمم الإعلانات AI', Sparkles], ['/products', 'المنتجات والخدمات', Package], ['/library', 'مكتبة التصاميم', Images],
   ['/campaigns', 'الحملات المتكررة', Repeat], ['/schedule', 'جدول النشر الآلي', CalendarClock], ['/approvals', 'طابور الموافقات', CheckSquare], ['/calendar', 'التقويم', CalendarDays], ['/occasions', 'تقويم المناسبات', PartyPopper],
   ['/posts', 'سجل المنشورات', History], ['/analytics', 'تحليلات الأداء', BarChart3], ['/reports', 'التقارير والتجارب', FileBarChart], ['/competitors', 'تحليل المنافسين', Swords], ['/alerts', 'الأخطاء والتنبيهات', AlertTriangle], ['/diagnostics', 'تشخيص النظام', Stethoscope],

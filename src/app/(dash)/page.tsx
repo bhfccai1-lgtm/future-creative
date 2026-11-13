@@ -6,6 +6,7 @@ import { estimateAdCost, monthToDateSpend } from '@/lib/ai/cost';
 import { Card, PageHeader, Stat, buttonVariants } from '@/components/ui';
 import { StateBadge, PLATFORM_AR } from '@/components/state-badge';
 import { ActionButton } from '@/components/action-button';
+import { setupChecklist } from '@/lib/ops/setup-checklist';
 
 export default async function Dashboard() {
   const s = await getSettings();
@@ -25,6 +26,7 @@ export default async function Dashboard() {
     prisma.socialAccount.findMany({ include: { _count: { select: { advertisements: true } }, jobs: { where: { state: 'PUBLISHED' }, select: { id: true } } }, orderBy: { createdAt: 'asc' }, take: 20 }),
   ]);
   const newIdeas = await prisma.idea.count({ where: { status: 'NEW' } });
+  const setup = await setupChecklist();
   const next = [nextJob?.scheduledFor, nextAcc?.nextPublishAt].filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime())[0];
   const budgetPct = spend / Math.max(0.01, s.ai.monthlyBudgetUsd);
   return (
@@ -36,6 +38,16 @@ export default async function Dashboard() {
             ? <ActionButton url="/api/automation" body={{ action: 'stop' }} label="إيقاف النشر الآلي" variant="outline" size="lg" />
             : <ActionButton url="/api/automation" body={{ action: 'start' }} label="تشغيل النشر الآلي" variant="success" size="lg" confirm="سيبدأ المجدول بالعمل كل ساعة للحسابات المفعّلة فقط. متابعة؟" />}
         </>} />
+      {setup.next && (
+        <Link href="/setup" className="mb-5 flex items-center gap-3 rounded-2xl border-2 border-navy-200 bg-white p-4 hover:shadow-sm">
+          <div className="flex-1">
+            <div className="text-xs font-bold text-slate-500">🚀 مركز التفعيل — {setup.done} من {setup.total} مفعّلة</div>
+            <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gold-500" style={{ width: `${Math.round((setup.done / setup.total) * 100)}%` }} /></div>
+            <div className="mt-2 text-sm font-bold text-navy-900">التالي: {setup.next.title}</div>
+          </div>
+          <span className="text-2xl text-navy-700" aria-hidden>←</span>
+        </Link>
+      )}
       {(pending > 0 || failed > 0 || newIdeas > 0) && (
         <div className="mb-5">
           <div className="mb-2 text-sm font-extrabold text-navy-800">يحتاج قرارك الآن</div>
