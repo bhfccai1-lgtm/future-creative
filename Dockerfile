@@ -18,6 +18,10 @@ RUN npx prisma generate && npm run build
 
 FROM base AS runtime
 ENV NODE_ENV=production
+# version shown in the dashboard and /api/health (set by scripts/update.sh)
+ARG GIT_SHA=dev
+ARG BUILD_TIME=
+ENV APP_VERSION=$GIT_SHA APP_BUILD_TIME=$BUILD_TIME
 RUN groupadd -r app && useradd -r -g app -d /app app
 COPY --from=build --chown=app:app /app /app
 RUN mkdir -p /data/media && chown -R app:app /data

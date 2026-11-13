@@ -47,7 +47,7 @@ Follow `docs/ar/ADMIN_GUIDE_AR.md` and `docs/PRODUCTION_CHECKLIST.md`: logo, the
 |---|---|
 | Logs | `docker compose logs -f worker` / `web` |
 | Restart worker (safe; recovery runs on start) | `docker compose restart worker` |
-| Upgrade | `git pull && docker compose up -d --build` (migrations run automatically through the `migrate` service) |
+| Upgrade | `bash scripts/update.sh` — pulls, builds while the old version keeps running, switches only if the build succeeds, waits for the health check and rolls back automatically if needed (migrations run through the `migrate` service). Check the ✓ on the commit in GitHub Actions first. |
 | Backup (DB + media) | `./scripts/backup.sh`; add to cron, e.g. `15 2 * * * cd /opt/future-creative && ./scripts/backup.sh >> backups/cron.log 2>&1` |
 | Restore | `./scripts/restore.sh backups/<timestamp>` (asks for confirmation, then overwrites) |
 | Off-site copy | sync `backups/` to external storage, e.g. `rclone` to S3 or Google Drive |

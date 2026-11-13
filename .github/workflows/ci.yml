@@ -1,0 +1,26 @@
+# Every push is checked exactly like the server's Docker build (clean `npm ci`), so a broken update
+# is caught here — not on the server. Green ✓ on the commit = safe to run `bash scripts/update.sh`.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Production build (same as the Docker image, includes lint)
+        run: npm run build

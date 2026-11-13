@@ -7,5 +7,5 @@ export async function GET() {
   try { await prisma.$queryRaw`SELECT 1`; checks.db = 'ok'; } catch { checks.db = 'down'; }
   try { checks.redis = (await redis().ping()) === 'PONG' ? 'ok' : 'down'; } catch { checks.redis = 'down'; }
   const ok = Object.values(checks).every((v) => v === 'ok');
-  return NextResponse.json({ ok, checks }, { status: ok ? 200 : 503 });
+  return NextResponse.json({ ok, checks, version: process.env.APP_VERSION ?? 'dev', builtAt: process.env.APP_BUILD_TIME || null }, { status: ok ? 200 : 503 });
 }

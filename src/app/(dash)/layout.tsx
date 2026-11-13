@@ -22,7 +22,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           <span className="font-bold text-slate-500">وضع النشر:</span><Badge tone={s.publishingMode === 'AUTONOMOUS' ? 'red' : 'navy'}>{MODE_AR[s.publishingMode]}</Badge>
           <span className="font-bold text-slate-500">النشر الآلي:</span><Badge tone={s.autoPublishGlobal ? 'green' : 'slate'}>{s.autoPublishGlobal ? 'يعمل' : 'متوقف'}</Badge>
           <span className="font-bold text-slate-500">الذكاء الاصطناعي:</span><Badge tone={s.ai.dryRun ? 'amber' : openai.configured ? 'green' : 'red'}>{s.ai.dryRun ? 'وضع التجربة (بدون API)' : openai.configured ? 'OpenAI مباشر' : 'OpenAI غير مُعدّ'}</Badge>
-          <span className="mr-auto text-slate-400">توقيت البحرين (Asia/Bahrain)</span>
+          <span className="mr-auto text-slate-400">توقيت البحرين (Asia/Bahrain) · <span className="ltr" title="رقم إصدار النظام — أرسله عند طلب الدعم">الإصدار {process.env.APP_VERSION ?? 'dev'}{process.env.APP_BUILD_TIME ? ` · ${process.env.APP_BUILD_TIME}` : ''}</span></span>
         </header>
         <main className="mx-auto max-w-7xl p-6">{children}</main>
       </div>
