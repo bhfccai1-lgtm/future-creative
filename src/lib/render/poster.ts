@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { FORMAT_SIZE } from './templates';
 import { renderText, type RenderedText } from './text';
 import type { Lang } from './fonts';
 import type { ComposeInput, ComposeResult, LayerManifest, PlacedLayer } from './compose';
@@ -176,19 +177,37 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
 }
 
 export const AI_POSTER_KEY = 'ai-poster';
-const AI_H = 1620; // 1024×1536 (2:3) → 1080×1620, no cropping of AI-drawn text
-const BAND = H - AI_H; // 300 px verified band
+/**
+ * Full-AI poster geometry per output height. The AI design is never cropped:
+ * story/reel 1080×1920 ← 2:3 image (1080×1620 + 300 band); feed/carousel 1080×1350 and square 1080×1080 ← 1:1 image
+ * fitted whole (the sides are filled with a soft blurred copy) above a 280 px verified band.
+ */
+export function aiPosterGeometry(h: number) {
+  if (h === 1920) return { H: 1920, artH: 1620, fit: 'cover' as const, cta: 34, label: 142, phone: 210, divider: 130 };
+  return { H: h, artH: h - 280, fit: 'contain' as const, cta: 24, label: 128, phone: 192, divider: 118 };
+}
+/** The image size to request from the model for a full-AI poster of this format height. */
+export const aiPosterImageSize = (h: number): '1024x1536' | '1024x1024' => (h === 1920 ? '1024x1536' : '1024x1024');
 
 /** Background for the full-AI poster: the AI design untouched on top + verified navy band below + soft logo backdrop. */
-export async function buildAiPosterBackground(poster: Buffer): Promise<Buffer> {
-  const art = await sharp(poster).resize(W, AI_H, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
+export async function buildAiPosterBackground(poster: Buffer, height = 1920): Promise<Buffer> {
+  const g = aiPosterGeometry(height), H = g.H, AI_H = g.artH;
+  let art: Buffer;
+  if (g.fit === 'cover') art = await sharp(poster).resize(W, AI_H, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
+  else {
+    // whole design, no crop: centred, the side bands are a soft blurred extension of the same image
+    const side = Math.min(W, AI_H);
+    const fill = await sharp(poster).resize(W, AI_H, { fit: 'cover' }).blur(30).modulate({ brightness: 0.75 }).removeAlpha().png().toBuffer();
+    const main = await sharp(poster).resize(side, side, { fit: 'contain', background: NAVY }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
+    art = await sharp(fill).composite([{ input: main, left: Math.round((W - side) / 2), top: Math.round((AI_H - side) / 2) }]).png().toBuffer();
+  }
   const band = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>
       <linearGradient id="pb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}"/><stop offset="1" stop-color="${NAVY}"/></linearGradient>${goldGrad('gg')}${goldLine('gl')}
       <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.45"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></radialGradient></defs>
     <ellipse cx="${W / 2}" cy="120" rx="360" ry="150" fill="url(#lg)"/>
     <path d="M0 ${AI_H + 26} Q ${W / 2} ${AI_H - 30} ${W} ${AI_H + 26} L ${W} ${H} L 0 ${H} Z" fill="url(#pb)"/>
     <path d="M0 ${AI_H + 26} Q ${W / 2} ${AI_H - 30} ${W} ${AI_H + 26}" fill="none" stroke="url(#gg)" stroke-width="8"/>
-    <rect x="${W / 2 - 1}" y="${AI_H + 130}" width="2" height="150" fill="url(#gl)" opacity="0.8"/>
+    <rect x="${W / 2 - 1}" y="${AI_H + g.divider}" width="2" height="${H - AI_H - g.divider - 20}" fill="url(#gl)" opacity="0.8"/>
     <rect x="0" y="${H - 10}" width="${W}" height="10" fill="url(#gg)"/>
   </svg>`;
   return sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
@@ -201,16 +220,19 @@ export async function buildAiPosterBackground(poster: Buffer): Promise<Buffer> {
  */
 export async function composeAiPoster(input: ComposeInput): Promise<ComposeResult> {
   const lang = input.lang;
-  const background = await buildAiPosterBackground(input.scene);
+  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h), H = g.H, AI_H = g.artH;
+  const background = await buildAiPosterBackground(input.scene, H);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
-  const lb = { x: 300, y: 22, w: 480, h: 190 };
+  // logo inside the top zone the model was told to keep empty (14% of the design)
+  const lbh = H === 1920 ? 190 : Math.round(Math.min(W, AI_H) * 0.1), lbw = Math.round(lbh * 480 / 190);
+  const lb = { x: Math.round((W - lbw) / 2), y: H === 1920 ? 22 : 20, w: lbw, h: lbh };
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
   layers.push(place('logo', logoPng, lb.x + (lb.w - lm.width!) / 2, lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
 
   // CTA
-  const cw = 620, chh = 96, cy = AI_H + 34;
+  const cw = 620, chh = 96, cy = AI_H + g.cta;
   const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: 58, minSize: 28, boxW: cw - 170, boxH: 80, maxLines: 1 });
   const cart = `<g transform="translate(${lang === 'ar' ? 46 : cw - 116} 16) scale(0.66)" fill="none" stroke="${NAVY}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">${CART}</g>`;
   const csvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${chh}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${cw - 4}" height="${chh - 4}" rx="${(chh - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="4"/><rect x="14" y="8" width="${cw - 28}" height="${chh * 0.36}" rx="${chh * 0.18}" fill="#fff" opacity="0.28"/>${cart}</svg>`;
@@ -228,15 +250,14 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
     const pinX = lang === 'ar' ? pw - 56 : 14;
     const psvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${(ph - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="3"/><g transform="translate(${pinX} 8) scale(0.44)" fill="${NAVY}">${PIN}</g></svg>`;
     const lpng = await sharp(await svgPng(psvg)).composite([{ input: lt.png, left: Math.round(lang === 'ar' ? (pw - 56 - lt.width) / 2 + 4 : 56 + (pw - 56 - lt.width) / 2 - 4), top: Math.round((ph - lt.height) / 2) }]).png().toBuffer();
-    layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lpng, cx - pw / 2, AI_H + 142, pw, ph, { x: Math.round(cx - pw / 2), y: AI_H + 142, w: pw, h: ph }, lt, c.label, NAVY, true));
+    layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lpng, cx - pw / 2, AI_H + g.label, pw, ph, { x: Math.round(cx - pw / 2), y: AI_H + g.label, w: pw, h: ph }, lt, c.label, NAVY, true));
     const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 70, minSize: 44, boxW: 320, boxH: 80, maxLines: 1, ltr: true });
     const iconD = 66, gap = 14, rw = Math.round(iconD + gap + nt.width), rh = Math.max(iconD, nt.height);
     const icon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${iconD}" height="${iconD}"><defs>${goldGrad('g')}</defs><circle cx="${iconD / 2}" cy="${iconD / 2}" r="${iconD / 2 - 2}" fill="url(#g)"/><g transform="translate(15 15) scale(0.36)" fill="${NAVY}">${PHONE}</g></svg>`);
     const ppng = await sharp({ create: { width: rw, height: rh, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
       .composite([{ input: icon, left: 0, top: Math.round((rh - iconD) / 2) }, { input: nt.png, left: iconD + gap, top: Math.round((rh - nt.height) / 2) }]).png().toBuffer();
-    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - rw / 2, AI_H + 210, rw, rh, { x: Math.round(cx - col / 2 + 20), y: AI_H + 210, w: Math.round(col - 40), h: 80 }, { ...nt, fits: nt.fits && rw <= col - 30 }, c.phone, WHITE));
+    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - rw / 2, AI_H + g.phone, rw, rh, { x: Math.round(cx - col / 2 + 20), y: AI_H + g.phone, w: Math.round(col - 40), h: 80 }, { ...nt, fits: nt.fits && rw <= col - 30 }, c.phone, WHITE));
   }
-  void BAND;
 
   const png = await sharp(background).composite(layers.map((l) => ({ input: l.png, left: l.left, top: l.top }))).png().toBuffer();
   const manifest: LayerManifest = {

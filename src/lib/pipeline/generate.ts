@@ -21,7 +21,8 @@ import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
 import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
-import { TEMPLATES } from '../render/templates';
+import { TEMPLATES, FORMAT_SIZE } from '../render/templates';
+import { aiPosterImageSize } from '../render/poster';
 import { renderReel } from '../video/reel';
 import { runQualityChecks, type QcReport } from '../qc';
 import { sha256 } from '../crypto';
@@ -127,8 +128,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       auto.push('designStyle');
     }
     if (dir.renderMode === 'auto') {
-      // auto-publishing accounts need verified system text (ai_full always needs a human); otherwise the full AI poster for vertical formats
-      dir.renderMode = account.autonomousAuthorized || !(format === 'IMAGE_STORY' || format === 'REEL_VIDEO') ? 'layered' : 'ai_full';
+      // the full AI poster for every format (spell-checked and re-drawn automatically). Exceptions: Veo reels animate a
+      // clean product scene, and auto-publishing accounts while the owner still wants to approve full-AI designs by hand
+      const veoReel = format === 'REEL_VIDEO' && (dir.videoEngine ?? s.ai.video.engine) === 'veo';
+      dir.renderMode = veoReel || (account.autonomousAuthorized && s.ai.aiFullRequiresApproval) ? 'layered' : 'ai_full';
       auto.push('renderMode');
     }
     p = { ...p, direction: { ...dir, autoPicked: auto } };
@@ -144,7 +147,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const creativeStyle = (style?.prompt ?? s.ai.creativeStyle) + (palette ? ` Colour story: ${palette.decor}.` : '');
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
   const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
-  const aiFull = d.renderMode === 'ai_full' && (format === 'IMAGE_STORY' || format === 'REEL_VIDEO');
+  const aiFull = d.renderMode === 'ai_full';
+  const posterSize = aiPosterImageSize(FORMAT_SIZE[format].h);
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
   const formal = /business|corporate|b2b|شركات/i.test(`${account.name} ${account.handle ?? ''} ${account.businessCategory ?? ''}`);
@@ -207,14 +211,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     await assertBudget(s, estimateImageCost(s, imgQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP })
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, aspect: posterSize === '1024x1024' ? 'square' : 'portrait' })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
       const n = !provider.isDryRun && provider.judgeImages ? s.ai.bestOf : 1;
       const candidates: Awaited<ReturnType<typeof provider.generateScene>>[] = [];
       for (let k = 0; k < n; k++) {
         if (k > 0) await assertBudget(s, estimateImageCost(s, imgQuality));
-        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}${k ? `-c${k}` : ''}` }));
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: aiFull ? posterSize : '1024x1536', seedHint: `${ad.id}${k ? `-c${k}` : ''}` }));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         candidates.push(img);
       }
@@ -235,7 +239,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           await assertBudget(s, estimateImageCost(s, imgQuality));
           const wrong = [...new Set(checks.flatMap((c) => c?.missing ?? []))];
           const fix = `${prompt}\nSPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.`;
-          const img = await retrying(s.ai.maxRetries, () => provider.generateScene(fix, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-fix${r}` }));
+          const img = await retrying(s.ai.maxRetries, () => provider.generateScene(fix, { model: s.ai.imageModel, quality: imgQuality, size: posterSize, seedHint: `${ad.id}-fix${r}` }));
           await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
           candidates.push(img); checks.push(await spell(img));
         }
@@ -299,7 +303,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Carousel: teaching slides + save/CTA slide (same theme, product backdrop, contacts on every slide) ──
     let carousel: Awaited<ReturnType<typeof renderCarousel>> | null = null;
-    if (format === 'IMAGE_CAROUSEL') carousel = await renderCarousel(composed, scene.png, normaliseSlides(brief.slides, lang), lang);
+    if (format === 'IMAGE_CAROUSEL') carousel = await renderCarousel(composed, scene.png, normaliseSlides(brief.slides, lang), lang, { photos: !aiFull });
 
     // ── Step 11: format (real video for Reels) ──
     let video: Awaited<ReturnType<typeof renderReel>> | null = null;

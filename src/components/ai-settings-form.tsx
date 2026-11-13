@@ -30,8 +30,8 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div className="grid gap-3 rounded-lg border p-3 md:col-span-3 md:grid-cols-2">
           <div className="md:col-span-2 text-sm font-extrabold text-navy-800">تصاميم النشر الآلي (الجدولة، الحملات، n8n)</div>
           <div><label className="label">طريقة التصميم</label><select className="input" value={v.autoRenderMode ?? 'auto'} onChange={(e) => setV({ ...v, autoRenderMode: e.target.value })}>
-            <option value="auto">تلقائي (موصى به) — ملصق كامل احترافي للستوري والريلز في حسابات الموافقة، ونص مضمون للحسابات الذاتية</option>
-            <option value="ai_full">ملصق كامل بالذكاء الاصطناعي دائمًا (يحتاج موافقتك)</option>
+            <option value="auto">تلقائي (موصى به) — ملصق كامل بالذكاء الاصطناعي لكل الصيغ مع تدقيق إملائي وإعادة رسم تلقائية (ريلز Veo بطبقات)</option>
+            <option value="ai_full">ملصق كامل بالذكاء الاصطناعي دائمًا</option>
             <option value="layered">قالب بطبقات ونص مضمون 100% دائمًا</option></select></div>
           <div><label className="label">أسلوب التصميم</label><select className="input" value={v.autoDesignStyle ?? 'fc_signature'} onChange={(e) => setV({ ...v, autoDesignStyle: e.target.value })}>
             <option value="fc_signature">توقيع المطبعة الإعلاني (من نماذجك) — ألوان الخلفية تتغير حسب المناسبة والجمهور والمنتج</option>

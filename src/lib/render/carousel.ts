@@ -48,7 +48,9 @@ const centreLeft = (w: number) => Math.round((W - w) / 2);
  * Text goes through the same Pango/HarfBuzz renderer as the posters (correct Arabic & Malayalam);
  * any text that cannot fit or has missing glyphs is reported in `problems` → QC blocks publishing.
  */
-export async function renderCarousel(c: ComposeResult, scene: Buffer, slidesIn: Slide[], lang: Lang): Promise<CarouselResult> {
+export async function renderCarousel(c: ComposeResult, scene: Buffer, slidesIn: Slide[], lang: Lang, opts: { photos?: boolean } = {}): Promise<CarouselResult> {
+  // full-AI poster: the scene already carries drawn text, so inner slides never crop it (no photo, a bigger number medallion instead)
+  const withPhotos = opts.photos !== false;
   const themeKey = c.themeKey ?? 'navy_gold';
   const th = THEMES[themeKey];
   const bg = await backdrop(scene, themeKey);
@@ -87,7 +89,7 @@ export async function renderCarousel(c: ComposeResult, scene: Buffer, slidesIn: 
     return { svg: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${d}">${parts.join('')}</svg>`), w };
   };
   // each inner slide shows the product from the same AI scene at a different crop/zoom (no extra image cost)
-  const PHOTO_W = 940, PHOTO_TOP = 210, PHOTO_HEIGHTS = [480, 400, 330]; // big photo when the text allows, smaller for long text (e.g. Malayalam)
+  const PHOTO_W = 940, PHOTO_TOP = withPhotos ? 210 : 330, PHOTO_HEIGHTS = withPhotos ? [480, 400, 330] : [0]; // big photo when the text allows, smaller for long text (e.g. Malayalam)
   const sceneMeta = await sharp(scene).metadata();
   const photo = async (k: number, PHOTO_H: number) => {
     const zoom = [1, 0.8, 0.66, 0.9][k % 4];
@@ -120,13 +122,15 @@ export async function renderCarousel(c: ComposeResult, scene: Buffer, slidesIn: 
       if (body.fits && bodyTop + body.height <= swipeTop - 12) break;
     }
     const { h: PHOTO_H, titleTop, lineY, bodyTop, title, body } = lay;
-    const ph = await photo(i, PHOTO_H);
-    comps.push({ input: ph.frame, left: centreLeft(PHOTO_W + 12), top: PHOTO_TOP - 6 });
-    comps.push({ input: ph.rounded, left: centreLeft(PHOTO_W), top: PHOTO_TOP });
+    if (PHOTO_H > 0) {
+      const ph = await photo(i, PHOTO_H);
+      comps.push({ input: ph.frame, left: centreLeft(PHOTO_W + 12), top: PHOTO_TOP - 6 });
+      comps.push({ input: ph.rounded, left: centreLeft(PHOTO_W), top: PHOTO_TOP });
+    }
     // number badge on the photo's top corner
     const num = await renderText({ text: String(i + 2).padStart(2, '0'), lang: 'en', weight: 'extrabold', color: '#0b1730', maxSize: 54, minSize: 40, boxW: 120, boxH: 70, ltr: true });
     const badge = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112"><circle cx="56" cy="56" r="52" fill="${th.accent}"/><circle cx="56" cy="56" r="52" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="4"/></svg>`);
-    const bx = W - centreLeft(PHOTO_W) - 112 + 20, by = PHOTO_TOP - 36;
+    const bx = PHOTO_H > 0 ? W - centreLeft(PHOTO_W) - 112 + 20 : centreLeft(112), by = PHOTO_H > 0 ? PHOTO_TOP - 36 : PHOTO_TOP - 140;
     comps.push({ input: badge, left: bx, top: by });
     comps.push({ input: num.png, left: bx + Math.round((112 - num.width) / 2), top: by + Math.round((112 - num.height) / 2) });
     comps.push({ input: title.png, left: centreLeft(title.width), top: titleTop });

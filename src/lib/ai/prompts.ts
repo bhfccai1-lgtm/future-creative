@@ -94,11 +94,12 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string;
+  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square';
 }) {
   const S = SCRIPT_NAME[p.lang];
+  const square = p.aspect === 'square';
   return [
-    'Design a complete, finished, world-class vertical advertising poster for a premium print shop in Bahrain (portrait 2:3). Luxury Gulf commercial style, professional graphic design, social-media ready.',
+    `Design a complete, finished, world-class ${square ? 'square advertising poster for a premium print shop in Bahrain (square 1:1, Instagram feed post)' : 'vertical advertising poster for a premium print shop in Bahrain (portrait 2:3)'}. Luxury Gulf commercial style, professional graphic design, social-media ready.`,
     p.customPrompt?.trim() ? `Client brief (follow it closely): ${p.customPrompt.trim()}` : `Art direction: ${p.style}`,
     p.layout ? `Layout: ${p.layout}.` : '',
     p.concept ? `Creative concept for the product scene (striking, scroll-stopping, product stays the accurate hero): ${p.concept}.` : '',
@@ -112,8 +113,9 @@ export function fullPosterPrompt(p: {
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',
-    '  • The TOP 14% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).',
+    `  • The TOP ${square ? '13' : '14'}% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).`,
     '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately below the poster).',
+    '  • Spelling and grammar must be flawless: copy every quoted text letter-for-letter, no extra or invented words, no pseudo-letters; keep all text fully inside the poster with comfortable margins, never cut at the edges.',
   ].filter(Boolean).join('\n');
 }
 
