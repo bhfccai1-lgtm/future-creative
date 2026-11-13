@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { normalizeBrief, briefIssueAr } from './brief-normalize';
 import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion, type VoiceoverRequest } from './types';
 import { voiceoverSystemPrompt } from './prompts';
@@ -162,10 +162,16 @@ export class OpenAiProvider implements AiProvider {
     return { best, scores, reason: String(parsed.reason ?? '').slice(0, 300), usage, model: res.model ?? model };
   }
 
-  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024' }) {
+  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; references?: Buffer[] }) {
     let res;
     try {
-      res = await callWithParamFallback(
+      // reference images (real product photo / reference design) → the edits endpoint with several input images
+      if (opts.references?.length) {
+        const image = await Promise.all(opts.references.slice(0, 4).map((b, i) => toFile(b, `reference-${i + 1}.png`, { type: 'image/png' })));
+        res = await callWithParamFallback(
+          { model: opts.model, prompt, image, size: opts.size, quality: opts.quality, n: 1, input_fidelity: 'high' },
+          (p) => this.client.images.edit(p as unknown as OpenAI.Images.ImageEditParamsNonStreaming), warnDrop('image-edit'));
+      } else res = await callWithParamFallback(
         { model: opts.model, prompt, size: opts.size, quality: opts.quality, n: 1 },
         (p) => this.client.images.generate(p as unknown as OpenAI.Images.ImageGenerateParamsNonStreaming), warnDrop('image'));
     } catch (e) { throw mapError(e); }

@@ -114,7 +114,7 @@ export function fullPosterPrompt(p: {
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',
-    `  • The TOP ${p.topPct ?? 15}% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).`,
+    `  • Keep a calm margin of ${p.topPct ?? 5}% at the very top edge (no text touching the edge); do NOT draw any logo or brand name — the official logo is placed in its own band above the poster.`,
     `  • The BOTTOM ${p.bottomPct ?? 20}% must be calm background only (the table/surface, soft bokeh, elegant gold ribbon swooshes rising from the two bottom corners) — no text, no badges, no icons there: the official gold order button and the branch phone panel are overlaid on it.`,
     `  • Keep every drawn text, the badge and the product inside the central ${p.safeWidthPct ?? 80}% of the width (the sides may be trimmed); fill the full frame edge to edge with the scene, no borders or frames around the poster.`,
     '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately).',

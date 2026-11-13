@@ -91,9 +91,9 @@ describe('full AI poster on every format', () => {
       expect(byId('contact:saar:phone')?.text).toBe('33316319');
       expect(byId('contact:salmabad:phone')?.text).toBe('34315316');
       // the logo sits in the empty top zone of the design; CTA and phones inside the band, never on the AI art
-      expect(byId('logo')!.rect.top + byId('logo')!.rect.height).toBeLessThanOrEqual(Math.round(h * (g.topPct + 1) / 100));
+      expect(byId('logo')!.rect.top + byId('logo')!.rect.height).toBeLessThanOrEqual(g.topBand); // own band, never on the AI art
       for (const id of ['cta', 'contact:saar:phone', 'contact:salmabad:phone']) {
-        expect(byId(id)!.rect.top).toBeGreaterThanOrEqual(Math.round(h * (100 - g.bottomPct) / 100));
+        expect(byId(id)!.rect.top).toBeGreaterThanOrEqual(Math.round(g.topBand + (h - g.topBand) * (100 - g.bottomPct) / 100) - 2);
         expect(byId(id)!.rect.top + byId(id)!.rect.height).toBeLessThanOrEqual(h);
       }
       expect(checkLayout(c.manifest).every((x) => x.passed)).toBe(true);

@@ -80,6 +80,10 @@ export const SettingsSchema = z.object({
     autoDesignStyle: z.string().max(40).default('fc_signature'),
     /** owner's standing guidance for every design (taste), e.g. «ألوان فاتحة، بدون وجوه أشخاص» */
     ownerGuidance: z.string().max(600).default(''),
+    /** reference design (storage key): every full-AI poster follows its style/quality level, never its texts */
+    styleReferenceKey: z.string().max(200).nullable().default(null),
+    /** send the real product photo + reference design to the image model (images.edit) */
+    useReferences: z.boolean().default(true),
     /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */
     creativeConcepts: z.boolean().default(true),
     /** full-AI posters: re-draw up to N times when the machine-read text is misspelled/missing (each retry = 1 image + 1 read) */

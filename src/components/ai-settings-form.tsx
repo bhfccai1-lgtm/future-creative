@@ -3,8 +3,9 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
+import { ReferenceUpload } from './reference-upload';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; aiFullTextRetries?: number; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; aiFullTextRetries?: number; styleReferenceKey?: string | null; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -46,6 +47,12 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
           <div className="mb-3"><label className="label">🧭 توجيهك الدائم للمصمم (يُطبَّق على كل تصميم وفكرة)</label>
             <textarea rows={2} maxLength={600} className="input" value={v.ownerGuidance ?? ''} onChange={(e) => setV({ ...v, ownerGuidance: e.target.value })} placeholder="مثال: ألوان فاتحة ومبهجة، بدون وجوه أشخاص، أبرز اسم المنتج بخط كبير، لا خلفيات سوداء" />
             <p className="mt-1 text-xs text-slate-500">ومعه: أسباب رفضك للتصاميم السابقة تُرسل للمصمم تلقائيًا، والأفكار والأساليب التي ترفضها مرارًا تخرج من التناوب.</p></div>
+          <div className="mb-3 rounded-lg bg-gold-300/10 p-3"><label className="label">🖼️ التصميم المرجعي — مستوى الاحتراف المطلوب</label>
+            <div className="flex flex-wrap items-center gap-4">
+              <ReferenceUpload endpoint="/api/settings/ai/style-reference" current={v.styleReferenceKey ?? null} label="التصميم المرجعي" />
+              <p className="max-w-md text-xs text-slate-600">ارفع تصميمًا يعجبك (مثل إعلان الكوب). كل ملصق كامل بالذكاء الاصطناعي يتبع أسلوبه وفخامته وجودته — دون نسخ نصوصه أو منتجه. وارفع <b>صورة حقيقية لكل منتج</b> من صفحة «المنتجات والخدمات» ليُرسم منتجك كما هو.</p>
+            </div>
+            <label className="mt-2 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.useReferences ?? true} onChange={(e) => setV({ ...v, useReferences: e.target.checked })} /><span>استخدام الصور المرجعية عند التوليد (صورة المنتج + التصميم المرجعي)</span></label></div>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.creativeConcepts ?? true} onChange={(e) => setV({ ...v, creativeConcepts: e.target.checked })} /><span><b>فكرة بصرية مميزة لكل تصميم</b> — 10 أفكار إبداعية تتناوب لكل حساب: طبيعة صامتة فاخرة، المنتج يطفو، لحظة حركة مجمّدة، عالم مصغّر، ورق مقصوص، لون جريء وأشكال هندسية، تراث خليجي فاخر، لقطة سينمائية، مجسّمات ناعمة، مفاجأة الحجم. حسابات الشركات تأخذ الأفكار الرسمية فقط.</span></label>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div><label className="label">المخرج الفني: عدد الصور المولدة لكل تصميم</label>

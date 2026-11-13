@@ -275,6 +275,7 @@ model Product {
   active            Boolean         @default(true)
   performanceScore  Float           @default(0) // rolling, updated from verified results
   priceFrom         Float? // starting price in the business currency — only used by the WhatsApp/Meta catalogue
+  photoKey  String? // real product photo — reference for the AI (the product is drawn as it really is)
   catalogDescription String? // customer-facing description for the catalogue / public product page
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt

@@ -38,7 +38,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
           <button className="rounded-lg bg-navy-800 px-4 text-sm font-bold text-white">بحث</button>
         </form>
         <p className="mb-2 text-xs text-slate-500">{total} نتيجة · صفحة {page} من {pages}</p>
-        <ProductTable rows={products.map((p) => ({ id: p.id, titleAr: p.titleAr, titleEn: p.titleEn, category: p.category.nameAr, active: p.active, ads: p._count.advertisements, perf: p.performanceScore, price: p.priceFrom }))} />
+        <ProductTable rows={products.map((p) => ({ id: p.id, titleAr: p.titleAr, titleEn: p.titleEn, category: p.category.nameAr, active: p.active, ads: p._count.advertisements, perf: p.performanceScore, price: p.priceFrom, photoKey: p.photoKey }))} />
         {pages > 1 && <div className="mt-3 flex flex-wrap gap-1 text-sm">{page > 1 && <Link className="rounded border px-3 py-1" href={link(page - 1)}>السابق</Link>}{Array.from({ length: Math.min(pages, 10) }, (_, i) => { const n = pages <= 10 ? i + 1 : Math.min(pages, Math.max(1, page - 4) + i); return <Link key={n} className={`rounded border px-3 py-1 ${n === page ? 'bg-navy-800 text-white' : ''}`} href={link(n)}>{n}</Link>; })}{page < pages && <Link className="rounded border px-3 py-1" href={link(page + 1)}>التالي</Link>}</div>}
       </Card>
       <Card title="إضافة منتج أو خدمة واحدة"><ProductForm categories={categories} /></Card>

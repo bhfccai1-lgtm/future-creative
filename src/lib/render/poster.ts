@@ -184,9 +184,10 @@ export const AI_POSTER_KEY = 'ai-poster';
  * the bottom zone as plain background, where the system overlays the gold order button and the glass phone panel.
  */
 export function aiPosterGeometry(h: number) {
-  if (h === 1920) return { H: 1920, topPct: 15, bottomPct: 20, safeWidthPct: 80, logo: { w: 430, h: 230, y: 34 }, cta: { w: 600, h: 104, y: 1574 }, panel: { y: 1700, h: 186 } };
-  if (h === 1350) return { H: 1350, topPct: 14, bottomPct: 24, safeWidthPct: 74, logo: { w: 330, h: 160, y: 22 }, cta: { w: 540, h: 92, y: 1036 }, panel: { y: 1146, h: 182 } };
-  return { H: h, topPct: 13, bottomPct: 28, safeWidthPct: 90, logo: { w: 280, h: 124, y: 18 }, cta: { w: 500, h: 84, y: h - 280 }, panel: { y: h - 182, h: 166 } };
+  // topBand: the logo's own zone (a soft extension of the art) — the AI design starts BELOW it, so the logo can never cover drawn text
+  if (h === 1920) return { H: 1920, topBand: 290, topPct: 4, bottomPct: 22, safeWidthPct: 86, logo: { w: 440, h: 230, y: 30 }, cta: { w: 600, h: 104, y: 1574 }, panel: { y: 1700, h: 186 } };
+  if (h === 1350) return { H: 1350, topBand: 220, topPct: 4, bottomPct: 26, safeWidthPct: 90, logo: { w: 380, h: 180, y: 20 }, cta: { w: 540, h: 90, y: 1058 }, panel: { y: 1162, h: 168 } };
+  return { H: h, topBand: 150, topPct: 9, bottomPct: 30, safeWidthPct: 92, logo: { w: 260, h: 120, y: 18 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
 }
 /** The image size to request from the model for a full-AI poster of this format height. */
 export const aiPosterImageSize = (h: number): '1024x1536' | '1024x1024' => (h === 1920 ? '1024x1536' : '1024x1024');
@@ -201,8 +202,23 @@ const ribbons = (H: number) => {
 
 /** Background for the full-AI poster: the AI design full-bleed + soft legibility gradient + glass phone panel + ribbons. */
 export async function buildAiPosterBackground(poster: Buffer, height = 1920): Promise<Buffer> {
-  const g = aiPosterGeometry(height), H = g.H;
-  const art = await sharp(poster).resize(W, H, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
+  const g = aiPosterGeometry(height), H = g.H, artH = H - g.topBand;
+  // never crop the design when the aspect differs a lot (square output from a 1:1 image): fit it whole on a blurred fill
+  const crop = Math.abs(W / artH - 1) > 0.1 && Math.abs(W / artH - 2 / 3) > 0.05;
+  const soft = (w: number, h: number, blur: number, b: number) => sharp(poster).resize(w, h, { fit: 'fill' }).blur(blur).modulate({ brightness: b }).removeAlpha().png().toBuffer();
+  let art: Buffer;
+  if (!crop) art = await sharp(poster).resize(W, artH, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
+  else {
+    const side = Math.min(W, artH);
+    const main = await sharp(poster).resize(side, side, { fit: 'cover' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
+    art = await sharp(await soft(W, artH, 34, 0.7)).composite([{ input: main, left: Math.round((W - side) / 2), top: Math.round((artH - side) / 2) }]).png().toBuffer();
+  }
+  // logo band: the whole design's colours, heavily blurred and deepened (no ghost of drawn text) — one continuous image
+  const edge = await soft(W, g.topBand + 60, 48, 0.55);
+  const feather = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${artH}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${(36 / artH).toFixed(4)}" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="${W}" height="${artH}" fill="url(#f)"/></svg>`);
+  const artFeathered = await sharp(art).ensureAlpha().composite([{ input: feather, blend: 'dest-in' }]).png().toBuffer();
+  const base = await sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
+    .composite([{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
   const zone = g.cta.y - 60, px = 70, pw = W - 2 * px;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
@@ -216,7 +232,7 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920): Pr
     <rect x="${px + 24}" y="${g.panel.y + 6}" width="${pw - 48}" height="2" fill="#ffffff" opacity="0.18"/>
     <rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>
   </svg>`;
-  return sharp(art).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
+  return sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
 }
 
 /**
