@@ -22,7 +22,7 @@ import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
 import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
 import { TEMPLATES, FORMAT_SIZE } from '../render/templates';
-import { aiPosterImageSize } from '../render/poster';
+import { aiPosterImageSize, aiPosterGeometry } from '../render/poster';
 import { renderReel } from '../video/reel';
 import { runQualityChecks, type QcReport } from '../qc';
 import { sha256 } from '../crypto';
@@ -211,7 +211,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     await assertBudget(s, estimateImageCost(s, imgQuality));
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const prompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, aspect: posterSize === '1024x1024' ? 'square' : 'portrait' })
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
       const n = !provider.isDryRun && provider.judgeImages ? s.ai.bestOf : 1;

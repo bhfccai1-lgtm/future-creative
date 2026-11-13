@@ -94,7 +94,7 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square';
+  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; topPct?: number; bottomPct?: number; safeWidthPct?: number;
 }) {
   const S = SCRIPT_NAME[p.lang];
   const square = p.aspect === 'square';
@@ -113,8 +113,10 @@ export function fullPosterPrompt(p: {
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',
-    `  • The TOP ${square ? '13' : '14'}% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).`,
-    '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately below the poster).',
+    `  • The TOP ${p.topPct ?? 15}% of the poster must stay empty: only softly blurred background — no text, no logo, no shapes (the official logo is placed there later).`,
+    `  • The BOTTOM ${p.bottomPct ?? 20}% must be calm background only (the table/surface, soft bokeh, elegant gold ribbon swooshes rising from the two bottom corners) — no text, no badges, no icons there: the official gold order button and the branch phone panel are overlaid on it.`,
+    `  • Keep every drawn text, the badge and the product inside the central ${p.safeWidthPct ?? 80}% of the width (the sides may be trimmed); fill the full frame edge to edge with the scene, no borders or frames around the poster.`,
+    '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately).',
     '  • Spelling and grammar must be flawless: copy every quoted text letter-for-letter, no extra or invented words, no pseudo-letters; keep all text fully inside the poster with comfortable margins, never cut at the edges.',
   ].filter(Boolean).join('\n');
 }
