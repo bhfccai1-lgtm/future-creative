@@ -32,10 +32,9 @@ export async function loadReference(key: string | null | undefined): Promise<Buf
 }
 
 /** Prompt lines that tell the image model how to use each attached reference (order = attachment order). */
-export function referencePrompt(refs: { role: 'product' | 'style' }[]): string {
-  if (!refs.length) return '';
-  const lines = refs.map((r, i) => r.role === 'product'
-    ? `Reference image ${i + 1} is a REAL PHOTO of the product: show exactly this product (same shape, colours, material, proportions and printed details) as the hero — do not redesign or replace it; restage it in the new scene with the new lighting.`
-    : `Reference image ${i + 1} is a REFERENCE DESIGN: match its level of quality, visual style, richness, composition rhythm and finish — but do NOT copy its texts, logo, phone numbers, product or exact layout.`);
-  return ['ATTACHED REFERENCES:', ...lines].join('\n');
+export function referencePrompt(refs: { role: 'product' }[], styleBrief = ''): string {
+  const style = styleBrief.trim() ? `TARGET DESIGN STYLE (from the owner's reference — follow this look and quality level; the content stays exactly as specified above): ${styleBrief.trim()}` : '';
+  if (!refs.length) return style;
+  const lines = refs.map((_r, i) => `Reference image ${i + 1} is a REAL PHOTO of the product: show exactly this product (same shape, colours, material and proportions) as the hero — do not redesign or replace it; restage it in the new scene with the new lighting. Ignore any text or background in the photo.`);
+  return ['ATTACHED REFERENCES:', ...lines, style].filter(Boolean).join('\n');
 }

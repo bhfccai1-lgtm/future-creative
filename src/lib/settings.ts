@@ -82,6 +82,8 @@ export const SettingsSchema = z.object({
     ownerGuidance: z.string().max(600).default(''),
     /** reference design (storage key): every full-AI poster follows its style/quality level, never its texts */
     styleReferenceKey: z.string().max(200).nullable().default(null),
+    /** the reference design's style in words (made once at upload) — this text, never the image, guides each poster */
+    styleReferenceBrief: z.string().max(1500).default(''),
     /** send the real product photo + reference design to the image model (images.edit) */
     useReferences: z.boolean().default(true),
     /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */

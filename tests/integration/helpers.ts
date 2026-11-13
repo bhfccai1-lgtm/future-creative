@@ -67,6 +67,7 @@ export class FakeAiProvider implements AiProvider {
     const r = await this.inner.generateBrief(req);
     return { ...r, model: 'fake-text', usage: { inputTokens: 2000, outputTokens: 600 } };
   }
+  async describeStyle() { return { text: 'Deep navy and glossy gold palette, warm cinematic light, gold 3D lettering.', usage: { inputTokens: 900, outputTokens: 120 }, model: 'fake-vision' }; }
   async readText() { return { text: this.readTextResult ?? '', usage: { inputTokens: 300, outputTokens: 40 }, model: 'fake-vision' }; }
   async suggestIdeas(req: BriefRequest, model: string, count: number) { return { ...(await this.inner.suggestIdeas(req, model, count)), model: 'fake-text' }; }
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string; references?: Buffer[] }) {

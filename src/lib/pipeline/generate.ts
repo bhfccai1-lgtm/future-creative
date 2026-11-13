@@ -4,7 +4,7 @@ import { autoChannelsFor } from '../publishing/channels';
 import { tasteProfile, withoutBlocked } from '../creative/taste';
 import { aiTextCheck } from '../qc';
 import { prisma } from '../db';
-import { getSecret, getSettings, type Settings } from '../settings';
+import { getSecret, getSettings, updateSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
 import { fakeSpeech, openaiSpeak, sanitizeScript, voiceScript, estimateTtsCost } from '../audio/tts';
 import { autoPersona, autoVoiceLang, personaOf, voiceLangOf, wordsFor } from '../audio/voices';
@@ -213,14 +213,13 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // a phrase the owner put in quotes («…» / "…") must appear letter-for-letter (e.g. printed on the mug) and is spell-checked too
     const quoted = quotedPhrases(d.idea);
     // reference images: the REAL product photo (every mode) + the owner's reference design (full-AI posters)
-    const refs: { role: 'product' | 'style'; png: Buffer }[] = [];
+    const refs: { role: 'product'; png: Buffer }[] = [];
     if (s.ai.useReferences && !provider.isDryRun) {
       const photo = await loadReference(product.photoKey);
       if (photo) refs.push({ role: 'product', png: photo });
-      const styleRef = aiFull ? await loadReference(s.ai.styleReferenceKey) : null;
-      if (styleRef) refs.push({ role: 'style', png: styleRef });
     }
-    const refPrompt = referencePrompt(refs), references = refs.length ? refs.map((r) => r.png) : undefined;
+    const styleBrief = s.ai.useReferences && aiFull ? await styleBriefFor(s, provider) : '';
+    const refPrompt = referencePrompt(refs, styleBrief), references = refs.length ? refs.map((r) => r.png) : undefined;
     const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
         ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
@@ -274,9 +273,9 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       }
     });
 
-    if (artDirector || textCheck || refs.length) {
+    if (artDirector || textCheck || refs.length || styleBrief) {
       const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(refs.length ? { references: refs.map((r) => r.role) } : {}) } as Prisma.InputJsonValue } });
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(refs.length || styleBrief ? { references: [...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])] } : {}) } as Prisma.InputJsonValue } });
     }
 
     // ── Step 9: deterministic layered composition ──
@@ -575,4 +574,18 @@ export function quotedPhrases(idea?: string | null): string[] {
   const out: string[] = [];
   for (const m of idea.matchAll(/[«"“]([^«»"“”]{3,120})[»"”]/g)) { const t = m[1].trim().replace(/[.،,]+$/, ''); if (t && !out.includes(t)) out.push(t); }
   return out.slice(0, 2);
+}
+
+/** The reference design's style as words; made once (also for designs uploaded before this existed) and cached in settings. */
+async function styleBriefFor(s: Settings, provider: AiProvider): Promise<string> {
+  if (s.ai.styleReferenceBrief.trim() || !s.ai.styleReferenceKey || provider.isDryRun || !provider.describeStyle) return s.ai.styleReferenceBrief;
+  const png = await loadReference(s.ai.styleReferenceKey);
+  if (!png) return '';
+  try {
+    await assertBudget(s, estimateTextCost(s, 1500, 250));
+    const r = await provider.describeStyle(png, s.ai.textModel);
+    await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
+    if (r.text) await updateSettings((x) => ({ ...x, ai: { ...x.ai, styleReferenceBrief: r.text } }));
+    return r.text;
+  } catch { return ''; }
 }

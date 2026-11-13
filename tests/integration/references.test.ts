@@ -17,11 +17,11 @@ describe('reference images (real product photo + reference design)', () => {
     expect([m.format, m.width, m.height]).toEqual(['png', 1536, 1024]);
     await expect(normaliseReference(Buffer.from('not an image'))).rejects.toThrow(/ليس صورة/);
     await expect(normaliseReference(await photo(100, 100))).rejects.toThrow(/صغيرة/);
-    expect(referencePrompt([{ role: 'product' }, { role: 'style' }])).toMatch(/Reference image 1 is a REAL PHOTO[\s\S]*Reference image 2 is a REFERENCE DESIGN[\s\S]*do NOT copy its texts/);
+    expect(referencePrompt([{ role: 'product' }], 'navy and gold')).toMatch(/Reference image 1 is a REAL PHOTO[\s\S]*TARGET DESIGN STYLE[\s\S]*navy and gold/);
     expect(referencePrompt([])).toBe('');
   });
 
-  it('sends the product photo + reference design to the image model and records it on the ad', async () => {
+  it('sends the product photo as an image and the reference design ONLY as a style description (no content leak)', async () => {
     const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
     const product = await prisma.product.findFirstOrThrow({ where: { active: true } });
     await prisma.product.update({ where: { id: product.id }, data: { photoKey: await saveReference('product', product.id, await photo()) } });
@@ -29,14 +29,16 @@ describe('reference images (real product photo + reference design)', () => {
     await updateSettings((s) => ({ ...s, ai: { ...s.ai, styleReferenceKey: styleKey } }));
     const p = new FakeAiProvider(); setAiProviderOverride(p);
     const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', productId: product.id, format: 'IMAGE_STORY', direction: { renderMode: 'ai_full' } });
-    expect(p.lastReferences).toHaveLength(2);
-    expect(p.lastScenePrompt).toMatch(/REAL PHOTO of the product[\s\S]*REFERENCE DESIGN/);
+    expect(p.lastReferences).toHaveLength(1); // the product photo only — the reference design image is never sent
+    expect(p.lastScenePrompt).toMatch(/REAL PHOTO of the product[\s\S]*TARGET DESIGN STYLE[\s\S]*glossy gold/);
+    expect((await import('@/lib/settings').then((m) => m.getSettings())).ai.styleReferenceBrief).toMatch(/glossy gold/); // described once, cached
     const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } });
     expect((ad.options as { references?: string[] }).references).toEqual(['product', 'style']);
 
-    // layered mode: only the product photo (the reference design is for full-AI posters)
+    // layered mode: the product photo, no poster style
     const r2 = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', productId: product.id, format: 'IMAGE_STORY', direction: { renderMode: 'layered' } });
     expect(p.lastReferences).toHaveLength(1);
+    expect(p.lastScenePrompt).not.toMatch(/TARGET DESIGN STYLE/);
     expect(r2.advertisement.id).not.toBe(r.advertisement.id);
 
     // owner can switch references off

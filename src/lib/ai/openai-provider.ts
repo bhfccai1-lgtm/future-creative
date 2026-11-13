@@ -141,6 +141,20 @@ export class OpenAiProvider implements AiProvider {
     return { text: res.choices[0]?.message?.content ?? '', model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async describeStyle(png: Buffer, model: string) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: 'You are an art director. Describe ONLY the visual style of this advertising poster so a designer can reach the same quality level for a DIFFERENT product: colour palette, lighting and mood, background treatment, typography style (weight, effects such as gold 3D, outlines, shadows), badge/ribbon/frame shapes, decorative elements, layout rhythm and hierarchy, finish and level of detail. Do NOT mention or describe the product, any objects, people, characters, illustrations, written words, slogans, logos, brand names or phone numbers. 80–120 words, English, one paragraph.' },
+          { type: 'image_url' as const, image_url: { url: `data:image/png;base64,${png.toString('base64')}` } },
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('describe-style'));
+    } catch (e) { throw mapError(e); }
+    return { text: (res.choices[0]?.message?.content ?? '').trim().slice(0, 1200), model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
   async judgeImages(images: Buffer[], brief: string, model: string) {
     let res;
     try {
