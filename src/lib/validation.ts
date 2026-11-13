@@ -19,7 +19,7 @@ export const AccountInput = z.object({
   publishWindowEnd: z.string().regex(/^\d{2}:\d{2}$/),
   timezone: z.string().default('Asia/Bahrain'),
   reelDurationSec: z.number().int().min(6).max(60).default(10),
-  maxDailyAds: z.number().int().min(1).max(48).default(4),
+  maxDailyAds: z.number().int().min(1).max(48).default(10),
   formatStrategy: z.enum(['FIXED', 'GROWTH_MIX']).default('FIXED'),
   formatMix: z.record(z.enum(['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE']), z.number().int().min(0).max(100)).optional(),
 });

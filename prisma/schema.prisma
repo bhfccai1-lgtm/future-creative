@@ -207,7 +207,7 @@ model SocialAccount {
   autonomousAuthorizedBy String?
   nextPublishAt         DateTime?
   lastPublishedAt       DateTime?
-  maxDailyAds           Int              @default(4)
+  maxDailyAds           Int              @default(10)
   paused                Boolean          @default(false) // V8: per-account emergency pause (blocks generation AND submission)
   pausedReason          String?
   pausedAt              DateTime?
