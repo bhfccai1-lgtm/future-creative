@@ -92,6 +92,10 @@ export const SettingsSchema = z.object({
     aiFullTextRetries: z.number().int().min(0).max(3).default(2),
     /** art director: generate N candidate images and keep the best (vision-scored). 1 = off. Each extra candidate costs one image. */
     bestOf: z.number().int().min(1).max(3).default(1),
+    /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */
+    conceptTournament: z.boolean().default(true),
+    /** full-AI text still wrong after the re-draws → re-render the design with system-typeset (verified) Arabic text */
+    verifiedTextFallback: z.boolean().default(true),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),

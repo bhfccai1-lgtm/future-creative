@@ -115,10 +115,16 @@ export function qcVerdict(r: QcReport | null | undefined): QcVerdict {
 export const QC_VERDICT_AR: Record<QcVerdict, string> = { PASS: 'ناجح', NEEDS_REVIEW: 'يحتاج مراجعة', NEEDS_ASSET: 'ينقصه ملف/أصل', REJECTED: 'مرفوض' };
 
 /** Does the text an image model drew match the verified copy? (machine reading; `[?]` marks illegible words) */
-export function aiTextCheck(expected: string[], transcript: string | null | undefined): { ok: boolean; missing: string[]; garbled: number } {
+export function aiTextCheck(expected: string[], transcript: string | null | undefined, allowed: string[] = []): { ok: boolean; missing: string[]; garbled: number; foreign: string[] } {
   const norm = (x: string) => normalizeText(x).replace(/\s+/g, '');
   const t = transcript ?? '';
   const missing = t ? expected.filter((e) => e.trim() && !norm(t).includes(norm(e))) : expected.filter((e) => e.trim());
   const garbled = t ? (t.match(/\[\?\]/g)?.length ?? 0) : 0;
-  return { ok: !!t && missing.length === 0 && garbled === 0, missing, garbled };
+  // foreign text: a drawn line of ≥ 3 words whose words are mostly NOT in the approved copy (e.g. a slogan leaking from another ad)
+  const vocab = new Set([...expected, ...allowed].flatMap((e) => normalizeText(e).split(/\s+/)).filter((w) => w.length > 1));
+  const foreign = t ? t.split(/\n+/).map((l) => l.replace(/\[\?\]/g, '').trim()).filter((l) => {
+    const ws = normalizeText(l).split(/\s+/).filter((w) => w.length > 1);
+    return ws.length >= 3 && ws.filter((w) => !vocab.has(w)).length / ws.length > 0.6;
+  }) : [];
+  return { ok: !!t && missing.length === 0 && garbled === 0 && foreign.length === 0, missing, garbled, foreign };
 }

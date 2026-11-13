@@ -28,14 +28,16 @@ describe('self-correcting full-AI poster', () => {
     const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } });
     expect((ad.options as { aiTextCheck: unknown }).aiTextCheck).toMatchObject({ attempts: 3, passed: true, missing: [] });
   });
-  it('stops at the retry limit and reports what is still wrong (a human decides)', async () => {
+  it('stops at the retry limit, reports what was wrong, and ships system-typeset text instead (STEP 07)', async () => {
     const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
     const p = new Speller(); p.goodFrom = 99; setAiProviderOverride(p);
     await updateSettings((s) => ({ ...s, ai: { ...s.ai, aiFullTextRetries: 1 } }));
     const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_STORY', direction: { renderMode: 'ai_full' } });
-    expect(p.prompts).toHaveLength(2);
+    expect(p.prompts).toHaveLength(3); // poster + 1 correction + the clean scene for verified typeset text
     const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id }, include: { approvals: true } });
     expect((ad.options as { aiTextCheck: { passed: boolean; missing: string[] } }).aiTextCheck.passed).toBe(false);
+    expect((ad.options as { verifiedTextFallback?: boolean }).verifiedTextFallback).toBe(true);
+    expect(ad.templateKey).not.toBe('ai-poster');
     expect(ad.approvals).toHaveLength(1); // never auto-published
   });
   it('layered designs are not affected', async () => {

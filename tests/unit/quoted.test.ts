@@ -15,3 +15,16 @@ describe('quoted phrases from the owner idea', () => {
     expect(p).toContain('"اعتبرني في وضع الطيران!"');
   });
 });
+
+describe('foreign drawn text guard', () => {
+  it('flags a slogan that is not part of the approved copy (leak from another ad)', async () => {
+    const { aiTextCheck } = await import('@/lib/qc');
+    const expected = ['كل تفصيلة تليق', 'باقة صالون', 'بتصميم خاص لك'];
+    const allowed = ['تصاميم مخصصة', 'جودة طباعة عالية', 'مناسبات خاصة', 'هدايا الشركات'];
+    const clean = aiTextCheck(expected, ['كل تفصيلة تليق', 'باقة صالون', 'بتصميم خاص لك', 'تصاميم مخصصة', 'هدايا الشركات'].join('\n'), allowed);
+    expect(clean).toMatchObject({ ok: true, foreign: [] });
+    const leak = aiTextCheck(expected, ['كل تفصيلة تليق', 'باقة صالون', 'بتصميم خاص لك', 'إذا ما صحتني القهوة… اعتبرني في وضع الطيران!'].join('\n'), allowed);
+    expect(leak.ok).toBe(false);
+    expect(leak.foreign[0]).toMatch(/القهوة/);
+  });
+});

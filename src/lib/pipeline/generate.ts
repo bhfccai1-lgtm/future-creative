@@ -24,6 +24,8 @@ import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose
 import { TEMPLATES, FORMAT_SIZE } from '../render/templates';
 import { aiPosterImageSize, aiPosterGeometry } from '../render/poster';
 import { loadReference, referencePrompt } from '../creative/references';
+import { captionIssues } from '../creative/caption-quality';
+import { scoreConcepts, type ConceptScore } from '../creative/concept-select';
 import { renderReel } from '../video/reel';
 import { runQualityChecks, type QcReport } from '../qc';
 import { sha256 } from '../crypto';
@@ -148,7 +150,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const creativeStyle = (style?.prompt ?? s.ai.creativeStyle) + (palette ? ` Colour story: ${palette.decor}.` : '');
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
   const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
-  const aiFull = d.renderMode === 'ai_full';
+  let aiFull = d.renderMode === 'ai_full';
   const posterSize = aiPosterImageSize(FORMAT_SIZE[format].h);
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
@@ -175,6 +177,26 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const history = await recentIdeas(account.id, s.duplicateWindowDays);
     const avoidIdeas = [...history.ideas, ...taste.avoid.ideas];
     const avoidHeadlines = [...history.headlines, ...taste.avoid.headlines];
+    // ── STEP 02: three concepts, the strongest wins (documented rubric in creative/concept-select.ts) ──
+    let conceptSelection: { chosen: string; candidates: ConceptScore[] } | null = null;
+    if (s.ai.conceptTournament && !d.idea?.trim()) {
+      try {
+        if (!provider.isDryRun) await assertBudget(s, estimateTextCost(s, 2000, 600));
+        const r = await provider.suggestIdeas({
+          language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
+          accountName: account.name, businessCategory: account.businessCategory, creativeStyle, defaultCta: ctaFor(business, lang),
+          avoidIdeas, avoidHeadlines, ownerFeedback: taste.feedback, attempt: 0, direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format,
+        }, s.ai.textModel, 3);
+        if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
+        const recentAngles = (await prisma.idea.findMany({ where: { accountId: account.id, status: 'USED' }, orderBy: { createdAt: 'desc' }, take: 10, select: { angle: true } })).map((x) => x.angle).filter((x): x is string => !!x);
+        const ranked = scoreConcepts(r.ideas, { format, formal, history: [...history.ideas, ...history.headlines], recentAngles });
+        const best = ranked[0];
+        if (best && best.total > 0) {
+          conceptSelection = { chosen: best.title, candidates: ranked };
+          p = { ...p, direction: { ...(p.direction ?? {}), idea: [best.title, best.idea].join(' — ').slice(0, 500) } };
+        }
+      } catch { /* proposal failed → the brief writer invents the concept itself, as before */ }
+    }
     let brief: CreativeBriefOut | null = null;
     let ideaFp = '';
     const maxConceptTries = s.ai.maxRetries + 3;
@@ -196,6 +218,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       else { avoidIdeas.unshift(r.brief.ideaKey, r.brief.idea); avoidHeadlines.unshift(r.brief.headline); }
     }
     if (!brief) throw new AppError('NO_UNIQUE_IDEA', 'تعذر إيجاد فكرة إعلانية غير مكررة خلال فترة المنع لهذا الحساب.', 409);
+    // STEP 07 auto-fix: a caption without a call to action gets the official one + the verified branch numbers
+    if (captionIssues(brief.caption, { cta: ctaFor(business, lang), hashtags: brief.hashtags }).some((x) => x.includes('دعوة'))) {
+      brief = { ...brief, caption: `${brief.caption.trim()}\n\n${ctaFor(business, lang)} 📞 ${contactLines(business, lang).map((c) => `${c.label} ${c.phone}`).join(' · ')}` };
+    }
 
     const briefRow = await prisma.creativeBrief.create({
       data: {
@@ -208,7 +234,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Step 7: AI scene (no text, no logo) ──
     let artDirector: { candidates: number; best: number; scores: number[]; reason: string } | null = null;
-    let textCheck: { attempts: number; passed: boolean; missing: string[] } | null = null;
+    let textCheck: { attempts: number; passed: boolean; missing: string[]; foreign?: string[] } | null = null;
     await assertBudget(s, estimateImageCost(s, imgQuality));
     // a phrase the owner put in quotes («…» / "…") must appear letter-for-letter (e.g. printed on the mug) and is spell-checked too
     const quoted = quotedPhrases(d.idea);
@@ -220,7 +246,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     }
     const styleBrief = s.ai.useReferences && aiFull ? await styleBriefFor(s, provider) : '';
     const refPrompt = referencePrompt(refs, styleBrief), references = refs.length ? refs.map((r) => r.png) : undefined;
-    const scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
+    const sceneFirst = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
         ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.brandFeatures[lang] ?? [], sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
@@ -243,14 +269,15 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
             await assertBudget(s, estimateTextCost(s, 1500, 200));
             const rt = await provider.readText!(await sharp(c.png).jpeg({ quality: 85 }).toBuffer(), s.ai.textModel);
             await recordUsage({ jobId, provider: provider.name, model: rt.model, kind: 'text', inputTokens: rt.usage.inputTokens, outputTokens: rt.usage.outputTokens, costUsd: estimateTextCost(s, rt.usage.inputTokens, rt.usage.outputTokens) });
-            return aiTextCheck(expected, rt.text);
+            return aiTextCheck(expected, rt.text, [...(s.brandFeatures[lang] ?? []), product.titleAr, product.titleEn]);
           } catch { return null; } // reading unavailable → no correction loop, QC still asks a human
         };
         const checks = await Promise.all(candidates.map(spell));
         for (let r = 0; r < s.ai.aiFullTextRetries && checks.every((c) => c && !c.ok); r++) {
           await assertBudget(s, estimateImageCost(s, imgQuality));
           const wrong = [...new Set(checks.flatMap((c) => c?.missing ?? []))];
-          const fix = `${prompt}\nSPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.`;
+          const extra = [...new Set(checks.flatMap((c) => c?.foreign ?? []))].slice(0, 4);
+          const fix = `${prompt}\nSPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.${extra.length ? ` REMOVE this text completely — it does not belong to this advertisement (not on the product, not anywhere): ${extra.map((w) => `«${w}»`).join(', ')}.` : ''}`;
           const img = await retrying(s.ai.maxRetries, () => provider.generateScene(fix, { model: s.ai.imageModel, quality: imgQuality, size: posterSize, seedHint: `${ad.id}-fix${r}`, references }));
           await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
           candidates.push(img); checks.push(await spell(img));
@@ -258,7 +285,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         const passing = candidates.filter((_, i) => checks[i]?.ok);
         const fewest = checks.reduce((b, c, i) => ((c?.missing.length ?? 99) < (checks[b]?.missing.length ?? 99) ? i : b), 0);
         pool = passing.length ? passing : [candidates[fewest]];
-        textCheck = { attempts: candidates.length, passed: passing.length > 0, missing: passing.length ? [] : (checks[fewest]?.missing ?? []) };
+        textCheck = { attempts: candidates.length, passed: passing.length > 0, missing: passing.length ? [] : (checks[fewest]?.missing ?? []), ...(passing.length ? {} : { foreign: checks[fewest]?.foreign ?? [] }) };
       }
       if (pool.length === 1) return pool[0];
       try {
@@ -273,9 +300,21 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       }
     });
 
-    if (artDirector || textCheck || refs.length || styleBrief) {
+    // ── STEP 07: drawn text still unverified after the re-draws → never ship it: re-render with system-typeset Arabic ──
+    let textFallback = false;
+    let scene = sceneFirst;
+    if (aiFull && (textCheck as { passed: boolean } | null)?.passed === false && s.ai.verifiedTextFallback) {
+      await assertBudget(s, estimateImageCost(s, imgQuality));
+      scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
+        await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+        return img;
+      });
+      aiFull = false; textFallback = true;
+    }
+    if (artDirector || textCheck || refs.length || styleBrief || conceptSelection || textFallback) {
       const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(refs.length || styleBrief ? { references: [...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])] } : {}) } as Prisma.InputJsonValue } });
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])] } : {}) } as Prisma.InputJsonValue } });
     }
 
     // ── Step 9: deterministic layered composition ──
@@ -404,6 +443,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // Perceptual fingerprint of the AI scene (the part that varies) — the template frame is identical across ads by design.
     const finalHash = await phash(scene.png);
     await put('FINAL', 'final.jpg', jpeg, 'image/jpeg', { width: composed.width, height: composed.height, phash: finalHash });
+    // lossless PNG master next to the published JPEG (STEP 08 export); not a media asset, so publishing is unchanged
+    await storage().put(`${base}/final.png`, composed.png, 'image/png');
     if (video) {
       await put('VIDEO', 'reel.mp4', video.mp4, 'video/mp4', { width: video.probe.width, height: video.probe.height, durationSec: video.probe.durationSec, meta: video.probe as unknown as Prisma.InputJsonValue });
       await put('THUMBNAIL', 'thumb.jpg', video.thumbnail, 'image/jpeg');

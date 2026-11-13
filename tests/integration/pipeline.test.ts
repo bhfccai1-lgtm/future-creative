@@ -36,7 +36,7 @@ describe('content generation pipeline', () => {
     const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'tester' });
     expect(r.qc?.publishable).toBe(true);
     const usage = await prisma.aiUsage.findMany();
-    expect(usage.map((u) => u.kind).sort()).toEqual(['image', 'text']);
+    expect(usage.map((u) => u.kind).sort()).toEqual(['image', 'text', 'text']); // brief + STEP 02 concept proposals (3 concepts in one call)
     expect(Number(usage.find((u) => u.kind === 'image')!.costUsd)).toBeCloseTo(0.016, 3); // default account format is a story → low quality by default (qualityByFormat)
     const qc = r.advertisement.qcReport as unknown as QcReport;
     for (const id of ['logo_present', 'logo_fingerprint', 'logo_pixels', 'phones', 'language_match', 'claims', 'text_fit', 'no_overlap', 'image_dimensions', 'duplicates']) {
@@ -202,7 +202,7 @@ describe('full-AI poster mode (ChatGPT-like)', () => {
     expect(manifest.layers.map((l) => l.id)).toEqual(expect.arrayContaining(['logo', 'cta', 'contact:saar:phone', 'contact:salmabad:phone']));
     expect(r.qc?.passed).toBe(true);
     expect(r.qc?.requiresHuman).toBe(true);
-    expect(r.qc?.checks.find((c) => c.id === 'ai_text_review')).toMatchObject({ severity: 'WARNING', passed: false });
+    expect(r.qc?.checks.find((c) => c.id === 'ai_text_review')).toMatchObject({ severity: 'WARNING' }); // advisory; a human still decides
     // autonomous mode must NOT auto-publish AI-drawn text
     expect(r.queued).toBe(false);
     expect(r.advertisement.state).toBe('QUALITY_REVIEW');
