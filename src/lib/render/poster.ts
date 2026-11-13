@@ -185,9 +185,9 @@ export const AI_POSTER_KEY = 'ai-poster';
  */
 export function aiPosterGeometry(h: number) {
   // topBand: the logo's own zone (a soft extension of the art) — the AI design starts BELOW it, so the logo can never cover drawn text
-  if (h === 1920) return { H: 1920, topBand: 290, topPct: 4, bottomPct: 22, safeWidthPct: 86, logo: { w: 440, h: 230, y: 30 }, cta: { w: 600, h: 104, y: 1574 }, panel: { y: 1700, h: 186 } };
-  if (h === 1350) return { H: 1350, topBand: 220, topPct: 4, bottomPct: 26, safeWidthPct: 90, logo: { w: 380, h: 180, y: 20 }, cta: { w: 540, h: 90, y: 1058 }, panel: { y: 1162, h: 168 } };
-  return { H: h, topBand: 150, topPct: 9, bottomPct: 30, safeWidthPct: 92, logo: { w: 260, h: 120, y: 18 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
+  if (h === 1920) return { H: 1920, topBand: 200, topPct: 3, bottomPct: 34, features: { y: 1418, icon: 96, label: 30 }, safeWidthPct: 86, logo: { w: 420, h: 180, y: 16 }, cta: { w: 600, h: 104, y: 1574 }, panel: { y: 1700, h: 186 } };
+  if (h === 1350) return { H: 1350, topBand: 150, topPct: 3, bottomPct: 40, features: { y: 922, icon: 76, label: 26 }, safeWidthPct: 90, logo: { w: 320, h: 130, y: 16 }, cta: { w: 540, h: 90, y: 1058 }, panel: { y: 1162, h: 168 } };
+  return { H: h, topBand: 118, topPct: 4, bottomPct: 36, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 92, logo: { w: 230, h: 100, y: 16 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
 }
 /** The image size to request from the model for a full-AI poster of this format height. */
 export const aiPosterImageSize = (h: number): '1024x1536' | '1024x1024' => (h === 1920 ? '1024x1536' : '1024x1024');
@@ -215,11 +215,11 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920): Pr
   }
   // logo band: the whole design's colours, heavily blurred and deepened (no ghost of drawn text) — one continuous image
   const edge = await soft(W, g.topBand + 60, 48, 0.55);
-  const feather = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${artH}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${(36 / artH).toFixed(4)}" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="${W}" height="${artH}" fill="url(#f)"/></svg>`);
+  const feather = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${artH}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${(90 / artH).toFixed(4)}" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="${W}" height="${artH}" fill="url(#f)"/></svg>`);
   const artFeathered = await sharp(art).ensureAlpha().composite([{ input: feather, blend: 'dest-in' }]).png().toBuffer();
   const base = await sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
     .composite([{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
-  const zone = g.cta.y - 60, px = 70, pw = W - 2 * px;
+  const zone = (g.features?.y ?? g.cta.y) - 70, px = 70, pw = W - 2 * px;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
       <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}" stop-opacity="0.94"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.96"/></linearGradient>
@@ -228,6 +228,7 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920): Pr
     <ellipse cx="${W / 2}" cy="${g.logo.y + g.logo.h / 2}" rx="${g.logo.w * 0.75}" ry="${g.logo.h * 0.8}" fill="url(#lg)"/>
     <rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>
     ${ribbons(H)}
+    ${g.features ? `<rect x="40" y="${g.features.y - 14}" width="${W - 80}" height="${Math.round(g.features.icon + g.features.label * 1.6 + 26)}" rx="28" fill="${NAVY}" fill-opacity="0.72" stroke="url(#gg)" stroke-opacity="0.55" stroke-width="2"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
     <rect x="${px + 24}" y="${g.panel.y + 6}" width="${pw - 48}" height="2" fill="#ffffff" opacity="0.18"/>
     <rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>
@@ -250,6 +251,24 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
   layers.push(place('logo', logoPng, lb.x + (lb.w - lm.width!) / 2, lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
+
+  // feature row — typeset by the system (verified spelling) in its own row above the order button, never drawn by the AI
+  const feats = ((input as ComposeInput & { features?: string[] }).features ?? []).slice(0, 4);
+  if (g.features && feats.length) {
+    const f = g.features, n = feats.length, colW = (W - 120) / n;
+    const order = lang === 'ar' ? feats.map((_, i) => n - 1 - i) : feats.map((_, i) => i);
+    for (let slot = 0; slot < n; slot++) {
+      const i = order[slot];
+      const cx = 60 + colW * slot + colW / 2, D = f.icon;
+      const icon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${D}" height="${D}" viewBox="0 0 128 128"><defs>${goldGrad('g')}</defs><circle cx="64" cy="64" r="58" fill="${NAVY}" fill-opacity="0.78" stroke="url(#g)" stroke-width="5"/><g transform="translate(32 32) scale(0.64)" fill="none" stroke="#f2cf5b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">${ICONS[ICON_ORDER[i % ICON_ORDER.length]]}</g></svg>`);
+      const lbl = await renderText({ text: feats[i], lang, weight: 'bold', color: '#f6d77a', maxSize: f.label, minSize: 18, boxW: Math.round(colW - 16), boxH: Math.round(f.label * 1.5), maxLines: 1 });
+      const cw = Math.round(colW - 8), ch = D + 8 + lbl.height;
+      const png = await sharp({ create: { width: cw, height: ch, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+        .composite([{ input: icon, left: Math.round((cw - D) / 2), top: 0 }, { input: lbl.png, left: Math.round((cw - lbl.width) / 2), top: D + 8 }]).png().toBuffer();
+      const boxH = g.cta.y - f.y - 8;
+      layers.push(place(`benefit:${i}` as PlacedLayer['id'], png, cx - cw / 2, f.y, cw, ch, { x: Math.round(cx - cw / 2), y: f.y, w: cw, h: boxH }, { ...lbl, fits: lbl.fits && ch <= boxH }, feats[i], '#f6d77a'));
+    }
+  }
 
   // glossy gold order button with a cart and sparkle rays
   const cw = g.cta.w, chh = g.cta.h, cy = g.cta.y, rays = 70, tw = cw + 2 * rays;
