@@ -28,3 +28,15 @@ describe('foreign drawn text guard', () => {
     expect(leak.foreign[0]).toMatch(/القهوة/);
   });
 });
+
+describe('Google archive script generator', () => {
+  it('reads ids from pasted links and fills them into the script (sheet auto-created)', async () => {
+    const { googleIdFrom, appsScriptSource } = await import('@/lib/integrations/google-archive');
+    expect(googleIdFrom('https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUv?usp=sharing', 'folder')).toBe('1AbCdEfGhIjKlMnOpQrStUv');
+    expect(googleIdFrom('https://docs.google.com/spreadsheets/d/1ZyXwVuTsRqPoNmLkJiHgF/edit#gid=0', 'sheet')).toBe('1ZyXwVuTsRqPoNmLkJiHgF');
+    expect(googleIdFrom('not a link', 'folder')).toBeNull();
+    const src = appsScriptSource({ folderId: 'F1234567890abcdef', sheetId: 'S1234567890abcdef', host: 'example.sslip.io' });
+    expect(src).toContain("FOLDER_ID = 'F1234567890abcdef'");
+    expect(src).toContain("insertSheet('published')");
+  });
+});
