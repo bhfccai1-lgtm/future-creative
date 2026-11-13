@@ -13,7 +13,7 @@ import { AppError } from '../errors';
 import { getBusiness, contactLines, ctaFor, locationsOf } from '../business';
 import { loadApprovedLogo } from '../brand/logo';
 import { productAllowed, selectProductForAccount } from '../creative/selector';
-import { getAiProvider } from '../ai';
+import { getAiProvider, getIdeasProvider } from '../ai';
 import { AiProviderError, type AiProvider, type CreativeBriefOut } from '../ai/types';
 import { fullPosterPrompt, scenePrompt } from '../ai/prompts';
 import { qualityFor, assertBudget, estimateAdCost, estimateImageCost, estimateTextCost, recordUsage } from '../ai/cost';
@@ -182,7 +182,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     if (s.ai.conceptTournament && !d.idea?.trim()) {
       try {
         if (!provider.isDryRun) await assertBudget(s, estimateTextCost(s, 2000, 600));
-        const r = await provider.suggestIdeas({
+        const r = await (await getIdeasProvider(s)).suggestIdeas({
           language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
           accountName: account.name, businessCategory: account.businessCategory, creativeStyle, defaultCta: ctaFor(business, lang),
           avoidIdeas, avoidHeadlines, ownerFeedback: taste.feedback, attempt: 0, direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format,

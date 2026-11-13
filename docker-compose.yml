@@ -71,10 +71,27 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/sites:/etc/caddy/sites:ro # optional extra sites written by setup scripts (e.g. scripts/freellm.sh)
       - caddy_data:/data
       - caddy_config:/config
     depends_on: [web]
     restart: unless-stopped
+
+  # Optional FreeLLMAPI (free provider tiers, OpenAI-compatible) — used by the app ONLY for idea suggestions.
+  # Setup: bash scripts/freellm.sh   ·  dashboard: https://ai.${DOMAIN} (behind a password)  ·  app → http://freellmapi:3001/v1
+  freellmapi:
+    image: ghcr.io/tashfeenahmed/freellmapi:v0.9.9 # pinned; no self-update container (it would need the Docker socket)
+    profiles: ["freellm"]
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      ENCRYPTION_KEY: ${FREELLM_ENCRYPTION_KEY:-}
+      FREEAPI_BLOCK_PRIVATE_PROVIDER_URLS: "true" # reachable through Caddy → never proxy to internal addresses
+    volumes: [freellmapi_data:/app/server/data]
+    expose: ["3001"]
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"], interval: 30s, timeout: 5s, retries: 3 }
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
 
   # Optional n8n automation on the SAME server (no extra server): docker compose --profile n8n up -d
   # Editor: https://n8n.${DOMAIN}  ·  talks to the app internally at http://web:3000 (never leaves the server)
@@ -123,4 +140,4 @@ services:
     volumes: [minio:/data]
     restart: unless-stopped
 
-volumes: { pgdata: {}, redisdata: {}, media: {}, caddy_data: {}, caddy_config: {}, minio: {}, n8n_data: {} }
+volumes: { pgdata: {}, redisdata: {}, media: {}, caddy_data: {}, caddy_config: {}, minio: {}, n8n_data: {}, freellmapi_data: {} }

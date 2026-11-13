@@ -26,3 +26,7 @@ n8n.{$DOMAIN} {
 	header -Server
 	reverse_proxy n8n:5678
 }
+
+# Optional extra sites written on the server by setup scripts (e.g. the FreeLLMAPI dashboard from scripts/freellm.sh).
+# A glob that matches no file is allowed, so this is a no-op until a script adds one.
+import /etc/caddy/sites/*.caddy

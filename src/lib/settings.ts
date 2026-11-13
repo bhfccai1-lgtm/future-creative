@@ -94,6 +94,8 @@ export const SettingsSchema = z.object({
     bestOf: z.number().int().min(1).max(3).default(1),
     /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */
     conceptTournament: z.boolean().default(true),
+    /** FreeLLMAPI (self-hosted, free provider tiers) — used ONLY for idea suggestions; copy, poster and text checks stay on OpenAI */
+    freeLlm: z.object({ enabled: z.boolean().default(false), model: z.string().max(120).default('auto') }).default({}),
     /** full-AI text still wrong after the re-draws → re-render the design with system-typeset (verified) Arabic text */
     verifiedTextFallback: z.boolean().default(true),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
@@ -210,7 +212,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

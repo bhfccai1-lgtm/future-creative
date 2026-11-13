@@ -1,7 +1,7 @@
 import type { Idea, SocialAccount } from '@prisma/client';
 import { prisma } from '../db';
 import { getSettings } from '../settings';
-import { getAiProvider } from '../ai';
+import { getAiProvider, getIdeasProvider } from '../ai';
 import { assertBudget, estimateTextCost, recordUsage } from '../ai/cost';
 import { recentIdeas } from '../dedup';
 import { getBusiness, ctaFor } from '../business';
@@ -41,7 +41,7 @@ export async function generateIdeas(accountId: string, opts: { count?: number; p
   const product = opts.productId ? await prisma.product.findFirstOrThrow({ where: { id: opts.productId, active: true } }) : await selectProductForAccount(account);
   if (!product) return [];
   const lang = account.language as Lang;
-  const provider = await getAiProvider(s);
+  const provider = await getIdeasProvider(s);
   if (!provider.isDryRun) await assertBudget(s, estimateTextCost(s, 2500, 900));
   const ctx = await ideaContext(account);
   const prevAngles = (await prisma.idea.findMany({ where: { accountId }, orderBy: { createdAt: 'desc' }, take: 24, select: { angle: true } })).map((x) => x.angle);
