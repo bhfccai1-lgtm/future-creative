@@ -26,8 +26,8 @@ export function Button({ className, variant, size, ...p }: React.ButtonHTMLAttri
 
 export function Card({ className, title, actions, children }: { className?: string; title?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className={cn('card p-5', className)}>
-      {(title || actions) && <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-base font-extrabold text-navy-900">{title}</h2>{actions}</div>}
+    <section className={cn('card min-w-0 overflow-x-auto p-4 sm:p-5', className)}>
+      {(title || actions) && <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-extrabold text-navy-900">{title}</h2>{actions}</div>}
       {children}
     </section>
   );
@@ -54,8 +54,8 @@ export function Stat({ label, value, hint, tone = 'navy' }: { label: string; val
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div><h1 className="text-2xl font-extrabold text-navy-900">{title}</h1>{subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}</div>
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6 sm:gap-4">
+      <div><h1 className="text-xl font-extrabold text-navy-900 sm:text-2xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}</div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
   );

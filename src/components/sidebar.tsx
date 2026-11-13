@@ -5,7 +5,7 @@ import { Lightbulb, Repeat, LayoutDashboard, Users, PlusCircle, Sparkles, Packag
 import { cn } from './ui';
 import { apiCall } from '@/lib/client/api';
 
-const NAV = [
+export const NAV = [
   ['/', 'لوحة التحكم', LayoutDashboard], ['/accounts', 'الحسابات الاجتماعية', Users], ['/create', 'إنشاء تصميم جديد', PlusCircle], ['/ideas', 'بنك الأفكار', Lightbulb],
   ['/ai-designer', 'مصمم الإعلانات AI', Sparkles], ['/products', 'المنتجات والخدمات', Package], ['/library', 'مكتبة التصاميم', Images],
   ['/campaigns', 'الحملات المتكررة', Repeat], ['/schedule', 'جدول النشر الآلي', CalendarClock], ['/approvals', 'طابور الموافقات', CheckSquare], ['/calendar', 'التقويم', CalendarDays], ['/occasions', 'تقويم المناسبات', PartyPopper],
@@ -38,13 +38,5 @@ export function Sidebar({ email, pendingApprovals, unread }: { email: string; pe
         <button className="flex items-center gap-2 text-slate-300 hover:text-white" onClick={async () => { await apiCall('/api/auth/logout', { method: 'POST' }); location.href = '/login'; }}><LogOut size={14} /> تسجيل الخروج</button>
       </div>
     </aside>
-  );
-}
-
-export function MobileNav() {
-  return (
-    <nav className="flex gap-2 overflow-x-auto border-b bg-navy-950 px-3 py-2 lg:hidden">
-      {NAV.map(([href, label]) => <Link key={href} href={href} className="whitespace-nowrap rounded px-2 py-1 text-xs text-slate-200">{label}</Link>)}
-    </nav>
   );
 }

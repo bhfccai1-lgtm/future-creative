@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
 
@@ -11,7 +11,12 @@ const cairo = localFont({
   variable: '--font-cairo',
 });
 
-export const metadata: Metadata = { title: 'نظام إبداع المستقبل للنشر الذكي', description: 'FUTURE CREATIVE AI PUBLISHING SYSTEM' };
+export const metadata: Metadata = {
+  title: 'نظام إبداع المستقبل للنشر الذكي', description: 'FUTURE CREATIVE AI PUBLISHING SYSTEM',
+  appleWebApp: { capable: true, title: 'إبداع المستقبل', statusBarStyle: 'black-translucent' },
+  icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
+};
+export const viewport: Viewport = { themeColor: '#0b1730', width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

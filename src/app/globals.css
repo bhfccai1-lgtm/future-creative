@@ -3,10 +3,16 @@
 @tailwind utilities;
 
 :root { color-scheme: light; }
-body { @apply bg-slate-50 text-slate-900 antialiased; }
+body { @apply bg-slate-50 text-slate-900 antialiased; overflow-x: clip; -webkit-tap-highlight-color: transparent; }
 .ltr { direction: ltr; unicode-bidi: isolate; }
 .card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm; }
 .input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-navy-600 focus:ring-2 focus:ring-gold-400/40; }
 .label { @apply mb-1 block text-sm font-semibold text-slate-700; }
 .th { @apply px-3 py-2 text-right text-xs font-bold text-slate-500; }
 .td { @apply px-3 py-2 text-sm align-top; }
+
+/* phones: 16px inputs (iOS does not zoom the page on focus), comfortable tap targets */
+@media (max-width: 639px) {
+  .input { font-size: 16px; padding-top: 0.6rem; padding-bottom: 0.6rem; }
+  .td, .th { padding-left: 0.5rem; padding-right: 0.5rem; }
+}

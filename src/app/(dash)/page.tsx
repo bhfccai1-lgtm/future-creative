@@ -24,6 +24,7 @@ export default async function Dashboard() {
     prisma.advertisement.findMany({ orderBy: { createdAt: 'desc' }, take: 8, include: { account: true, product: true } }),
     prisma.socialAccount.findMany({ include: { _count: { select: { advertisements: true } }, jobs: { where: { state: 'PUBLISHED' }, select: { id: true } } }, orderBy: { createdAt: 'asc' }, take: 20 }),
   ]);
+  const newIdeas = await prisma.idea.count({ where: { status: 'NEW' } });
   const next = [nextJob?.scheduledFor, nextAcc?.nextPublishAt].filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime())[0];
   const budgetPct = spend / Math.max(0.01, s.ai.monthlyBudgetUsd);
   return (
@@ -35,6 +36,16 @@ export default async function Dashboard() {
             ? <ActionButton url="/api/automation" body={{ action: 'stop' }} label="إيقاف النشر الآلي" variant="outline" size="lg" />
             : <ActionButton url="/api/automation" body={{ action: 'start' }} label="تشغيل النشر الآلي" variant="success" size="lg" confirm="سيبدأ المجدول بالعمل كل ساعة للحسابات المفعّلة فقط. متابعة؟" />}
         </>} />
+      {(pending > 0 || failed > 0 || newIdeas > 0) && (
+        <div className="mb-5">
+          <div className="mb-2 text-sm font-extrabold text-navy-800">يحتاج قرارك الآن</div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {pending > 0 && <Link href="/approvals" className="flex items-center justify-between rounded-2xl border-2 border-gold-400 bg-gold-300/20 p-4"><span className="font-bold text-navy-900">✋ تصاميم بانتظار موافقتك</span><span className="rounded-full bg-gold-500 px-3 py-1 text-lg font-extrabold text-navy-950">{pending}</span></Link>}
+            {failed > 0 && <Link href="/posts?state=FAILED" className="flex items-center justify-between rounded-2xl border-2 border-red-200 bg-red-50 p-4"><span className="font-bold text-red-900">⚠️ نشر فاشل أو غير مؤكد</span><span className="rounded-full bg-red-600 px-3 py-1 text-lg font-extrabold text-white">{failed}</span></Link>}
+            {newIdeas > 0 && <Link href="/ideas" className="flex items-center justify-between rounded-2xl border-2 border-sky-200 bg-sky-50 p-4"><span className="font-bold text-sky-900">💡 أفكار جديدة للمراجعة</span><span className="rounded-full bg-sky-600 px-3 py-1 text-lg font-extrabold text-white">{newIdeas}</span></Link>}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-5">
         <Stat label="الحسابات المرتبطة (مؤكدة)" value={connected} />
         <Stat label="حسابات النشر الآلي النشطة" value={autoAccounts} tone="gold" />
@@ -48,12 +59,12 @@ export default async function Dashboard() {
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card title="أحدث الإعلانات">
-          <table className="w-full"><tbody>
+          <div className="overflow-x-auto"><table className="w-full"><tbody>
             {recent.map((a) => (
               <tr key={a.id} className="border-t"><td className="td"><Link className="font-bold text-navy-700 hover:underline" href={`/ads/${a.id}`}>{a.headline ?? a.product.titleAr}</Link><div className="text-xs text-slate-500">{a.account.name} · {fmtLocal(a.createdAt)}</div></td><td className="td"><StateBadge state={a.state} /></td></tr>
             ))}
             {!recent.length && <tr><td className="td text-slate-500">لا توجد إعلانات بعد.</td></tr>}
-          </tbody></table>
+          </tbody></table></div>
         </Card>
         <Card title="أداء الحسابات">
           <table className="w-full"><thead><tr><th className="th">الحساب</th><th className="th">المنصة</th><th className="th">الإعلانات</th><th className="th">منشور مؤكد</th></tr></thead><tbody>
