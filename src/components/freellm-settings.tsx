@@ -10,15 +10,16 @@ export function FreeLlmSettings({ domain }: { domain?: string }) {
   const [key, setKey] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tested, setTested] = useState(false);
   useEffect(() => { apiCall<State>('/api/settings/freellm').then(setV).catch(() => null); }, []);
   if (!v) return null;
   const save = async (patch: Partial<State> & { apiKey?: string }) => {
     setBusy(true); setMsg(null);
-    try { const r = await apiCall<State>('/api/settings/freellm', { method: 'PUT', body: { enabled: v.enabled, model: v.model, ...patch } }); setV(r); setKey(''); setMsg({ ok: true, t: 'تم الحفظ ✓' }); }
+    try { const r = await apiCall<State>('/api/settings/freellm', { method: 'PUT', body: { enabled: v.enabled, model: v.model, ...patch } }); setV(r); setKey(''); setTested(false); setMsg({ ok: true, t: 'تم الحفظ ✓ — اختبر التوليد قبل التفعيل.' }); }
     catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
     setBusy(false);
   };
-  const test = async () => { setBusy(true); try { const r = await apiCall<{ ok: boolean; message: string }>('/api/settings/freellm', { method: 'POST' }); setMsg({ ok: r.ok, t: r.message }); } catch (x) { setMsg({ ok: false, t: (x as Error).message }); } setBusy(false); };
+  const test = async () => { setBusy(true); setTested(false); try { const r = await apiCall<{ ok: boolean; message: string }>('/api/settings/freellm', { method: 'POST' }); setTested(r.ok); setMsg({ ok: r.ok, t: r.message }); } catch (x) { setMsg({ ok: false, t: (x as Error).message }); } setBusy(false); };
   return (
     <div className="space-y-3 text-sm">
       <p className="text-slate-600">يجمع الحصص المجانية لعشرات مزوّدي الذكاء الاصطناعي. يُستخدم هنا <b>لاقتراح الأفكار فقط</b> (بنك الأفكار، «اقترح 3 أفكار»، اختيار المفهوم). النص الإعلاني والملصق وتدقيق النص تبقى على OpenAI لضمان الجودة. إذا فشل يعود تلقائيًا إلى OpenAI.</p>
@@ -28,15 +29,16 @@ export function FreeLlmSettings({ domain }: { domain?: string }) {
         <li>انسخ «المفتاح الموحد» من صفحة Keys والصقه هنا، ثم «اختبار الاتصال» ثم فعّل.</li>
       </ol>
       <div className="grid gap-3 md:grid-cols-3">
-        <div><label className="label">المفتاح الموحد {v.key.configured ? '✓ محفوظ (مشفّر)' : ''}</label><input className="input ltr" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={v.key.configured ? '•••••• (اتركه فارغًا للإبقاء)' : 'freellmapi-…'} /></div>
-        <div><label className="label">النموذج</label><input className="input ltr" value={v.model} onChange={(e) => setV({ ...v, model: e.target.value })} /><p className="mt-1 text-xs text-slate-500">auto = يختار الموجّه الأفضل المتاح</p></div>
-        <label className="flex items-center gap-2 self-end pb-2"><input type="checkbox" checked={v.enabled} onChange={(e) => setV({ ...v, enabled: e.target.checked })} /><b>تفعيل للأفكار</b></label>
+        <div><label className="label">المفتاح الموحد {v.key.configured ? '✓ محفوظ (مشفّر)' : ''}</label><input className="input ltr" type="password" autoComplete="off" value={key} onChange={(e) => { setKey(e.target.value); setTested(false); }} placeholder={v.key.configured ? '•••••• (اتركه فارغًا للإبقاء)' : 'freellmapi-…'} /></div>
+        <div><label className="label">النموذج</label><input className="input ltr" value={v.model} onChange={(e) => { setV({ ...v, model: e.target.value }); setTested(false); }} /><p className="mt-1 text-xs text-slate-500">auto = يختار الموجّه الأفضل المتاح</p></div>
+        <label className="flex items-center gap-2 self-end pb-2"><input type="checkbox" checked={v.enabled} disabled={!v.key.configured || (!v.enabled && !tested)} onChange={(e) => setV({ ...v, enabled: e.target.checked })} /><b>تفعيل للأفكار</b></label>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button type="button" disabled={busy} onClick={() => save({ apiKey: key || undefined })}>حفظ</Button>
-        <Button type="button" variant="outline" disabled={busy} onClick={test}>اختبار الاتصال</Button>
+        <Button type="button" variant="outline" disabled={busy || !v.key.configured} onClick={test}>اختبار توليد فعلي</Button>
         {v.key.configured && <Button type="button" variant="ghost" disabled={busy} onClick={() => { if (confirm('حذف المفتاح؟')) void save({ apiKey: '__delete__', enabled: false }); }}>حذف المفتاح</Button>}
       </div>
+      <p className="text-xs text-slate-500">احفظ المفتاح أولًا، ثم اختبر التوليد الفعلي قبل التفعيل. الاختبار يرسل طلبًا قصيرًا وقد يستهلك جزءًا من حصة المزوّد.</p>
       {msg && <p role="status" className={`rounded p-2 text-sm ${msg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.t}</p>}
     </div>
   );
