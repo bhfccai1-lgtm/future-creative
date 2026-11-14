@@ -122,6 +122,12 @@ export class MetricoolAdapter implements PublishingAdapter {
     return parsePostMetrics(r.json, kind);
   }
 
+  /** Read-only follower count (latest value of the account followers timeline). Tolerant: returns null when unavailable. */
+  async followers(brandId: string, from: Date, to: Date, timezone = 'Asia/Bahrain', network = 'instagram'): Promise<number | null> {
+    const q = { blogId: brandId, from: localDateTime(from, timezone).slice(0, 19), to: localDateTime(to, timezone).slice(0, 19), timezone, metric: 'followers', network, subject: 'account' };
+    try { return lastFollowerValue(await this.req('GET', '/v2/analytics/timelines', q)); } catch { return null; }
+  }
+
   /** Read-only competitor analytics; returns raw rows for the tolerant parsers in lib/competitors. */
   async listCompetitorRows(brandId: string, from: Date, to: Date, timezone = 'Asia/Bahrain') {
     const q = { blogId: brandId, from: localDateTime(from, timezone).slice(0, 19), to: localDateTime(to, timezone).slice(0, 19), timezone };
@@ -302,4 +308,26 @@ export class MetricoolAdapter implements PublishingAdapter {
     });
     return match ? { providerPostId: String(match.id), raw: match } : null;
   }
+}
+
+/** Latest numeric value from a Metricool timeline response (shapes vary: {data:[{values:[{dateTime,value}]}]} or [[date,value]]). */
+export function lastFollowerValue(json: unknown): number | null {
+  const pts: { t: string; v: number }[] = [];
+  const walk = (x: unknown) => {
+    if (Array.isArray(x)) {
+      if (x.length === 2 && (typeof x[0] === 'string' || typeof x[0] === 'number') && Number.isFinite(Number(x[1]))) { pts.push({ t: String(x[0]), v: Number(x[1]) }); return; }
+      x.forEach(walk); return;
+    }
+    if (x && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      const v = o.value ?? o.v ?? o.followers;
+      const t = o.dateTime ?? o.date ?? o.timestamp ?? o.t;
+      if (t !== undefined && v !== undefined && v !== null && Number.isFinite(Number(v))) { pts.push({ t: String(t), v: Number(v) }); return; }
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(json);
+  if (!pts.length) return null;
+  pts.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+  return pts[pts.length - 1].v;
 }

@@ -72,7 +72,12 @@ async function main() {
         return { health, cycle: await runSchedulerCycle() };
       }
       if (job.name === 'reconcile') return { stuck: await sweepStuckJobs(), ...(await reconcileSweep()) };
-      if (job.name === 'analytics') return importMetrics(await getAdapter('metricool'));
+      if (job.name === 'analytics') {
+        const adapter = await getAdapter('metricool');
+        const r = await importMetrics(adapter);
+        try { const ai = await import('../lib/analytics/account-insights'); await ai.saveInsights(await ai.collectAccountInsights(adapter as never)); } catch { /* account insights are best-effort */ }
+        return r;
+      }
       if (job.name === 'webhooks') return deliverPending();
       if (job.name === 'foreign-posts') return (await import('../lib/ops/foreign-posts')).scanForeignPosts().then((r) => ({ scanned: r.scanned, foreign: r.foreign.length }));
       if (job.name === 'approval-reminders') return runApprovalReminders();
