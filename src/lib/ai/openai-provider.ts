@@ -141,6 +141,30 @@ export class OpenAiProvider implements AiProvider {
     return { text: res.choices[0]?.message?.content ?? '', model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async inspectPoster(png: Buffer, model: string, zones: { bottomPct: number; productHint: string }) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: [
+            'You are a strict print-advertising QA inspector. Inspect this poster image and answer in JSON only:',
+            '{"text": "<ALL visible text exactly as written, any language, one item per line; do not translate or correct; append [?] to malformed or illegible words>",',
+            ` "productVisible": <true if the hero product (${zones.productHint}) is clearly shown, sharp and complete — not cut off by the frame edges, not distorted>,`,
+            ` "bottomClear": <true if the bottom ${zones.bottomPct}% of the image contains ONLY background/surface/decoration — no product, no text, no icons, no badges>,`,
+            ' "issues": ["<short concrete problems: e.g. product cut off at the left edge, icons in the bottom zone, warped letters, extra stray text>"]}',
+          ].join('\n') },
+          { type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${png.toString('base64')}` } },
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('inspect-poster'));
+    } catch (e) { throw mapError(e); }
+    let j: { text?: unknown; productVisible?: unknown; bottomClear?: unknown; issues?: unknown };
+    try { j = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    const issues = Array.isArray(j.issues) ? j.issues.map(String).filter((x) => x.trim()).slice(0, 6) : [];
+    return { text: String(j.text ?? ''), layout: { productVisible: j.productVisible !== false, bottomClear: j.bottomClear !== false, issues }, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
   async describeStyle(png: Buffer, model: string) {
     let res;
     try {

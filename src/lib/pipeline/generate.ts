@@ -234,7 +234,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Step 7: AI scene (no text, no logo) ──
     let artDirector: { candidates: number; best: number; scores: number[]; reason: string } | null = null;
-    let textCheck: { attempts: number; passed: boolean; missing: string[]; foreign?: string[] } | null = null;
+    let textCheck: { attempts: number; passed: boolean; textPassed?: boolean; missing: string[]; foreign?: string[]; layoutIssues?: string[] } | null = null;
     await assertBudget(s, estimateImageCost(s, imgQuality));
     // a phrase the owner put in quotes («…» / "…") must appear letter-for-letter (e.g. printed on the mug) and is spell-checked too
     const quoted = quotedPhrases(d.idea);
@@ -264,12 +264,18 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       let pool = candidates;
       if (aiFull && provider.readText && !provider.isDryRun) {
         const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted].filter((x) => x.trim());
+        const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h).bottomPct;
         const spell = async (c: (typeof candidates)[number]) => {
           try {
-            await assertBudget(s, estimateTextCost(s, 1500, 200));
-            const rt = await provider.readText!(await sharp(c.png).jpeg({ quality: 85 }).toBuffer(), s.ai.textModel);
+            await assertBudget(s, estimateTextCost(s, 1500, 260));
+            const jpg = await sharp(c.png).jpeg({ quality: 85 }).toBuffer();
+            // one vision pass: drawn text + layout (product complete, reserved bottom zone free); older providers: text only
+            const insp = provider.inspectPoster ? await provider.inspectPoster(jpg, s.ai.textModel, { bottomPct: zoneBottom, productHint: product.titleEn }) : null;
+            const rt = insp ?? await provider.readText!(jpg, s.ai.textModel);
             await recordUsage({ jobId, provider: provider.name, model: rt.model, kind: 'text', inputTokens: rt.usage.inputTokens, outputTokens: rt.usage.outputTokens, costUsd: estimateTextCost(s, rt.usage.inputTokens, rt.usage.outputTokens) });
-            return aiTextCheck(expected, rt.text, [...(s.brandFeatures[lang] ?? []), product.titleAr, product.titleEn]);
+            const t = aiTextCheck(expected, rt.text, [...(s.brandFeatures[lang] ?? []), product.titleAr, product.titleEn]);
+            const layoutIssues = insp ? [...(!insp.layout.productVisible ? ['product not fully visible'] : []), ...(!insp.layout.bottomClear ? [`objects or text inside the bottom ${zoneBottom}%`] : []), ...(!insp.layout.productVisible || !insp.layout.bottomClear ? insp.layout.issues : [])] : [];
+            return { ...t, textOk: t.ok, layoutIssues, ok: t.ok && layoutIssues.length === 0 };
           } catch { return null; } // reading unavailable → no correction loop, QC still asks a human
         };
         const checks = await Promise.all(candidates.map(spell));
@@ -277,15 +283,21 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           await assertBudget(s, estimateImageCost(s, imgQuality));
           const wrong = [...new Set(checks.flatMap((c) => c?.missing ?? []))];
           const extra = [...new Set(checks.flatMap((c) => c?.foreign ?? []))].slice(0, 4);
-          const fix = `${prompt}\nSPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.${extra.length ? ` REMOVE this text completely — it does not belong to this advertisement (not on the product, not anywhere): ${extra.map((w) => `«${w}»`).join(', ')}.` : ''}`;
+          const layout = [...new Set(checks.flatMap((c) => c?.layoutIssues ?? []))].slice(0, 5);
+          const textBad = checks.some((c) => c && !c.textOk);
+          const fix = [prompt,
+            textBad ? `SPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.${extra.length ? ` REMOVE this text completely — it does not belong to this advertisement (not on the product, not anywhere): ${extra.map((w) => `«${w}»`).join(', ')}.` : ''}` : '',
+            layout.length ? `LAYOUT CORRECTION (attempt ${r + 2}): the previous image had these problems: ${layout.join('; ')}. Show the hero product COMPLETE and sharp in the middle of the poster, fully inside the frame, and keep the bottom ${zoneBottom}% as plain background only (the order button and phone panel cover it).` : '',
+          ].filter(Boolean).join('\n');
           const img = await retrying(s.ai.maxRetries, () => provider.generateScene(fix, { model: s.ai.imageModel, quality: imgQuality, size: posterSize, seedHint: `${ad.id}-fix${r}`, references }));
           await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
           candidates.push(img); checks.push(await spell(img));
         }
         const passing = candidates.filter((_, i) => checks[i]?.ok);
-        const fewest = checks.reduce((b, c, i) => ((c?.missing.length ?? 99) < (checks[b]?.missing.length ?? 99) ? i : b), 0);
+        const bad = (c: (typeof checks)[number]) => (c ? c.missing.length * 2 + c.foreign.length * 2 + c.layoutIssues.length : 99);
+        const fewest = checks.reduce((b, c, i) => (bad(c) < bad(checks[b]) ? i : b), 0);
         pool = passing.length ? passing : [candidates[fewest]];
-        textCheck = { attempts: candidates.length, passed: passing.length > 0, missing: passing.length ? [] : (checks[fewest]?.missing ?? []), ...(passing.length ? {} : { foreign: checks[fewest]?.foreign ?? [] }) };
+        textCheck = { attempts: candidates.length, passed: passing.length > 0, textPassed: passing.length > 0 || !!checks[fewest]?.textOk, missing: passing.length ? [] : (checks[fewest]?.missing ?? []), ...(passing.length ? {} : { foreign: checks[fewest]?.foreign ?? [], layoutIssues: checks[fewest]?.layoutIssues ?? [] }) };
       }
       if (pool.length === 1) return pool[0];
       try {
@@ -303,7 +315,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // ── STEP 07: drawn text still unverified after the re-draws → never ship it: re-render with system-typeset Arabic ──
     let textFallback = false;
     let scene = sceneFirst;
-    if (aiFull && (textCheck as { passed: boolean } | null)?.passed === false && s.ai.verifiedTextFallback) {
+    if (aiFull && (textCheck as { textPassed?: boolean } | null)?.textPassed === false && s.ai.verifiedTextFallback) {
       await assertBudget(s, estimateImageCost(s, imgQuality));
       scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
         const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
@@ -487,7 +499,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
       productAllowed: productAllowed(account, product), duplicates: dups, dryRun: provider.isDryRun,
-      video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval,
+      video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
       aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,
     });

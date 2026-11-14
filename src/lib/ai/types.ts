@@ -88,6 +88,8 @@ export interface AiProvider {
   generateBrief(req: BriefRequest, model: string): Promise<{ brief: CreativeBriefOut; usage: TextUsage; model: string }>;
   /** Optional vision transcription of text drawn in an image (used to review full-AI posters). */
   readText?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
+  /** one vision pass over a drawn poster: the exact text it shows + a layout inspection against the reserved zones */
+  inspectPoster?(png: Buffer, model: string, zones: { bottomPct: number; productHint: string }): Promise<{ text: string; layout: { productVisible: boolean; bottomClear: boolean; issues: string[] }; usage: TextUsage; model: string }>;
   /** the visual STYLE of a reference design as words (no texts, products, people or brands) */
   describeStyle?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
   suggestIdeas(req: BriefRequest, model: string, count: number): Promise<{ ideas: IdeaSuggestion[]; usage: TextUsage; model: string }>;

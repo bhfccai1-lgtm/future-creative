@@ -67,6 +67,8 @@ export function ideasSystemPrompt() {
     'If ideaContext.winners is given, lean into what has already worked on this account (without copying). If ideaContext.upcoming is given, make at least one idea timely for the nearest occasion.',
     '"hook" = the first line / first 2 seconds that stops the scroll (max 8 words). "format" = the best format for the idea: REEL_VIDEO for motion/story/process, IMAGE_CAROUSEL for lists/tips/comparisons, IMAGE_FEED for one strong visual, IMAGE_STORY for quick timely reminders.',
     '"score" = your honest 1-10 prediction of reach & saves/shares for this audience; "why" = one short reason. Be critical — most ideas are 5-7.',
+    'Idea quality bar — every idea must have: (1) ONE specific person or moment (e.g. «معلمة في آخر يوم دراسي», «موظف في أول يوم عمل», «عروس قبل الزفاف بأسبوع») — never a generic «للجميع»; (2) a concrete VISUAL that can be photographed in one frame (what exactly is on the product and around it); (3) a reason to save or share. Reject generic tips like «نصيحة عن الطباعة» or «جودة عالية» — make them specific and visual.',
+    'Write natural Gulf/Bahraini-friendly Arabic for ar (clear, warm, never stiff MSA slogans). Humour only when it suits the product and audience; corporate products stay elegant.',
   ].join('\n');
 }
 
