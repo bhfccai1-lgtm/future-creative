@@ -122,6 +122,12 @@ export const SettingsSchema = z.object({
       sfx: z.boolean().default(true),
       musicVolume: z.number().min(0.1).max(1).default(0.35),
       defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']).default('upbeat'),
+      /** reading pace of the voice-over */
+      pace: z.enum(['slow', 'normal', 'fast']).default('normal'),
+      /** listen back to the generated voice (transcription) and re-take once when words were not clear */
+      verifyPronunciation: z.boolean().default(true),
+      /** owner's pronunciation dictionary: written form → how it must be read (diacritics / Arabic spelling) */
+      lexicon: z.array(z.object({ from: z.string().min(1).max(60), to: z.string().min(1).max(80) })).max(150).default([]),
     }).default({}),
     // USD estimates — editable because provider pricing changes. Verify against current OpenAI pricing.
     pricing: z.object({

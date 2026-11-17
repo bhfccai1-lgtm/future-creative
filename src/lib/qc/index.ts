@@ -23,6 +23,8 @@ export interface QcInput {
   aiTextNeedsHuman?: boolean;
   /** vision layout inspection of a full-AI poster (product cut off, objects under the CTA zone…) */
   aiLayoutIssues?: string[];
+  /** voice-over listen-back: share of the script's words understood (0–1) + words not heard */
+  voicePronunciation?: { accuracy: number | null; missed?: string[] } | null;
   hashtags?: string[];
   /** Carousel: total images (cover included) and rendering problems. */
   carousel?: { images: number; problems: string[] } | null;
@@ -87,6 +89,7 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
     checks.push({ id: 'carousel_slides', label: 'شرائح الكاروسيل مكتملة ومقروءة (5–10 صور، نص يتسع، أرقام الفرعين)', passed: ok, severity: 'BLOCKER', detail: !q.carousel ? 'لم تُنتج الشرائح' : [`${q.carousel.images} صور`, ...q.carousel.problems].join('؛ ') });
   }
   if (q.aiVideo) checks.push({ id: 'ai_video', label: 'فيديو ذكاء اصطناعي حقيقي (Gemini Veo)', passed: q.aiVideo.used, severity: 'WARNING', detail: q.aiVideo.used ? `Gemini ${q.aiVideo.model}` : `استُخدم FFmpeg بدلًا من Veo: ${q.aiVideo.note ?? ''}` });
+  if (q.voicePronunciation && q.voicePronunciation.accuracy !== null) checks.push({ id: 'voice_pronunciation', label: 'وضوح نطق التعليق الصوتي (تحقق بالاستماع)', passed: q.voicePronunciation.accuracy >= 0.85, severity: 'WARNING', detail: `${Math.round(q.voicePronunciation.accuracy * 100)}% من الكلمات مفهومة${q.voicePronunciation.missed?.length ? ` — غير واضح: ${q.voicePronunciation.missed.join('، ')}` : ''}` });
   if (q.aiLayoutIssues) checks.push({ id: 'ai_layout', label: 'تخطيط الملصق: المنتج كامل والمنطقة السفلية خالية', passed: q.aiLayoutIssues.length === 0, severity: 'WARNING', detail: q.aiLayoutIssues.join('؛ ') || undefined });
   const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
   checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });

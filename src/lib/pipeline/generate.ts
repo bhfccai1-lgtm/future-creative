@@ -6,7 +6,11 @@ import { aiTextCheck } from '../qc';
 import { prisma } from '../db';
 import { getSecret, getSettings, updateSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
-import { fakeSpeech, openaiSpeak, sanitizeScript, voiceScript, estimateTtsCost } from '../audio/tts';
+import { fakeSpeech, openaiSpeak, openaiTranscribe, estimateSttCost, sanitizeScript, voiceScript, estimateTtsCost } from '../audio/tts';
+import { applyLexicon, missedWords, speakVerified } from '../audio/pronounce';
+
+/** speech-to-text language code for a voice-over dialect id (ar_bh → ar, ml → ml) */
+const sttLang = (id: string) => (id.startsWith('ar') ? 'ar' : /^[a-z]{2}/.exec(id)?.[0]);
 import { autoPersona, autoVoiceLang, personaOf, voiceLangOf, wordsFor } from '../audio/voices';
 import { audit, notify } from '../audit';
 import { AppError } from '../errors';
@@ -415,6 +419,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           const seconds = Math.max(3, (veo ? veo.durationSec + 3 : reelDuration) - 3.5);
           const maxWords = wordsFor(seconds, persona);
           let script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });
+          let pronunciation: { accuracy: number | null; takes: number; pace: string; missed?: string[] } | null = null;
           try {
             if (provider.writeVoiceover) {
               const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr } }, s.ai.textModel);
@@ -425,11 +430,26 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
             else {
               const key = await getSecret('OPENAI_API_KEY');
               if (!key) throw new Error('مفتاح OpenAI غير مضبوط');
-              const v = await openaiSpeak(key, script, { persona, lang: vlang });
-              voice = v.audio;
-              await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
+              // what the voice reads: the pronunciation lexicon (built-in + owner's) applied to the script
+              const spoken = applyLexicon(script, s.ai.audio.lexicon);
+              const r = await speakVerified(spoken, {
+                pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
+                speak: async (text, pace, note) => {
+                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note });
+                  await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
+                  return v.audio;
+                },
+                transcribe: s.ai.audio.verifyPronunciation ? async (a) => {
+                  const t = await openaiTranscribe(key, a, sttLang(vlang.id));
+                  await recordUsage({ provider: 'openai', model: 'gpt-4o-mini-transcribe', kind: 'audio', costUsd: estimateSttCost(seconds) });
+                  return t;
+                } : undefined,
+              });
+              voice = r.best.audio;
+              pronunciation = { accuracy: r.best.accuracy, takes: r.takes.length, pace: r.best.pace, ...(r.best.accuracy !== null && r.best.accuracy < 0.85 ? { missed: missedWords(spoken, r.best.heard ?? '') } : {}) };
+              script = spoken;
             }
-            audioNote = { voiceScript: script, persona: persona.id, voiceLang: vlang.id };
+            audioNote = { voiceScript: script, persona: persona.id, voiceLang: vlang.id, ...(pronunciation ? { pronunciation } : {}) };
           } catch (e) {
             await notify('WARNING', 'VOICEOVER_FAILED', 'تعذر إنشاء التعليق الصوتي', `أُنتج الريلز بالموسيقى فقط: ${(e as Error).message}`, account.id);
             audioNote = { voiceError: (e as Error).message };
@@ -501,7 +521,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
       productAllowed: productAllowed(account, product), duplicates: dups, dryRun: provider.isDryRun,
-      video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
+      video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, voicePronunciation: (audioNote?.pronunciation as { accuracy: number | null; missed?: string[] } | undefined) ?? null, ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
       aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,
     });

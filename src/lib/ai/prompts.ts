@@ -136,6 +136,7 @@ export function voiceoverSystemPrompt() {
     'Never say numbers or digits, prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "number one"), phone numbers, branch names, websites or hashtags.',
     'Match the persona (e.g. a child uses simple words, a sports commentator is excited, a storyteller starts like a tale). Keep it tasteful and respectful.',
     'If `storyboard` is given, the script follows those shots in order (one short phrase per shot): the hook line lands on the first shot, the call to action on the last.',
+    'Pronunciation (the script is read by a voice model): for Arabic, add diacritics (tashkeel) on words whose reading is ambiguous and on names (e.g. «مَطْبَعَة», «تَصْمِيمَك»), keep the dialect spelling otherwise; write English trade words in Arabic letters as they are said (e.g. «رُولْ أَبْ»); avoid tongue-twisters and very long words; never write digits or symbols.',
     'Return JSON: {"script": "..."} with the script only — no stage directions, no quotes, no emojis.',
   ].join('\n');
 }

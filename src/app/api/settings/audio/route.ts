@@ -11,6 +11,9 @@ const Body = z.object({
   sfx: z.boolean(),
   musicVolume: z.number().min(0.1).max(1),
   defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']),
+  pace: z.enum(['slow', 'normal', 'fast']).default('normal'),
+  verifyPronunciation: z.boolean().default(true),
+  lexicon: z.array(z.object({ from: z.string().trim().min(1).max(60), to: z.string().trim().min(1).max(80) })).max(150).default([]),
 });
 export const GET = api('settings:ai', async () => NextResponse.json((await getSettings()).ai.audio));
 export const PUT = api('settings:ai', async (req, { user }) => {
