@@ -409,6 +409,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         // licensed music (rotated, mood follows the design style) and a voice-over of the VERIFIED copy only
         const track = audio === 'library' || audio === 'voiceover' ? await pickTrack(MOOD_FOR_STYLE[d.designStyle ?? ''] ?? undefined) : null;
         let voice: Buffer | undefined;
+        let displayScript = '';
         if (audio === 'voiceover') {
           // persona & dialect: settings, or «تلقائي» (category → persona rotation; audience/market → Bahraini by default)
           const recentPersonas = (await prisma.advertisement.findMany({ where: { accountId: account.id, format: 'REEL_VIDEO' }, orderBy: { createdAt: 'desc' }, take: 4, select: { options: true } }))
@@ -426,11 +427,12 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
               if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: w.model, kind: 'text', inputTokens: w.usage.inputTokens, outputTokens: w.usage.outputTokens, costUsd: estimateTextCost(s, w.usage.inputTokens, w.usage.outputTokens) });
               script = sanitizeScript(w.script, maxWords) ?? script; // rule-breaking script → verified copy instead
             }
-            if (provider.isDryRun) voice = fakeSpeech(script);
+            if (provider.isDryRun) { voice = fakeSpeech(script); displayScript = script; }
             else {
               const key = await getSecret('OPENAI_API_KEY');
               if (!key) throw new Error('مفتاح OpenAI غير مضبوط');
               // what the voice reads: the pronunciation lexicon (built-in + owner's) applied to the script
+              displayScript = script; // captions show the script as written (the lexicon only changes what the voice reads)
               const spoken = applyLexicon(script, s.ai.audio.lexicon);
               const r = await speakVerified(spoken, {
                 pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
@@ -461,6 +463,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           nativeAudio: !!veo && s.ai.video.nativeAudio && (!d.audio || d.audio === 'none'), // an explicit music choice wins; Instagram audio stays silent
           music: track ? { buf: track.buf, ext: track.ext, startSec: track.startSec } : undefined,
           voice, sfx: s.ai.audio.sfx, musicVolume: s.ai.audio.musicVolume,
+          ...(voice && displayScript && s.ai.audio.captions ? { captions: { text: displayScript, lang } } : {}),
         });
       } catch (e) { videoError = (e as Error).message; }
     }

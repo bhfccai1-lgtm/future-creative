@@ -5,7 +5,7 @@ import { apiCall, csrfToken } from '@/lib/client/api';
 import { Button, Badge } from './ui';
 import { LANG_GROUPS, PERSONA_GROUPS, PERSONAS, Q_AR, VOICE_LANGS } from '@/lib/audio/voices';
 
-type Audio = { persona: string; voiceLang: string; sfx: boolean; musicVolume: number; defaultReelAudio: string; pace?: 'slow' | 'normal' | 'fast'; verifyPronunciation?: boolean; lexicon?: { from: string; to: string }[] };
+type Audio = { persona: string; voiceLang: string; sfx: boolean; musicVolume: number; defaultReelAudio: string; pace?: 'slow' | 'normal' | 'fast'; verifyPronunciation?: boolean; captions?: boolean; lexicon?: { from: string; to: string }[] };
 const lexToText = (l?: { from: string; to: string }[]) => (l ?? []).map((e) => `${e.from} = ${e.to}`).join('\n');
 const textToLex = (t: string) => t.split(/\r?\n/).map((l) => l.split(/\s*=\s*/)).filter((p) => p.length === 2 && p[0].trim() && p[1].trim()).map(([from, to]) => ({ from: from.trim(), to: to.trim() })).slice(0, 150);
 type Track = { id: string; name: string; mood: string; durationSec: number; startSec: number; licenseNote: string; active: boolean; uses: number };
@@ -77,6 +77,7 @@ export function AudioSettings({ audio, tracks }: { audio: Audio; tracks: Track[]
           <div><label className="label">سرعة القراءة</label><select className="input" value={v.pace ?? 'normal'} onChange={(e) => setV({ ...v, pace: e.target.value as Audio['pace'] })}><option value="slow">هادئة وواضحة</option><option value="normal">طبيعية (إعلانية)</option><option value="fast">حيوية وسريعة</option></select></div>
           <label className="flex items-start gap-2 self-end pb-2 text-sm"><input type="checkbox" className="mt-1" checked={v.verifyPronunciation ?? true} onChange={(e) => setV({ ...v, verifyPronunciation: e.target.checked })} /><span><b>تحقق بالاستماع</b> — يستمع النظام لكل تعليق بعد توليده ويقارن الكلمات بالنص؛ إن لم تكن واضحة يُعيد التسجيل بنطق أبطأ وأوضح ويختار الأفضل (≈ $0.0005 لكل ريل).</span></label>
         </div>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.captions ?? true} onChange={(e) => setV({ ...v, captions: e.target.checked })} /><span><b>ترجمة مكتوبة على الريلز</b> — يظهر التعليق الصوتي مكتوبًا بخط كبير متزامن مع الصوت (أغلب المشاهدين يشاهدون بلا صوت).</span></label>
         <div><label className="label" htmlFor="try-sentence">جرّب جملة بصوت الشخصية المختارة</label>
           <input id="try-sentence" className="input" maxLength={220} value={tryText} onChange={(e) => setTryText(e.target.value)} placeholder="مثال: أكواب مطبوعة بتصميمك من مطبعة إبداع المستقبل في سلماباد" />
           <p className="mt-1 text-xs text-slate-500">اكتب أي جملة ثم «استمع لجملتك» بالأعلى — يظهر لك ما قُرئ وما سُمع ونسبة الوضوح. الأرقام لا تُقرأ في الإعلانات.</p></div>

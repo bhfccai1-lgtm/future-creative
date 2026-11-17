@@ -37,7 +37,7 @@ export function briefUserPrompt(r: BriefRequest) {
   return JSON.stringify({
     task: 'Create a new advertisement concept.',
     format: r.format ?? 'IMAGE_STORY',
-    formatNote: r.format === 'REEL_VIDEO' ? 'Reel: the first frame is the hook (sceneDescription = the hook shot). Fill `storyboard` with 3-4 shots in order hook → context → product → benefit that tell ONE short story around this idea (different setting/angle per shot, the same product). Return slides as [].' : r.format === 'IMAGE_CAROUSEL' ? 'Carousel post: the cover uses headline/badge/supportingCopy; fill `slides` with 3-4 genuinely useful slides (saves and shares come from useful carousels). End the caption by inviting people to save the post.' : 'Return slides as [].',
+    formatNote: r.format === 'REEL_VIDEO' ? 'Reel built for reach: the FIRST frame must stop the scroll in under 1 second — a pattern interrupt (an unexpected angle, a dramatic reveal, a striking contrast or a playful surprise) with the product already visible (sceneDescription = that hook shot). The headline is the hook: max 5 words, curiosity, a relatable moment or a bold promise of value («تبي هدية تفرّح؟», «فكرتك على كوب!») — never a generic brand line. Fill `storyboard` with 3-4 fast shots in order hook → context → product → benefit that tell ONE short story around this idea (different setting/angle per shot, the same product; the last shot should visually echo the first so the reel loops seamlessly). Caption: first line = a hook question or statement, then a «احفظ/شارك» nudge to drive saves and shares. Return slides as [].' : r.format === 'IMAGE_CAROUSEL' ? 'Carousel post: the cover uses headline/badge/supportingCopy; fill `slides` with 3-4 genuinely useful slides (saves and shares come from useful carousels). End the caption by inviting people to save the post.' : 'Return slides as [].',
     targetLanguage: LANG_NAME[r.language],
     account: { name: r.accountName, category: r.businessCategory },
     product: {
@@ -136,6 +136,7 @@ export function voiceoverSystemPrompt() {
     'Never say numbers or digits, prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "number one"), phone numbers, branch names, websites or hashtags.',
     'Match the persona (e.g. a child uses simple words, a sports commentator is excited, a storyteller starts like a tale). Keep it tasteful and respectful.',
     'If `storyboard` is given, the script follows those shots in order (one short phrase per shot): the hook line lands on the first shot, the call to action on the last.',
+    'Reach: the FIRST words are the hook — a question or a surprising statement spoken immediately (no greeting, no brand name first). Short punchy phrases (2–5 words) that read well as on-screen captions; energy rises toward the call to action.',
     'Pronunciation (the script is read by a voice model): for Arabic, add diacritics (tashkeel) on words whose reading is ambiguous and on names (e.g. «مَطْبَعَة», «تَصْمِيمَك»), keep the dialect spelling otherwise; write English trade words in Arabic letters as they are said (e.g. «رُولْ أَبْ»); avoid tongue-twisters and very long words; never write digits or symbols.',
     'Return JSON: {"script": "..."} with the script only — no stage directions, no quotes, no emojis.',
   ].join('\n');

@@ -128,6 +128,8 @@ export const SettingsSchema = z.object({
       pace: z.enum(['slow', 'normal', 'fast']).default('normal'),
       /** listen back to the generated voice (transcription) and re-take once when words were not clear */
       verifyPronunciation: z.boolean().default(true),
+      /** burned-in captions of the voice-over on reels (muted viewing) */
+      captions: z.boolean().default(true),
       /** owner's pronunciation dictionary: written form → how it must be read (diacritics / Arabic spelling) */
       lexicon: z.array(z.object({ from: z.string().min(1).max(60), to: z.string().min(1).max(80) })).max(150).default([]),
     }).default({}),

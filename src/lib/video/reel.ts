@@ -6,6 +6,8 @@ import type { ComposeResult, PlacedLayer } from '../render/compose';
 import { THEMES } from '../render/compose';
 import { probeVideo, run, REEL_REQUIREMENTS, type VideoProbe } from './probe';
 import { sfxSource, sfxTimeline } from '../audio/sfx';
+import { renderText } from '../render/text';
+import type { Lang } from '../render/fonts';
 
 export interface ReelResult { mp4: Buffer; probe: VideoProbe; thumbnail: Buffer; scenes: number; audio: ReelAudio; nativeAudio?: boolean; aiVideo?: boolean; voiceOver?: boolean; sfx?: boolean; musicTrack?: boolean }
 export type ReelAudio = 'none' | 'ambient' | 'upbeat' | 'library' | 'voiceover' | 'instagram';
@@ -28,6 +30,10 @@ export interface ReelOptions {
   sfx?: boolean;
   /** Music level under a voice-over (0.1–1). */
   musicVolume?: number;
+  /** Burned-in captions of the spoken script (most reels are watched muted): short 2–4-word chunks timed to the voice. */
+  captions?: { text: string; lang: Lang };
+  /** Seamless loop (default true): the last half-second dissolves back into the opening design, so replays feel continuous. */
+  loop?: boolean;
 }
 
 export class VideoRenderError extends Error {}
@@ -78,6 +84,31 @@ export function audioSource(kind: ReelAudio, D: number): string {
     return `aevalsrc=${e(`${mix}|${mix}`)}:s=${AUDIO_RATE}:d=${D},volume=0.6,alimiter=limit=0.7,${LOUDNORM},aresample=${AUDIO_RATE},afade=t=in:d=0.3,afade=t=out:st=${Math.max(0, D - 1.5)}:d=1.5`;
   }
   return `anullsrc=channel_layout=stereo:sample_rate=${AUDIO_RATE}`;
+}
+
+/** Splits a spoken script into short caption chunks (≤ 3 words / ≤ 24 characters), keeping punctuation pauses. */
+export function captionChunks(text: string): string[] {
+  const out: string[] = [];
+  let cur: string[] = [];
+  for (const w of text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)) {
+    const next = [...cur, w].join(' ');
+    if (cur.length && (cur.length >= 3 || next.length > 24)) { out.push(cur.join(' ')); cur = []; }
+    cur.push(w);
+    if (/[،,.!؟?…:]$/.test(w)) { out.push(cur.join(' ')); cur = []; }
+  }
+  if (cur.length) out.push(cur.join(' '));
+  return out.map((c) => c.replace(/[،,]$/, '')).filter(Boolean);
+}
+/** Chunk timings proportional to their length over [start, start + span]. */
+export function captionTimings(chunks: string[], start: number, span: number) {
+  const total = chunks.reduce((a, c) => a + c.length + 2, 0) || 1;
+  let t = start;
+  return chunks.map((c) => { const d = Math.max(0.45, (span * (c.length + 2)) / total); const r = { text: c, start: t, end: t + d }; t += d; return r; });
+}
+async function audioSeconds(file: string): Promise<number> {
+  const r = await run(process.env.FFPROBE_PATH ?? 'ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], 30_000);
+  const n = Number(r.stdout.trim());
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 /**
@@ -170,6 +201,25 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       base = `v${idx}`;
       idx++;
     }
+    // burned-in captions timed to the voice (or spread over the reel without a voice) — readable with the sound off
+    if (opts.captions?.text.trim()) {
+      let vStart = 0.35, span = Math.max(1.5, endStart - 0.8);
+      if (opts.voice) { const vf0 = path.join(dir, 'voice-probe.audio'); await fs.writeFile(vf0, opts.voice); const sec = await audioSeconds(vf0); if (sec) span = Math.min(sec, endStart - vStart); }
+      else vStart = 0.6;
+      for (const cap of captionTimings(captionChunks(opts.captions.text), vStart, span)) {
+        if (cap.start >= endStart) break;
+        const t = await renderText({ text: cap.text, lang: opts.captions.lang, weight: 'extrabold', color: '#ffffff', maxSize: 80, minSize: 44, boxW: 920, boxH: 200, maxLines: 2 });
+        const pw = t.width + 64, ph = t.height + 34;
+        const pill = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${Math.min(40, ph / 2)}" fill="#0b1730" fill-opacity="0.78" stroke="#e6c25a" stroke-width="3"/></svg>`);
+        const png = await sharp(pill).composite([{ input: t.png, left: 32, top: 17 }]).png().toBuffer();
+        const f = path.join(dir, `cap${idx}.png`); await fs.writeFile(f, png);
+        inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', f);
+        const a = cap.start.toFixed(2), b = Math.min(cap.end, endStart).toFixed(2);
+        filters.push(`[${idx}:v]format=rgba,fade=t=in:st=${a}:d=0.08:alpha=1[c${idx}]`);
+        filters.push(`[${base}][c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${1250 - Math.round(ph / 2)}:enable='between(t,${a},${b})'[v${idx}]`);
+        base = `v${idx}`; idx++;
+      }
+    }
     const end = await buildEndCard(c);
     await fs.writeFile(path.join(dir, 'end.png'), end);
     inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', path.join(dir, 'end.png'));
@@ -177,7 +227,14 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     filters.push(`[${endIdx}:v]format=rgba,fade=t=in:st=${endStart}:d=0.7:alpha=1[end]`);
     // finishing: light sharpening of the upscaled AI image, correct BT.709 conversion (no washed-out colours on phones),
     // debanding of smooth gradients and a very fine temporal grain so platform re-encoding doesn't band or smear
-    filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})',unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
+    let loopIdx = -1;
+    if (opts.loop !== false) {
+      await fs.writeFile(path.join(dir, 'loop.png'), c.png);
+      inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', path.join(dir, 'loop.png'));
+      loopIdx = idx++;
+      filters.push(`[${loopIdx}:v]format=rgba,fade=t=in:st=${(D - 0.5).toFixed(2)}:d=0.45:alpha=1[loopin]`);
+    }
+    filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})'${loopIdx >= 0 ? '[ended];[ended][loopin]overlay=0:0:enable=\'gte(t,' + (D - 0.5).toFixed(2) + ')\'' : ''},unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
     // ── Audio: music bed (native Veo / licensed track / synthesised) + voice-over with ducking + sound design, mastered to −14 LUFS ──
     const useNative = !!opts.baseVideo && !!opts.nativeAudio && baseHasAudio;
     const silent = !useNative && (audio === 'none' || audio === 'instagram');
@@ -240,7 +297,8 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     if (r.code !== 0) throw new VideoRenderError(`ffmpeg failed (${r.code}): ${r.stderr.slice(-800)}`);
     const probe = await probeVideo(out, { ...REEL_REQUIREMENTS, targetSec: D });
     const thumbFile = path.join(dir, 'thumb.jpg');
-    await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(Math.min(4.5, D - 3.5)), '-i', out, '-frames:v', '1', '-q:v', '2', thumbFile], 60_000);
+    // cover = the complete design (headline, badge, product, CTA) — the frame that stops the scroll in the grid and feed
+    await fs.writeFile(thumbFile, await sharp(c.png).flatten({ background: '#0b1730' }).jpeg({ quality: 92 }).toBuffer());
     return { mp4: await fs.readFile(out), probe, thumbnail: await fs.readFile(thumbFile), scenes: n, audio, nativeAudio: useNative, aiVideo: !!opts.baseVideo, voiceOver: !silent && !!opts.voice, sfx: !silent && !!opts.sfx, musicTrack: !useNative && !!opts.music && (audio === 'library' || audio === 'voiceover') };
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
