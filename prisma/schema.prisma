@@ -220,6 +220,7 @@ model SocialAccount {
   jobs                   PublicationJob[]
   ideas                  Idea[]
   comments               SocialComment[]
+  leads                  Lead[]
 
   @@index([autoPublishEnabled, nextPublishAt])
   @@map("social_accounts")
@@ -287,6 +288,7 @@ model Product {
   @@index([active])
   @@index([categoryId, active])
   @@map("products")
+  leads Lead[]
 }
 
 // ───────────────────────── Creative ─────────────────────────
@@ -722,4 +724,34 @@ model SocialComment {
   @@index([accountId, status])
   @@index([status, urgent, createdAt])
   @@map("social_comments")
+}
+
+/// «العملاء والطلبات»: inquiries from comments (automatic) or added by hand (phone, WhatsApp, branch visit),
+/// followed until won or lost. Values are what the owner records — nothing is estimated.
+model Lead {
+  id             String         @id @default(cuid())
+  accountId      String? // the account that brought the customer (attribution)
+  account        SocialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  commentId      String?        @unique
+  source         String         @default("manual") // comment | whatsapp | phone | walkin | dm | other
+  name           String?
+  contact        String?
+  need           String
+  productId      String?
+  product        Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  status         String         @default("NEW") // NEW | CONTACTED | QUOTED | WON | LOST
+  valueBhd       Float?
+  lostReason     String?
+  nextFollowUpAt DateTime?
+  notes          String?
+  createdBy      String?
+  firstContactAt DateTime?
+  wonAt          DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([status, nextFollowUpAt])
+  @@index([accountId, createdAt])
+  @@map("leads")
 }

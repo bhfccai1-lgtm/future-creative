@@ -118,14 +118,16 @@ export function pickFromWeek(types: string[], recent: (string | null | undefined
   return list[Math.floor(rng() * list.length)];
 }
 
-export interface Progress { accountId: string; followersNow: number | null; reachNow: number | null; made: number; published: number; pctFollowers: number | null; pctReach: number | null; pctContent: number }
+export interface Progress { accountId: string; followersNow: number | null; reachNow: number | null; made: number; published: number; leads: number; orders: number; pctFollowers: number | null; pctReach: number | null; pctContent: number }
 /** Progress toward each target; the "now" numbers come from the latest snapshot (30-day window). */
 export async function programProgress(p: GrowthProgram, snap: InsightsSnapshot | null): Promise<Progress[]> {
   const since = new Date(p.startedAt);
   const ids = p.accounts.map((a) => a.accountId);
-  const [made, pub] = await Promise.all([
+  const [made, pub, leads, orders] = await Promise.all([
     prisma.advertisement.groupBy({ by: ['accountId'], _count: true, where: { accountId: { in: ids }, createdAt: { gte: since }, state: { notIn: ['FAILED', 'REJECTED'] } } }),
     prisma.publicationJob.groupBy({ by: ['accountId'], _count: true, where: { accountId: { in: ids }, state: 'PUBLISHED', primary: true, scheduledFor: { gte: since } } }),
+    prisma.lead.groupBy({ by: ['accountId'], _count: true, where: { accountId: { in: ids }, createdAt: { gte: since } } }),
+    prisma.lead.groupBy({ by: ['accountId'], _count: true, where: { accountId: { in: ids }, status: 'WON', wonAt: { gte: since } } }),
   ]);
   const pct = (b: number | null, now: number | null, t: number | null) => (b == null || now == null || t == null || t === b ? null : Math.max(0, Math.min(100, Math.round(((now - b) / (t - b)) * 100))));
   return p.accounts.map((a) => {
@@ -135,6 +137,7 @@ export async function programProgress(p: GrowthProgram, snap: InsightsSnapshot |
     return {
       accountId: a.accountId, followersNow: nowB?.followers ?? null, reachNow: nowB ? nowB.reachPerContent : null,
       made: made.find((x) => x.accountId === a.accountId)?._count ?? 0, published,
+      leads: leads.find((x) => x.accountId === a.accountId)?._count ?? 0, orders: orders.find((x) => x.accountId === a.accountId)?._count ?? 0,
       pctFollowers: pct(a.baseline.followers, nowB?.followers ?? null, a.targets.followers),
       pctReach: pct(a.baseline.reachPerContent, nowB?.reachPerContent ?? null, a.targets.reachPerContent),
       pctContent: a.targets.contents ? Math.min(100, Math.round((published / a.targets.contents) * 100)) : 0,

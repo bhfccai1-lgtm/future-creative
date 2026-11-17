@@ -96,7 +96,9 @@ export async function analyzePending(limit = 80) {
       summary: a?.summary?.slice(0, 120) ?? null, suggestedReply: category === 'spam' ? null : reply,
     } });
   }
-  return { analysed: pending.length, ai: ai.size };
+  // order / price questions become customers to follow up («العملاء والطلبات»)
+  const leads = await import('../leads/service').then((m) => m.leadsFromComments(pending.map((c) => c.id))).catch(() => 0);
+  return { analysed: pending.length, ai: ai.size, leads };
 }
 
 /** A person sends the reply: through the official API for synced comments, or recorded as answered for pasted ones. */

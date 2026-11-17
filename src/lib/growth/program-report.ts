@@ -13,7 +13,7 @@ export async function growthProgramReport(now = new Date()) {
   const prog = await programProgress(p, await loadInsights());
   const lines = p.accounts.map((a) => {
     const g = prog.find((x) => x.accountId === a.accountId)!;
-    return `${a.name}: نُشر ${g.published}/${a.targets.contents}${g.followersNow != null && a.baseline.followers != null ? ` · متابعون ${a.baseline.followers}→${g.followersNow} (الهدف ${a.targets.followers})` : ''}`;
+    return `${a.name}: نُشر ${g.published}/${a.targets.contents}${g.followersNow != null && a.baseline.followers != null ? ` · متابعون ${a.baseline.followers}→${g.followersNow} (الهدف ${a.targets.followers})` : ''}${g.leads ? ` · استفسارات ${g.leads} · طلبات ${g.orders}` : ''}`;
   });
   const behind = p.accounts.filter((a) => { const g = prog.find((x) => x.accountId === a.accountId)!; return g.pctContent < (Math.min(4, week) / 4) * 60; }).map((a) => a.name);
   const head = w === 'done' ? 'انتهى برنامج النمو 30 يومًا — النتائج' : `برنامج النمو — بداية الأسبوع ${week}: ${PHASES[week - 1].title}`;

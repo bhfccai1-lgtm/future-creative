@@ -67,7 +67,7 @@ export default async function GrowthPage() {
                   <summary className="cursor-pointer list-none">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><b className="text-navy-900">{a.name}</b><Badge tone={a.tier === 'grow' ? 'green' : a.tier === 'light' ? 'amber' : 'blue'}>{TIER_RULES[a.tier].ar}</Badge></div><span className="text-xs text-gold-600">التشخيص ▾</span></div>
                     <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-                      <div><div className="mb-1">النشر: <b className="ltr">{g.published} / {a.targets.contents}</b> <span className="text-slate-500">({g.made} تصميم)</span></div><Bar pct={g.pctContent} /></div>
+                      <div><div className="mb-1">النشر: <b className="ltr">{g.published} / {a.targets.contents}</b> <span className="text-slate-500">({g.made} تصميم{g.leads ? ` · ${g.leads} استفسار · ${g.orders} طلب` : ''})</span></div><Bar pct={g.pctContent} /></div>
                       <div><div className="mb-1">المتابعون: <b className="ltr">{nf(a.baseline.followers)} → {nf(g.followersNow)}</b> <span className="text-slate-500">الهدف {nf(a.targets.followers)}</span></div><Bar pct={g.pctFollowers} /></div>
                       <div><div className="mb-1">الوصول/منشور: <b className="ltr">{a.baseline.reachPerContent} → {g.reachNow ?? '—'}</b> <span className="text-slate-500">الهدف {a.targets.reachPerContent ?? '—'}</span></div><Bar pct={g.pctReach} /></div>
                     </div>
