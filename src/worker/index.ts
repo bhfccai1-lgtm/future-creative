@@ -62,6 +62,7 @@ async function main() {
   await sched.upsertJobScheduler('wa-status', { pattern: '10 9-21 * * *', tz: TZ }, { name: 'wa-status' }); // status pack → Telegram, max 1 per hour within the daily cap
   await sched.upsertJobScheduler('winners', { pattern: '15 10 * * 0', tz: TZ }, { name: 'winners' }); // Sunday 10:15: boost proven winners (only if enabled)
   await sched.upsertJobScheduler('ideas-weekly', { pattern: '40 7 * * 6', tz: TZ }, { name: 'ideas-weekly' }); // Saturday 07:40: refill the idea bank
+  await sched.upsertJobScheduler('growth-program', { pattern: '50 8 * * *', tz: TZ }, { name: 'growth-program' }); // daily check; sends one note per program week
   await sched.upsertJobScheduler('analytics', { pattern: '15 5,17 * * *', tz: TZ }, { name: 'analytics' }); // read-only metrics import twice a day
   await sched.upsertJobScheduler('comments', { pattern: '*/30 * * * *', tz: TZ }, { name: 'comments' }); // pull + analyse Instagram comments (replies stay manual)
 
@@ -79,6 +80,7 @@ async function main() {
         try { const ai = await import('../lib/analytics/account-insights'); await ai.saveInsights(await ai.collectAccountInsights(adapter as never)); } catch { /* account insights are best-effort */ }
         return r;
       }
+      if (job.name === 'growth-program') return (await import('../lib/growth/program-report')).growthProgramReport();
       if (job.name === 'comments') { const c = await import('../lib/comments/service'); const r = await c.syncComments(); return 'skipped' in r ? c.analyzePending() : r; }
       if (job.name === 'webhooks') return deliverPending();
       if (job.name === 'foreign-posts') return (await import('../lib/ops/foreign-posts')).scanForeignPosts().then((r) => ({ scanned: r.scanned, foreign: r.foreign.length }));

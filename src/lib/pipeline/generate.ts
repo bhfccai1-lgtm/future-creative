@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { pickFromWeek, programContentTypes } from '../growth/program';
 import { findBanned, stripBanned } from '../creative/banned';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
 import { autoChannelsFor } from '../publishing/channels';
@@ -115,8 +116,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const dir: Direction = { ...(p.direction ?? {}) };
     if (!dir.occasion) { const oc = pickOccasion(new Date(), { language: lang, market: marketOf(account), disabled: s.disabledOccasions }); if (oc) { dir.occasion = oc; auto.push('occasion'); } }
     if (!dir.contentType && !dir.idea?.trim()) {
-      dir.contentType = pickContentType(recent.map((r) => ((r.options ?? {}) as { direction?: Direction | null }).direction?.contentType));
-      auto.push('contentType');
+      const recentTypes = recent.map((r) => ((r.options ?? {}) as { direction?: Direction | null }).direction?.contentType);
+      const week = await programContentTypes(account.id); // «برنامج النمو»: this week's content angles
+      dir.contentType = week.length ? pickFromWeek(week, recentTypes) : pickContentType(recentTypes);
+      auto.push(week.length ? 'contentType:growthProgram' : 'contentType');
     }
     if (auto.length) p = { ...p, direction: { ...dir, autoPicked: auto } };
   }
