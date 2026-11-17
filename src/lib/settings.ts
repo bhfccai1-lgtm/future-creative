@@ -82,6 +82,8 @@ export const SettingsSchema = z.object({
     autoDesignStyle: z.string().max(40).default('fc_signature'),
     /** owner's standing guidance for every design (taste), e.g. «ألوان فاتحة، بدون وجوه أشخاص» */
     ownerGuidance: z.string().max(600).default(''),
+    /** phrases that must never appear in any idea/headline/caption/drawn text (a slogan that keeps leaking) */
+    bannedPhrases: z.array(z.string().max(80)).max(30).default(['إذا ما صحتني القهوة']),
     /** reference design (storage key): every full-AI poster follows its style/quality level, never its texts */
     styleReferenceKey: z.string().max(200).nullable().default(null),
     /** the reference design's style in words (made once at upload) — this text, never the image, guides each poster */

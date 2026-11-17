@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { findBanned, stripBanned } from '../creative/banned';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
 import { autoChannelsFor } from '../publishing/channels';
 import { tasteProfile, withoutBlocked } from '../creative/taste';
@@ -145,6 +146,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     }
     p = { ...p, direction: { ...dir, autoPicked: auto } };
   }
+  // banned phrases never reach the models through the owner's own idea or prompt
+  if (p.direction?.idea || p.direction?.customPrompt) p = { ...p, direction: { ...p.direction, ...(p.direction.idea ? { idea: stripBanned(p.direction.idea, s.ai.bannedPhrases) } : {}), ...(p.direction.customPrompt ? { customPrompt: stripBanned(p.direction.customPrompt, s.ai.bannedPhrases) } : {}) } };
   const d = p.direction ?? {};
   const style = styleOf(d.designStyle || 'fc_signature'); // the owner's signature look is the default
   let dtype = designTypeOf(d.designType);
@@ -220,6 +223,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       });
       const fp = ideaFingerprint(product.slug, r.brief.idea, r.brief.ideaKey);
       const dups = await findDuplicates(account.id, { idea: fp, headline: r.brief.headline }, s.duplicateWindowDays, ad.id);
+      const banned = findBanned([r.brief.idea, r.brief.headline, r.brief.badge, r.brief.supportingCopy, r.brief.caption, r.brief.sceneDescription].filter(Boolean).join('\n'), s.ai.bannedPhrases);
+      if (banned.length) { avoidHeadlines.unshift(...banned, r.brief.headline); avoidIdeas.unshift(r.brief.idea); continue; } // rewrite: a banned slogan leaked
       if (dups.length === 0) { brief = r.brief; ideaFp = fp; }
       else { avoidIdeas.unshift(r.brief.ideaKey, r.brief.idea); avoidHeadlines.unshift(r.brief.headline); }
     }

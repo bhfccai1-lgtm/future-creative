@@ -1,4 +1,5 @@
 import { prisma } from '../db';
+import { stripBanned } from './banned';
 import { getSettings } from '../settings';
 import { CONCEPTS, DESIGN_STYLES } from './options';
 
@@ -53,7 +54,7 @@ export async function tasteProfile(opts: { days?: number } = {}): Promise<Taste>
   const briefs = briefIds.length ? await prisma.creativeBrief.findMany({ where: { id: { in: briefIds } }, select: { idea: true, ideaKey: true } }) : [];
   const notes = [...new Set(rejected.map((d) => d.note?.trim()).filter((n): n is string => !!n && n.length >= 3))].slice(0, 8);
   return {
-    feedback: [...(s.ai.ownerGuidance.trim() ? [s.ai.ownerGuidance.trim()] : []), ...notes],
+    feedback: [s.ai.ownerGuidance, ...notes].map((x) => stripBanned(x, s.ai.bannedPhrases)).filter((x) => x.length >= 3),
     avoid: { ideas: briefs.flatMap((b) => [b.ideaKey, b.idea]), headlines: rejected.map((d) => d.advertisement.headline).filter((h): h is string => !!h) },
     blocked: { concept: concept.filter((x) => enough(x) && x.rate <= BLOCK_AT).map((x) => x.value), designStyle: designStyle.filter((x) => enough(x) && x.rate <= BLOCK_AT).map((x) => x.value) },
     liked: { concept: concept.filter((x) => enough(x) && x.rate >= LIKE_AT).map((x) => x.value), designStyle: designStyle.filter((x) => enough(x) && x.rate >= LIKE_AT).map((x) => x.value) },
