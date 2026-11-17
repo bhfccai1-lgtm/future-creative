@@ -1,5 +1,6 @@
 import OpenAI, { toFile } from 'openai';
 import { normalizeBrief, briefIssueAr } from './brief-normalize';
+import type { CommentAnalysis, CommentAnalysisRequest } from './types';
 import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion, type VoiceoverRequest } from './types';
 import { voiceoverSystemPrompt } from './prompts';
 import { briefSystemPrompt, briefUserPrompt, ideasSystemPrompt } from './prompts';
@@ -163,6 +164,35 @@ export class OpenAiProvider implements AiProvider {
     try { j = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
     const issues = Array.isArray(j.issues) ? j.issues.map(String).filter((x) => x.trim()).slice(0, 6) : [];
     return { text: String(j.text ?? ''), layout: { productVisible: j.productVisible !== false, bottomClear: j.bottomClear !== false, issues }, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
+  async analyzeComments(req: CommentAnalysisRequest, model: string) {
+    const schema = { type: 'object', additionalProperties: false, required: ['items'], properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false,
+      required: ['id', 'category', 'sentiment', 'urgent', 'language', 'summary', 'reply'], properties: {
+        id: { type: 'string' }, category: { type: 'string', enum: ['order', 'price', 'info', 'praise', 'complaint', 'spam', 'other'] },
+        sentiment: { type: 'string', enum: ['positive', 'neutral', 'negative'] }, urgent: { type: 'boolean' },
+        language: { type: 'string', enum: ['ar', 'en', 'ml', 'other'] }, summary: { type: 'string' }, reply: { type: 'string' },
+      } } } } };
+    const system = [
+      `You are the community manager of "${req.business}", a print shop in Bahrain. Triage each Instagram comment and draft ONE reply.`,
+      'category: order (wants to buy/order/book), price (asks price/cost), info (other question), praise, complaint, spam (links, self-promotion, bots, scams), other.',
+      'urgent = true for order, price and complaint (a customer is waiting). summary = 3-8 Arabic words describing what the person wants.',
+      'reply: in the commenter\'s language (Arabic → warm, natural Bahraini/Gulf dialect; English → friendly English). Start with @username when given. Max 220 characters, at most 2 emojis.',
+      `For order/price/info: invite them to WhatsApp or a call using EXACTLY these numbers: ${req.phones.map((p) => `${p.label} ${p.phone}`).join(' · ')}.`,
+      'For complaints: apologise sincerely, no excuses, move to DM/phone. For praise: thank warmly. For spam: reply "".',
+      'NEVER state prices, discounts, free items, delivery times, guarantees, rankings ("الأفضل") or any number other than the two phones. Never invent facts about the order. No links.',
+    ].join('\n');
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'system' as const, content: system }, { role: 'user' as const, content: JSON.stringify({ comments: req.comments }) }],
+        response_format: { type: 'json_schema', json_schema: { name: 'comment_triage', strict: true, schema } },
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('comments'));
+    } catch (e) { throw mapError(e); }
+    let items: CommentAnalysis[] = [];
+    try { items = (JSON.parse(res.choices[0]?.message?.content ?? '{}').items ?? []) as CommentAnalysis[]; } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    return { items, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
   async describeStyle(png: Buffer, model: string) {
