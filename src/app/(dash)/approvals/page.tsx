@@ -10,7 +10,8 @@ const REASON = { MANUAL_MODE: 'الوضع اليدوي', ASSISTED_MODE: 'الو�
 const FORMAT_AR: Record<string, string> = { REEL_VIDEO: 'ريلز', IMAGE_CAROUSEL: 'كاروسيل', IMAGE_FEED: 'منشور', IMAGE_SQUARE: 'مربع', IMAGE_STORY: 'ستوري' };
 
 export default async function ApprovalsPage() {
-  await requirePageUser();
+  const user = await requirePageUser();
+  const canPublish = user.perms.includes('publish:now');
   const items = await prisma.approvalRequest.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' }, include: { advertisement: { include: { media: true, account: true, product: true } } } });
   const ready = items.filter((r) => r.advertisement.qcPassed && !r.advertisement.dryRun && r.advertisement.state === 'QUALITY_REVIEW').length;
   return (
@@ -62,6 +63,9 @@ export default async function ApprovalsPage() {
               <div className="grid grid-cols-3 gap-2 border-t bg-slate-50 p-2">
                 {qc?.publishable
                   ? <ActionButton url={`/api/ads/${ad.id}/publish-now`} label="✓ نشر" variant="success" size="lg" block success="أُرسل للنشر — سيُنشر في أقرب وقت آمن" />
+                  : !ad.dryRun && canPublish ? <ActionButton url={`/api/ads/${ad.id}/publish-now`} body={{ overrideQc: true }} label="⚠ نشر الآن" variant="gold" size="lg" block success="أُرسل للنشر رغم ملاحظات الجودة — سُجّل باسمك"
+                      confirm={`نشر هذا التصميم بدون اجتياز فحص الجودة؟\n\nالملاحظات:\n${failed.map((c) => `• ${c.label}`).join('\n') || '• يحتاج مراجعة بشرية'}\n\nتأكد بنفسك من النص والأرقام والشعار. يُسجَّل القرار باسمك.`}
+                      prompt="سبب النشر رغم الملاحظات (اختياري)" promptKey="reason" />
                   : ad.qcPassed ? <ActionButton url={`/api/ads/${ad.id}/approve`} label="✓ اعتماد" variant="success" size="lg" block success="تم اعتماد التصميم" /> : <span />}
                 <Link href={`/ads/${ad.id}`} className="flex items-center justify-center rounded-lg border bg-white text-sm font-bold text-navy-800">✎ تعديل</Link>
                 <ActionButton url={`/api/ads/${ad.id}/reject`} label="✗ رفض" variant="danger" size="lg" block success="تم الرفض — سنتجنّب هذا الأسلوب" prompt="سبب الرفض (اختياري — يحسّن التصاميم القادمة)" promptKey="note" />

@@ -51,6 +51,25 @@ describe('manual approval workflow', () => {
     expect(await prisma.publicationJob.count()).toBe(0);
   });
 
+  it('publish-now QC override: a person can publish a design that failed QC — recorded and audited; dry-run still refused', async () => {
+    const { accounts } = await setup('MANUAL');
+    const ad = await readyAd(accounts[0].id);
+    const qc = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } })).qcReport as { checks: { passed: boolean; label: string }[] };
+    qc.checks[0].passed = false;
+    await prisma.advertisement.update({ where: { id: ad.id }, data: { qcPassed: false, qcReport: { ...qc, passed: false, publishable: false } as never } });
+    await expect(publishNow(ad.id, admin)).rejects.toThrow(/فحص الجودة/);
+    const job = await publishNow(ad.id, admin, { overrideQc: true, reason: 'راجعته بنفسي' });
+    expect(job.state).toBe('QUEUED');
+    const fresh = await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } });
+    expect((fresh.options as { qcOverride?: { by: string; reason: string; failed: string[] } }).qcOverride).toMatchObject({ by: admin.email, reason: 'راجعته بنفسي', failed: [qc.checks[0].label] });
+    expect(await prisma.auditLog.count({ where: { action: 'ad.qc_override', targetId: ad.id } })).toBe(1);
+    expect(await processPublishJob(job.id, 'w1')).not.toBe('FAILED');
+
+    const dry = await readyAd(accounts[1].id);
+    await prisma.advertisement.update({ where: { id: dry.id }, data: { dryRun: true, qcPassed: false } });
+    await expect(publishNow(dry.id, admin, { overrideQc: true })).rejects.toThrow(/Dry-run/);
+  });
+
   it('dry-run ads are refused at publication time', async () => {
     const { accounts, admin: a } = await seedBase();
     setPublishingAdapterOverride(new FakeAdapter());
