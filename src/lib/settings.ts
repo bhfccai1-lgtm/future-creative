@@ -22,6 +22,8 @@ export const SettingsSchema = z.object({
   }).default({}),
   killSwitchReason: z.string().nullable().default(null),
   /** Idea bank: weekly rated ideas per active account; approved ideas feed automatic generation. */
+  /** occasions the owner switched off — never picked automatically, hidden from the calendar suggestions */
+  disabledOccasions: z.array(z.string().max(60)).max(100).default([]),
   ideas: z.object({
     weekly: z.boolean().default(true),
     perAccount: z.number().int().min(1).max(6).default(5),

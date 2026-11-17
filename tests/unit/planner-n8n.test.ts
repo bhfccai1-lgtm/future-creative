@@ -25,7 +25,7 @@ describe('seasonal content planner', () => {
   });
   it('keeps feeds varied: far from the peak most posts stay everyday', () => {
     expect(pickOccasion(at('2026-12-02'), { language: 'ar', market: 'BH' }, () => 0.9)).toBeNull();
-    expect(pickOccasion(at('2026-07-25'), { language: 'ar', market: 'BH' }, () => 0)).toBeNull(); // no season active
+    expect(pickOccasion(at('2026-07-18'), { language: 'ar', market: 'BH' }, () => 0)).toBeNull(); // no season active
   });
   it('content angle never repeats one of the last three', () => {
     const recent = CONTENT_TYPES.slice(0, 3).map((c) => c.value);

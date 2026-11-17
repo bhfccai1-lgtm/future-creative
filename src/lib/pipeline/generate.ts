@@ -112,7 +112,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const recent = await prisma.advertisement.findMany({ where: { accountId: account.id, state: { notIn: ['FAILED', 'REJECTED'] } }, orderBy: { createdAt: 'desc' }, take: 6, select: { options: true } });
     const auto: string[] = [];
     const dir: Direction = { ...(p.direction ?? {}) };
-    if (!dir.occasion) { const oc = pickOccasion(new Date(), { language: lang, market: marketOf(account) }); if (oc) { dir.occasion = oc; auto.push('occasion'); } }
+    if (!dir.occasion) { const oc = pickOccasion(new Date(), { language: lang, market: marketOf(account), disabled: s.disabledOccasions }); if (oc) { dir.occasion = oc; auto.push('occasion'); } }
     if (!dir.contentType && !dir.idea?.trim()) {
       dir.contentType = pickContentType(recent.map((r) => ((r.options ?? {}) as { direction?: Direction | null }).direction?.contentType));
       auto.push('contentType');
