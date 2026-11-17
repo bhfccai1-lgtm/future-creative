@@ -19,7 +19,7 @@ export async function normaliseReference(input: Buffer): Promise<Buffer> {
   return sharp(input).rotate().resize(1536, 1536, { fit: 'inside', withoutEnlargement: true }).flatten({ background: '#ffffff' }).png().toBuffer();
 }
 
-export async function saveReference(kind: 'product' | 'style', id: string, input: Buffer): Promise<string> {
+export async function saveReference(kind: 'product' | 'style' | 'work', id: string, input: Buffer): Promise<string> {
   const png = await normaliseReference(input);
   const key = `references/${kind}/${id}-${crypto.createHash('sha256').update(png).digest('hex').slice(0, 12)}.png`;
   await storage().put(key, png, 'image/png');

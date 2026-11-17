@@ -16,6 +16,9 @@ export const CONTENT_TYPES: Opt[] = [
   { value: 'behind_scenes', ar: 'من داخل المطبعة', en: 'Behind the scenes', prompt: 'behind-the-scenes in a modern clean print workshop with the finished product in focus' },
 ];
 
+/** «أعمال منجزة»: a real photo of a delivered job (owner-uploaded) — used only by the portfolio flow, never auto-picked. */
+export const REAL_WORK: Opt = { value: 'real_work', ar: 'أعمال منجزة (صورة حقيقية)', en: 'Real finished work', prompt: 'a REAL finished job the print shop delivered to a customer (the photo is the real job). The copy celebrates the finished work: print quality, finish, care and delivery. Use only facts given in the user idea — never invent client names, quantities, dates, prices or claims. Invite others to order the same' };
+
 export const MARKETS: Opt[] = [
   { value: 'bahrain_local', ar: 'السوق البحريني (مواطنون ومقيمون)', en: 'Bahrain — local market', prompt: 'the local Bahraini market (citizens and residents), Gulf Arabic cultural context' },
   { value: 'bahrain_business', ar: 'الشركات والمؤسسات في البحرين', en: 'Bahrain — businesses (B2B)', prompt: 'companies and institutions in Bahrain (B2B), professional corporate tone' },
@@ -302,6 +305,8 @@ export interface Direction {
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
   /** Reel engine for this design (default from AI settings): ffmpeg = motion from stills, veo = Gemini AI video. */
   videoEngine?: 'ffmpeg' | 'veo';
+  /** «أعمال منجزة»: storage key of the owner's real photo — used as the scene as-is (no AI image), layered text only. */
+  realPhotoKey?: string;
   /** Which fields the planner filled automatically (for analytics / transparency). */
   autoPicked?: string[];
 }
@@ -313,7 +318,7 @@ export const findOccasion = (v?: string) => (v ? OCCASIONS.find((o) => o.value =
 export function directionForPrompt(d?: Direction) {
   if (!d) return undefined;
   const out: Record<string, string> = {};
-  const ct = find(CONTENT_TYPES, d.contentType); if (ct) out.contentType = ct.prompt;
+  const ct = find([...CONTENT_TYPES, REAL_WORK], d.contentType); if (ct) out.contentType = ct.prompt;
   const mk = find(MARKETS, d.market); if (mk) out.marketAndAudience = mk.prompt;
   const sg = find(SEGMENTS, d.segment); if (sg) out.targetSegment = sg.prompt;
   const oc = findOccasion(d.occasion); if (oc) out.occasion = oc.prompt;

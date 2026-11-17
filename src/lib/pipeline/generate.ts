@@ -151,6 +151,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   }
   // banned phrases never reach the models through the owner's own idea or prompt
   if (p.direction?.idea || p.direction?.customPrompt) p = { ...p, direction: { ...p.direction, ...(p.direction.idea ? { idea: stripBanned(p.direction.idea, s.ai.bannedPhrases) } : {}), ...(p.direction.customPrompt ? { customPrompt: stripBanned(p.direction.customPrompt, s.ai.bannedPhrases) } : {}) } };
+  // «أعمال منجزة»: the owner's real photo is the scene — verified text layers only, motion from the still for Reels
+  if (p.direction?.realPhotoKey) p = { ...p, direction: { ...p.direction, renderMode: 'layered', videoEngine: 'ffmpeg', reelStyle: 'standard', contentType: 'real_work' } };
   const d = p.direction ?? {};
   const style = styleOf(d.designStyle || 'fc_signature'); // the owner's signature look is the default
   let dtype = designTypeOf(d.designType);
@@ -254,13 +256,18 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const quoted = quotedPhrases(d.idea);
     // reference images: the REAL product photo (every mode) + the owner's reference design (full-AI posters)
     const refs: { role: 'product'; png: Buffer }[] = [];
-    if (s.ai.useReferences && !provider.isDryRun) {
+    if (s.ai.useReferences && !provider.isDryRun && !d.realPhotoKey) {
       const photo = await loadReference(product.photoKey);
       if (photo) refs.push({ role: 'product', png: photo });
     }
     const styleBrief = s.ai.useReferences && aiFull ? await styleBriefFor(s, provider, format) : '';
     const refPrompt = referencePrompt(refs, styleBrief), references = refs.length ? refs.map((r) => r.png) : undefined;
-    const sceneFirst = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
+    const realPhoto = d.realPhotoKey ? await loadReference(d.realPhotoKey) : null;
+    if (d.realPhotoKey && !realPhoto) throw new AppError('NO_PHOTO', 'صورة العمل المنجز غير موجودة — ارفعها مرة أخرى.', 422);
+    type Scene = Awaited<ReturnType<typeof provider.generateScene>>;
+    const sceneFirst: Scene = realPhoto
+      ? ({ png: await sharp(realPhoto).resize(1024, 1536, { fit: 'cover', position: sharp.strategy.attention }).png().toBuffer(), model: 'real-photo' } as Scene)
+      : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
         ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: [] /* typeset by the system in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
