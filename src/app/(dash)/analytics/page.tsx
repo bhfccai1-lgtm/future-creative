@@ -6,7 +6,10 @@ import { monthToDateSpend } from '@/lib/ai/cost';
 import { startOfMonthInTz } from '@/lib/time';
 import { ActionButton } from '@/components/action-button';
 import { Badge } from '@/components/ui';
-import { loadInsights, type AccountInsight, type Advice } from '@/lib/analytics/account-insights';
+import { loadInsights, type AccountInsight, type Advice, type InsightsSnapshot } from '@/lib/analytics/account-insights';
+import { buildPostingPlan, planMonthlyCost, TIER_RULES, type PlanCurrent, type PlanRow } from '@/lib/analytics/posting-plan';
+import { estimateAdCost } from '@/lib/ai/cost';
+import type { Settings } from '@/lib/settings';
 
 const nf = (n: number | null | undefined) => (n == null ? '—' : n >= 10000 ? `${(n / 1000).toFixed(1)}K` : n.toLocaleString('en-US'));
 const LEVEL: Record<Advice['level'], { tone: 'red' | 'amber' | 'blue' | 'green'; label: string; ring: string }> = {
@@ -54,7 +57,7 @@ function Bars({ rows, unit = '' }: { rows: { label: string; value: number }[]; u
 }
 
 export default async function AnalyticsPage() {
-  await requirePageUser();
+  const user = await requirePageUser();
   const s = await getSettings();
   const since = new Date(Date.now() - 30 * 86400_000);
   const [byState, byProduct, byAccount, usage, spend, results] = await Promise.all([
@@ -71,7 +74,7 @@ export default async function AnalyticsPage() {
   return (
     <>
       <PageHeader title="تحليلات الأداء" subtitle="أرقام حقيقية من Metricool لكل حساب (المتابعون، الوصول، الريلز مقابل الصور، أفضل المنشورات) مع توصيات مبنية عليها فقط." />
-      <AccountInsightsSection />
+      <AccountInsightsSection canApply={user.perms.includes('accounts:manage')} s={s} />
       <h2 className="mb-3 mt-8 text-lg font-extrabold text-navy-900">النشر والتكلفة في النظام</h2>
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-5">
         <Stat label="منشور مؤكد" value={count('PUBLISHED')} tone="green" /><Stat label="مجدول" value={count('SCHEDULED')} />
@@ -92,7 +95,7 @@ export default async function AnalyticsPage() {
   );
 }
 
-async function AccountInsightsSection() {
+async function AccountInsightsSection({ canApply, s }: { canApply: boolean; s: Settings }) {
   const snap = await loadInsights();
   const refresh = <ActionButton url="/api/analytics/accounts" label={snap ? 'تحديث الآن' : 'جلب البيانات الحقيقية الآن'} variant={snap ? 'outline' : 'gold'} size="sm" success="تم التحديث ✓" />;
   if (!snap) return (
@@ -125,10 +128,59 @@ async function AccountInsightsSection() {
           <p className="mt-3 text-xs text-slate-500">التوصيات قواعد ثابتة على الأرقام أعلاه — لا شيء مُخمَّن. الأرقام الصغيرة (حسابات جديدة) مؤشرات أولية.</p>
         </Card>
       )}
+      <PostingPlan snap={snap} canApply={canApply} s={s} />
       <Card title="الحسابات — مرتبة حسب الجمهور">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{rows.map((a) => <AccountRow key={a.accountId} a={a} maxF={maxF} totalF={t.followers} />)}</div>
         <p className="mt-3 text-xs text-slate-500">المصدر: Metricool (قراءة فقط). إحصاءات الستوري لا تصل عبر الربط فلا تظهر هنا. «—» = غير متاح من المصدر.</p>
       </Card>
     </section>
+  );
+}
+
+const every = (m: number) => (m >= 1440 ? `كل ${m / 1440 === 1 ? 'يوم' : `${m / 1440} أيام`}` : `كل ${m % 60 ? `${(m / 60).toFixed(1)}` : m / 60} ساعات`);
+const mixAr = (raw: unknown, strategy?: string) => {
+  if (strategy && strategy !== 'GROWTH_MIX') return 'صيغة ثابتة';
+  const r = (raw ?? {}) as Record<string, number>;
+  const parts = [['REEL_VIDEO', 'ريلز'], ['IMAGE_FEED', 'منشور'], ['IMAGE_STORY', 'ستوري'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['IMAGE_SQUARE', 'مربع']].filter(([k]) => r[k] > 0).map(([k, ar]) => `${ar} ${r[k]}%`);
+  return parts.length ? parts.join(' · ') : 'ريلز 60% · منشور 30% · ستوري 10%';
+};
+const TIER_TONE: Record<PlanRow['tier'], 'green' | 'blue' | 'amber'> = { grow: 'green', steady: 'blue', light: 'amber' };
+
+async function PostingPlan({ snap, canApply, s }: { snap: InsightsSnapshot; canApply: boolean; s: Settings }) {
+  const accounts = await prisma.socialAccount.findMany({ select: { id: true, publishIntervalMinutes: true, maxDailyAds: true, formatStrategy: true, formatMix: true, publishWindowStart: true, publishWindowEnd: true, autoPublishEnabled: true } });
+  const current: Record<string, PlanCurrent> = Object.fromEntries(accounts.map(({ id, ...c }) => [id, c]));
+  const rows = buildPostingPlan(snap, current);
+  if (!rows.length) return null;
+  const changed = rows.filter((r) => r.changed);
+  const costOf = (f: string) => estimateAdCost(s, f);
+  const all = !rows.some((r) => r.current.autoPublishEnabled); // nothing auto-publishes yet → show the cost if it did
+  const now = planMonthlyCost(rows, costOf, 'current', all), next = planMonthlyCost(rows, costOf, 'plan', all);
+  const budget = s.ai.monthlyBudgetUsd;
+  return (
+    <Card title="📅 خطة النشر الذكية — مبنية على أرقامك" className="mb-5">
+      <p className="mb-3 text-sm leading-7 text-slate-600">كم مرة ينشر كل حساب وبأي صيغ، حسب جمهوره الحقيقي ووصول الريلز مقابل الصور. التطبيق يغيّر إعدادات الحساب فقط — <b>لا ينشر شيئًا ولا يشغّل النشر الآلي</b>، وكل تصميم يمر بالموافقة كالمعتاد.</p>
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="rounded-lg bg-slate-50 p-3 text-center"><div className="text-xs text-slate-500">حسابات تحتاج تعديلًا</div><div className="text-xl font-extrabold text-navy-900">{changed.length} / {rows.length}</div></div>
+        <div className="rounded-lg bg-slate-50 p-3 text-center"><div className="text-xs text-slate-500">تكلفة AI الشهرية {all ? '(لو فُعّل النشر الآلي للكل)' : '(حسابات النشر الآلي)'}</div><div className="ltr text-xl font-extrabold text-navy-900">${now.toFixed(0)} → ${next.toFixed(0)}</div></div>
+        <div className={`rounded-lg p-3 text-center ${next > budget ? 'bg-red-50' : 'bg-emerald-50'}`}><div className="text-xs text-slate-500">الميزانية الشهرية</div><div className="ltr text-xl font-extrabold">${budget.toFixed(0)}</div><div className={`text-xs font-bold ${next > budget ? 'text-red-700' : 'text-emerald-700'}`}>{next > budget ? 'الخطة تتجاوز الميزانية — ارفعها أو طبّق على الحسابات الكبيرة فقط' : 'ضمن الميزانية ✓'}</div></div>
+      </div>
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.accountId} className={`rounded-xl border p-3 ${r.changed ? 'border-gold-300' : 'opacity-75'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2"><b className="truncate text-navy-900">{r.name}</b><Badge tone={TIER_TONE[r.tier]}>{TIER_RULES[r.tier].ar}</Badge>{!r.current.autoPublishEnabled && <Badge>النشر الآلي متوقف</Badge>}</div>
+              {r.changed ? (canApply && <ActionButton url="/api/analytics/plan" body={{ accountIds: [r.accountId] }} label="تطبيق" size="sm" variant="outline" />) : <span className="text-xs font-bold text-emerald-700">مطابق للخطة ✓</span>}
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
+              <div className="text-slate-500">الحالي: {every(r.current.publishIntervalMinutes)} · حتى {r.current.maxDailyAds}/يوم (~{r.current.postsPerDay}/يوم) · {mixAr(r.current.formatMix, r.current.formatStrategy)}</div>
+              <div className="font-bold text-navy-800">المقترح: {every(r.intervalMinutes)} · حتى {r.maxDaily}/يوم (~{r.postsPerDay}/يوم) · {mixAr(r.mix)}</div>
+            </div>
+            <ul className="mt-1 list-inside list-disc text-xs text-slate-600">{r.reasons.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          </div>
+        ))}
+      </div>
+      {canApply && changed.length > 1 && <div className="mt-3"><ActionButton url="/api/analytics/plan" label={`تطبيق الخطة على ${changed.length} حساب`} variant="gold" confirm={`تطبيق الإيقاع ومزيج الصيغ المقترح على ${changed.length} حساب؟ لا يُنشر شيء تلقائيًا — يتغير فقط عدد التصاميم المقترحة وصيغها. القيم السابقة محفوظة في سجل العمليات.`} /></div>}
+      <p className="mt-3 text-xs text-slate-500">القواعد: الحسابات الكبيرة (≥ 3× الوسيط و ≥ 300 متابع، أو أكبر 3) كل 4 ساعات؛ أقل من 50 متابع كل يومين؛ البقية كل 7 ساعات. ريلز أولًا عندما يصل الريل ضعف الصورة أو أكثر. التكلفة تقدير من أسعار الإعدادات.</p>
+    </Card>
   );
 }
