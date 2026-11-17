@@ -84,6 +84,8 @@ export const SettingsSchema = z.object({
     styleReferenceKey: z.string().max(200).nullable().default(null),
     /** the reference design's style in words (made once at upload) — this text, never the image, guides each poster */
     styleReferenceBrief: z.string().max(1500).default(''),
+    /** a reference design per format group (vertical = story & reel, feed, square, carousel); falls back to the general one */
+    styleRefsByFormat: z.record(z.enum(['vertical', 'feed', 'square', 'carousel']), z.object({ key: z.string().max(200).nullable().default(null), brief: z.string().max(1500).default('') })).default({}),
     /** send the real product photo + reference design to the image model (images.edit) */
     useReferences: z.boolean().default(true),
     /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */

@@ -47,3 +47,23 @@ describe('reference images (real product photo + reference design)', () => {
     expect(p.lastReferences).toBeUndefined();
   });
 });
+
+describe('reference design per format', () => {
+  it('each format uses its own reference style; carousel falls back to feed, then the general one', async () => {
+    const { slotsFor } = await import('@/lib/creative/references');
+    expect(slotsFor('REEL_VIDEO')).toEqual(['vertical']);
+    expect(slotsFor('IMAGE_CAROUSEL')).toEqual(['carousel', 'feed']);
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+    await updateSettings((s) => ({ ...s, ai: { ...s.ai, styleReferenceKey: 'k-general', styleReferenceBrief: 'GENERAL-STYLE', styleRefsByFormat: {
+      vertical: { key: 'k-v', brief: 'VERTICAL-STYLE' }, feed: { key: 'k-f', brief: 'FEED-STYLE' },
+    } } }));
+    const p = new FakeAiProvider(); setAiProviderOverride(p);
+    const run = async (format: 'IMAGE_STORY' | 'IMAGE_FEED' | 'IMAGE_CAROUSEL' | 'IMAGE_SQUARE') => { await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format, direction: { renderMode: 'ai_full' } }); return p.lastScenePrompt; };
+    expect(await run('IMAGE_STORY')).toContain('VERTICAL-STYLE');
+    expect(await run('IMAGE_FEED')).toContain('FEED-STYLE');
+    expect(await run('IMAGE_CAROUSEL')).toContain('FEED-STYLE'); // no carousel reference → feed
+    const sq = await run('IMAGE_SQUARE');
+    expect(sq).toContain('GENERAL-STYLE'); // no square reference → general
+    expect(sq).not.toMatch(/VERTICAL-STYLE|FEED-STYLE/);
+  });
+});

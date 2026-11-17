@@ -5,7 +5,7 @@ import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 import { ReferenceUpload } from './reference-upload';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; aiFullTextRetries?: number; styleReferenceKey?: string | null; styleReferenceBrief?: string; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; aiFullTextRetries?: number; styleReferenceKey?: string | null; styleReferenceBrief?: string; styleRefsByFormat?: Partial<Record<'vertical' | 'feed' | 'square' | 'carousel', { key: string | null; brief: string }>>; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -48,11 +48,19 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
             <textarea rows={2} maxLength={600} className="input" value={v.ownerGuidance ?? ''} onChange={(e) => setV({ ...v, ownerGuidance: e.target.value })} placeholder="مثال: ألوان فاتحة ومبهجة، بدون وجوه أشخاص، أبرز اسم المنتج بخط كبير، لا خلفيات سوداء" />
             <p className="mt-1 text-xs text-slate-500">ومعه: أسباب رفضك للتصاميم السابقة تُرسل للمصمم تلقائيًا، والأفكار والأساليب التي ترفضها مرارًا تخرج من التناوب.</p></div>
           <div className="mb-3 rounded-lg bg-gold-300/10 p-3"><label className="label">🖼️ التصميم المرجعي — مستوى الاحتراف المطلوب</label>
-            <div className="flex flex-wrap items-center gap-4">
-              <ReferenceUpload endpoint="/api/settings/ai/style-reference" current={v.styleReferenceKey ?? null} label="التصميم المرجعي" />
-              <p className="max-w-md text-xs text-slate-600">ارفع تصميمًا يعجبك (مثل إعلان الكوب). يقرأ الذكاء الاصطناعي <b>أسلوبه فقط</b> (الألوان، الإضاءة، الخطوط الذهبية، الزخارف، التوزيع) ويحوّله إلى وصف مكتوب — الصورة نفسها لا تُرسل، فلا تنتقل نصوصها أو رسوماتها أو منتجها إلى تصاميمك. وارفع <b>صورة حقيقية لكل منتج</b> من صفحة «المنتجات والخدمات» ليُرسم منتجك كما هو.</p>
+            <p className="mb-3 text-xs leading-6 text-slate-600">ارفع تصميمًا يعجبك لكل صيغة (مثل إعلان الكوب للستوري). يقرأ الذكاء الاصطناعي <b>أسلوبه فقط</b> (الألوان، الإضاءة، الخطوط الذهبية، الزخارف، التوزيع) ويحوّله إلى وصف مكتوب — الصورة نفسها لا تُرسل، فلا تنتقل نصوصها أو منتجها إلى تصاميمك. كل صيغة تستخدم نموذجها، وإن لم يكن لها نموذج تستخدم «العام». وارفع <b>صورة حقيقية لكل منتج</b> من «المنتجات والخدمات».</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {([['general', 'عام (لكل الصيغ)', 'الاحتياطي لأي صيغة بلا نموذج'], ['vertical', 'ستوري و Reel', 'عمودي 9:16'], ['feed', 'منشور', '4:5'], ['square', 'مربع', '1:1'], ['carousel', 'كاروسيل', 'الغلاف — وإلا يُستخدم نموذج المنشور']] as const).map(([slot, title, hint]) => {
+                const ref = slot === 'general' ? { key: v.styleReferenceKey ?? null, brief: v.styleReferenceBrief ?? '' } : (v.styleRefsByFormat?.[slot] ?? { key: null, brief: '' });
+                return (
+                  <div key={slot} className="rounded-xl border bg-white p-3">
+                    <div className="mb-2 flex items-baseline justify-between gap-2"><b className="text-sm text-navy-900">{title}</b><span className="text-[11px] text-slate-500">{hint}</span></div>
+                    <ReferenceUpload endpoint={slot === 'general' ? '/api/settings/ai/style-reference' : `/api/settings/ai/style-reference?slot=${slot}`} current={ref.key} label={`نموذج ${title}`} />
+                    {ref.key && ref.brief ? <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer font-bold">الأسلوب المقروء</summary><p className="ltr mt-1 leading-5" dir="ltr">{ref.brief}</p></details> : ref.key ? <p className="mt-2 text-[11px] text-slate-500">يُقرأ أسلوبه عند أول تصميم.</p> : null}
+                  </div>
+                );
+              })}
             </div>
-            {v.styleReferenceKey && v.styleReferenceBrief ? <p className="mt-2 rounded bg-white/70 p-2 text-xs text-slate-600 ltr" dir="ltr"><b>Style:</b> {v.styleReferenceBrief}</p> : null}
             <label className="mt-2 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.useReferences ?? true} onChange={(e) => setV({ ...v, useReferences: e.target.checked })} /><span>استخدام الصور المرجعية عند التوليد (صورة المنتج + التصميم المرجعي)</span></label></div>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.creativeConcepts ?? true} onChange={(e) => setV({ ...v, creativeConcepts: e.target.checked })} /><span><b>فكرة بصرية مميزة لكل تصميم</b> — 10 أفكار إبداعية تتناوب لكل حساب: طبيعة صامتة فاخرة، المنتج يطفو، لحظة حركة مجمّدة، عالم مصغّر، ورق مقصوص، لون جريء وأشكال هندسية، تراث خليجي فاخر، لقطة سينمائية، مجسّمات ناعمة، مفاجأة الحجم. حسابات الشركات تأخذ الأفكار الرسمية فقط.</span></label>
           <div className="mt-3 flex flex-wrap items-end gap-3">

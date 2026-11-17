@@ -23,7 +23,7 @@ import { phash } from '../dedup/phash';
 import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
 import { TEMPLATES, FORMAT_SIZE } from '../render/templates';
 import { aiPosterImageSize, aiPosterGeometry } from '../render/poster';
-import { loadReference, referencePrompt } from '../creative/references';
+import { loadReference, referencePrompt, slotsFor } from '../creative/references';
 import { captionIssues } from '../creative/caption-quality';
 import { scoreConcepts, type ConceptScore } from '../creative/concept-select';
 import { renderReel } from '../video/reel';
@@ -246,7 +246,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       const photo = await loadReference(product.photoKey);
       if (photo) refs.push({ role: 'product', png: photo });
     }
-    const styleBrief = s.ai.useReferences && aiFull ? await styleBriefFor(s, provider) : '';
+    const styleBrief = s.ai.useReferences && aiFull ? await styleBriefFor(s, provider, format) : '';
     const refPrompt = referencePrompt(refs, styleBrief), references = refs.length ? refs.map((r) => r.png) : undefined;
     const sceneFirst = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
@@ -632,15 +632,20 @@ export function quotedPhrases(idea?: string | null): string[] {
 }
 
 /** The reference design's style as words; made once (also for designs uploaded before this existed) and cached in settings. */
-async function styleBriefFor(s: Settings, provider: AiProvider): Promise<string> {
-  if (s.ai.styleReferenceBrief.trim() || !s.ai.styleReferenceKey || provider.isDryRun || !provider.describeStyle) return s.ai.styleReferenceBrief;
-  const png = await loadReference(s.ai.styleReferenceKey);
+async function styleBriefFor(s: Settings, provider: AiProvider, format: string): Promise<string> {
+  // the format's own reference first (story/reel, feed, square, carousel), then the general one
+  const slot = slotsFor(format).find((k) => s.ai.styleRefsByFormat[k]?.key);
+  const ref = slot ? s.ai.styleRefsByFormat[slot]! : { key: s.ai.styleReferenceKey, brief: s.ai.styleReferenceBrief };
+  if (ref.brief.trim() || !ref.key || provider.isDryRun || !provider.describeStyle) return ref.brief;
+  const png = await loadReference(ref.key);
   if (!png) return '';
   try {
     await assertBudget(s, estimateTextCost(s, 1500, 250));
     const r = await provider.describeStyle(png, s.ai.textModel);
     await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
-    if (r.text) await updateSettings((x) => ({ ...x, ai: { ...x.ai, styleReferenceBrief: r.text } }));
+    if (r.text) await updateSettings((x) => ({ ...x, ai: slot
+      ? { ...x.ai, styleRefsByFormat: { ...x.ai.styleRefsByFormat, [slot]: { key: ref.key, brief: r.text } } }
+      : { ...x.ai, styleReferenceBrief: r.text } }));
     return r.text;
   } catch { return ''; }
 }
