@@ -104,7 +104,8 @@ export const angleAr = (v: string | null) => IDEA_ANGLES.find((a) => a.value ===
 
 /** Scheduler generation: uses the best approved idea when there is one (product, best format for growth-mix accounts, idea text). */
 export async function generateFromBank<T extends { accountId: string; productId?: string; format?: string; direction?: Direction }, R extends { advertisement: { id: string } }>(data: T, run: (d: T) => Promise<R>): Promise<R> {
-  if (data.productId || data.direction?.idea) return run(data);
+  // the owner fixed the product/category/idea (or a multi-choice list) → the bank never overrides it
+  if (data.productId || data.direction?.idea || data.direction?.productIds?.length || data.direction?.categoryIds?.length || data.direction?.categoryId) return run(data);
   const take = await takeApprovedIdea(data.accountId);
   if (!take) return run(data);
   const acc = await prisma.socialAccount.findUnique({ where: { id: data.accountId }, select: { formatStrategy: true } });

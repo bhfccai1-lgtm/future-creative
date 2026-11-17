@@ -50,6 +50,11 @@ export const DirectionSchema = z.object({
   /** campaign: vary the format per post (growth mix) regardless of the account's fixed format */
   autoFormat: z.boolean().optional(),
   categoryId: z.string().max(64).optional(),
+  /** campaign multi-choice: each design picks ONE of these at random (empty = automatic as before) */
+  categoryIds: z.array(z.string().max(64)).max(60).optional(),
+  productIds: z.array(z.string().max(64)).max(300).optional(),
+  formats: z.array(z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO', 'IMAGE_CAROUSEL'])).max(5).optional(),
+  contentTypes: z.array(z.string().max(60)).max(30).optional(),
   customPrompt: z.string().max(3000).optional(),
   channels: z.array(z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'pinterest', 'linkedin', 'twitter', 'gmb'])).max(9).optional(),
   reelStyle: z.enum(['standard', 'pro']).optional(),

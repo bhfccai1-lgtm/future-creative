@@ -262,6 +262,8 @@ export interface Direction {
   renderMode?: 'layered' | 'ai_full' | 'auto'; customPrompt?: string; autoFormat?: boolean;
   /** campaign: auto-pick products only from this category */
   categoryId?: string;
+  /** campaign multi-choice lists — one is picked at random per design */
+  categoryIds?: string[]; productIds?: string[]; formats?: ('IMAGE_STORY' | 'IMAGE_FEED' | 'IMAGE_SQUARE' | 'REEL_VIDEO' | 'IMAGE_CAROUSEL')[]; contentTypes?: string[];
   /** resolved art recipe (system-picked) */
   art?: Art;
   channels?: Channel[];

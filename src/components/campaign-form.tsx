@@ -7,6 +7,10 @@ import { Button } from './ui';
 import { CONTENT_TYPES, LANGUAGES, MARKETS, OCCASIONS, SEGMENTS } from '@/lib/creative/options';
 import { bestHoursFor, previewSlots } from '@/lib/campaigns/slots';
 import { DesignFields, designDirection, EMPTY_DESIGN, type DesignValues } from './design-fields';
+import { MultiPick } from './multi-pick';
+
+const FORMAT_OPTS = [{ value: 'REEL_VIDEO', label: 'فيديو Reel' }, { value: 'IMAGE_CAROUSEL', label: 'كاروسيل (شرائح)' }, { value: 'IMAGE_FEED', label: 'صورة منشور' }, { value: 'IMAGE_STORY', label: 'صورة عمودية (ستوري)' }, { value: 'IMAGE_SQUARE', label: 'صورة مربعة' }];
+const arr = (x: unknown) => (Array.isArray(x) ? (x as string[]) : []);
 
 type Opt = { id: string; label: string; categoryId?: string };
 const TZ = 'Asia/Bahrain';
@@ -31,9 +35,10 @@ export function CampaignForm({ accounts, products, categories = [], initial }: {
   const d0 = (initial?.direction ?? {}) as Record<string, unknown>;
   const startLocal = initial ? formatInTimeZone(new Date(initial.startAt), TZ, "yyyy-MM-dd'T'HH:mm") : nowLocal();
   const [v, setV] = useState({
-    name: initial?.name ?? '', accountIds: initial?.accountIds ?? ([] as string[]), productId: initial?.productId ?? '', categoryId: str(d0.categoryId),
-    format: initial ? (initial.format ?? (d0.autoFormat ? 'AUTO' : '')) : 'AUTO', language: initial?.language ?? '', ideaMode: (str(d0.idea) ? 'custom' : 'auto') as 'auto' | 'custom',
-    contentType: str(d0.contentType), market: str(d0.market), segment: str(d0.segment), occasion: str(d0.occasion), idea: str(d0.idea),
+    name: initial?.name ?? '', accountIds: initial?.accountIds ?? ([] as string[]),
+    productIds: initial?.productId ? [initial.productId] : arr(d0.productIds), categoryIds: str(d0.categoryId) ? [str(d0.categoryId)] : arr(d0.categoryIds),
+    formats: initial?.format ? [initial.format] : arr(d0.formats), language: initial?.language ?? '', ideaMode: (str(d0.idea) ? 'custom' : 'auto') as 'auto' | 'custom',
+    contentTypes: str(d0.contentType) ? [str(d0.contentType)] : arr(d0.contentTypes), market: str(d0.market), segment: str(d0.segment), occasion: str(d0.occasion), idea: str(d0.idea),
     scheduleType: (initial?.scheduleType ?? 'RECURRING') as 'ONCE' | 'RECURRING', everyHours: initial?.everyHours ?? 24, daysOfWeek: initial?.daysOfWeek ?? ([] as number[]), timeMode: (initial?.timeMode ?? 'BEST') as 'BEST' | 'FIXED',
     start: startLocal, end: initial?.endAt ? formatInTimeZone(new Date(initial.endAt), TZ, 'yyyy-MM-dd') : '', maxRuns: initial?.maxRuns ? String(initial.maxRuns) : '',
   });
@@ -45,7 +50,7 @@ export function CampaignForm({ accounts, products, categories = [], initial }: {
     channels: Array.isArray(d0.channels) ? (d0.channels as string[]) : [], reelStyle: str(d0.reelStyle) || 'standard', reelDuration: d0.reelDuration ? String(d0.reelDuration) : '',
     audio: str(d0.audio), audioQuery: str(d0.audioQuery), videoEngine: str(d0.videoEngine),
   } : { ...EMPTY_DESIGN, renderMode: 'auto', designStyle: 'auto' });
-  const fmt = v.format === 'AUTO' ? '' : v.format;
+  const fmt = v.formats.length === 1 ? v.formats[0] : '';
 
   const startAt = useMemo(() => { try { return fromZonedTime(v.start.length === 10 ? `${v.start}T00:00` : v.start, TZ); } catch { return null; } }, [v.start]);
   const endAt = useMemo(() => { try { return v.end ? fromZonedTime(`${v.end}T23:59`, TZ) : null; } catch { return null; } }, [v.end]);
@@ -59,14 +64,17 @@ export function CampaignForm({ accounts, products, categories = [], initial }: {
     <form className="space-y-6" onSubmit={async (e) => {
       e.preventDefault(); setMsg(null); setBusy(true);
       const direction: Record<string, unknown> = {};
-      for (const k of ['contentType', 'market', 'segment', 'occasion'] as const) if (v[k].trim()) direction[k] = v[k].trim();
+      for (const k of ['market', 'segment', 'occasion'] as const) if (v[k].trim()) direction[k] = v[k].trim();
       if (v.ideaMode === 'custom' && v.idea.trim()) direction.idea = v.idea.trim();
-      if (v.format === 'AUTO') direction.autoFormat = true;
-      if (v.categoryId && !v.productId) direction.categoryId = v.categoryId;
+      // one value = fixed; several = one picked at random per design; none = automatic
+      if (v.contentTypes.length === 1) direction.contentType = v.contentTypes[0]; else if (v.contentTypes.length > 1) direction.contentTypes = v.contentTypes;
+      if (v.formats.length === 0) direction.autoFormat = true; else if (v.formats.length > 1) direction.formats = v.formats;
+      if (v.productIds.length > 1) direction.productIds = v.productIds;
+      if (!v.productIds.length) { if (v.categoryIds.length === 1) direction.categoryId = v.categoryIds[0]; else if (v.categoryIds.length > 1) direction.categoryIds = v.categoryIds; }
       Object.assign(direction, designDirection(design, fmt));
       try {
         await apiCall(initial ? `/api/campaigns/${initial.id}` : '/api/campaigns', { method: initial ? 'PUT' : 'POST', body: {
-          name: v.name, accountIds: v.accountIds, productId: v.productId || null, format: fmt || null, language: v.language || null,
+          name: v.name, accountIds: v.accountIds, productId: v.productIds.length === 1 ? v.productIds[0] : null, format: fmt || null, language: v.language || null,
           direction: Object.keys(direction).length ? direction : undefined,
           scheduleType: v.scheduleType, everyHours: v.everyHours, daysOfWeek: v.daysOfWeek, timeMode: v.scheduleType === 'ONCE' ? 'FIXED' : v.timeMode,
           startAt: startAt?.toISOString(), endAt: endAt?.toISOString() ?? null, maxRuns: v.maxRuns ? Number(v.maxRuns) : null,
@@ -77,14 +85,14 @@ export function CampaignForm({ accounts, products, categories = [], initial }: {
       setBusy(false);
     }}>
       {/* 1 — what */}
-      <fieldset className="grid gap-4 md:grid-cols-4">
+      <fieldset className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <legend className="mb-2 text-sm font-extrabold text-navy-800">١. ماذا ننشر؟</legend>
         <div className="md:col-span-2"><label className="label">اسم الحملة</label><input className="input" required value={v.name} onChange={(e) => set('name')(e.target.value)} placeholder="مثال: أكواب العيد الوطني" /></div>
-        <Sel label="فئة المنتج" value={v.categoryId} onChange={(x) => setV((s) => ({ ...s, categoryId: x, productId: '' }))}><option value="">اختيار تلقائي — كل الفئات</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</Sel>
-        <Sel label="المنتج" value={v.productId} onChange={set('productId')}><option value="">{v.categoryId ? 'اختيار تلقائي من هذه الفئة' : 'اختيار تلقائي لكل إعلان'}</option>{products.filter((p) => !v.categoryId || p.categoryId === v.categoryId).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</Sel>
-        <Sel label="الصيغة" value={v.format} onChange={set('format')}><option value="AUTO">تلقائي — تنويع ذكي (Reel · كاروسيل · منشور · ستوري)</option><option value="">حسب إعداد الحساب</option><option value="IMAGE_STORY">صورة عمودية</option><option value="IMAGE_FEED">صورة منشور</option><option value="IMAGE_SQUARE">صورة مربعة</option><option value="REEL_VIDEO">فيديو Reel</option><option value="IMAGE_CAROUSEL">كاروسيل (شرائح)</option></Sel>
+        <div className="md:col-span-2"><MultiPick label="فئات المنتجات" autoLabel="اختيار تلقائي — كل الفئات" value={v.categoryIds} onChange={(x) => setV((st) => ({ ...st, categoryIds: x, productIds: st.productIds.filter((id) => !x.length || x.includes(products.find((p) => p.id === id)?.categoryId ?? '')) }))} options={categories.map((c) => ({ value: c.id, label: c.label }))} /></div>
+        <div className="md:col-span-2"><MultiPick label="المنتجات" autoLabel={v.categoryIds.length ? 'اختيار تلقائي من الفئات المختارة' : 'اختيار تلقائي لكل إعلان'} value={v.productIds} onChange={set('productIds')} options={products.filter((p) => !v.categoryIds.length || v.categoryIds.includes(p.categoryId ?? '')).map((p) => ({ value: p.id, label: p.label }))} /></div>
+        <div className="md:col-span-2"><MultiPick label="الصيغ" autoLabel="تلقائي — تنويع ذكي (Reel · كاروسيل · منشور · ستوري)" value={v.formats} onChange={set('formats')} options={FORMAT_OPTS} /></div>
         <Sel label="لغة المحتوى" value={v.language} onChange={set('language')}><option value="">حسب الحساب</option>{LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.ar}</option>)}</Sel>
-        <Sel label="نوع المحتوى" value={v.contentType} onChange={set('contentType')}><option value="">تلقائي (يتنوع)</option>{CONTENT_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
+        <div className="md:col-span-2"><MultiPick label="أنواع المحتوى" autoLabel="تلقائي (يتنوع)" value={v.contentTypes} onChange={set('contentTypes')} options={CONTENT_TYPES.map((o) => ({ value: o.value, label: o.ar }))} /></div>
         <Sel label="الجمهور والسوق" value={v.market} onChange={set('market')}><option value="">تلقائي</option>{MARKETS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="الفئة المستهدفة" value={v.segment} onChange={set('segment')}><option value="">تلقائي</option>{SEGMENTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="نوع المناسبة" value={v.occasion} onChange={set('occasion')}><option value="">تلقائي</option>{OCCASIONS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
@@ -115,7 +123,7 @@ export function CampaignForm({ accounts, products, categories = [], initial }: {
 
         {v.scheduleType === 'RECURRING' && (
           <>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Sel label="التكرار" value={String(v.everyHours)} onChange={(x) => set('everyHours')(Number(x))}>{INTERVALS.map((h) => <option key={h} value={h}>{intervalLabel(h)}</option>)}</Sel>
               <div className="md:col-span-2">
                 <label className="label">وقت النشر</label>
@@ -138,7 +146,7 @@ export function CampaignForm({ accounts, products, categories = [], initial }: {
           </>
         )}
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <label className="label">{v.scheduleType === 'ONCE' ? 'تاريخ ووقت النشر' : v.timeMode === 'FIXED' ? 'أول موعد (تاريخ ووقت)' : 'تاريخ البداية'}</label>
             {v.scheduleType === 'RECURRING' && v.timeMode === 'BEST'

@@ -91,6 +91,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   // Brand guard: no approved, untampered logo → nothing is generated.
   const logo = await loadApprovedLogo(business.id);
 
+  // campaign multi-choice: pick ONE of the chosen products / categories / formats / content types at random
+  p = await pickFromChoices(p);
   const product = p.productId
     ? await prisma.product.findFirstOrThrow({ where: { id: p.productId, active: true } })
     : await selectProductForAccount(account, Math.random, p.direction?.categoryId);
@@ -641,4 +643,20 @@ async function styleBriefFor(s: Settings, provider: AiProvider): Promise<string>
     if (r.text) await updateSettings((x) => ({ ...x, ai: { ...x.ai, styleReferenceBrief: r.text } }));
     return r.text;
   } catch { return ''; }
+}
+
+/** Resolves a campaign's multi-choice lists to one random value each (only where no single value was fixed). */
+export async function pickFromChoices<T extends { productId?: string; format?: string; direction?: Direction }>(p: T, rnd: () => number = Math.random): Promise<T> {
+  const d = p.direction;
+  if (!d) return p;
+  const one = <V>(xs: V[]) => xs[Math.floor(rnd() * xs.length)];
+  let out: T = p;
+  if (!p.productId && d.productIds?.length) {
+    const active = await prisma.product.findMany({ where: { id: { in: d.productIds }, active: true }, select: { id: true } });
+    if (active.length) out = { ...out, productId: one(active).id };
+  }
+  if (!out.productId && !d.categoryId && d.categoryIds?.length) out = { ...out, direction: { ...out.direction, categoryId: one(d.categoryIds) } };
+  if (!p.format && d.formats?.length) out = { ...out, format: one(d.formats) };
+  if (!d.contentType && d.contentTypes?.length) out = { ...out, direction: { ...out.direction, contentType: one(d.contentTypes) } };
+  return out;
 }
