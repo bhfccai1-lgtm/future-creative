@@ -748,6 +748,11 @@ model Lead {
   firstContactAt DateTime?
   wonAt          DateTime?
   closedAt       DateTime?
+  /// quote built in the system: { no, items:[{desc,qty,unit}], discount, notes, validUntil, at } — prices typed by the owner
+  quote          Json?
+  quoteNo        Int?           @unique
+  /// messages sent from the sales scripts: [{ key, at, by }]
+  touches        Json?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

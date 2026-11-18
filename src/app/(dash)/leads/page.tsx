@@ -4,7 +4,12 @@ import { requirePageUser } from '@/lib/auth/server';
 import { Badge, Card, PageHeader, Stat } from '@/components/ui';
 import { ActionButton } from '@/components/action-button';
 import { LeadForm } from '@/components/lead-form';
-import { leadStats, leadsFromComments, LOST_REASONS, SOURCE_AR, STATUS_AR, STATUSES, type LeadStatus } from '@/lib/leads/service';
+import { leadStats, leadsFromComments, LOST_REASONS, salesOverview, SOURCE_AR, STATUS_AR, STATUSES, type LeadStatus } from '@/lib/leads/service';
+import { nextAction, scriptText, waLink, type Quote, type Touch } from '@/lib/leads/scripts';
+import { SalesAction } from '@/components/sales-action';
+import { SalesSettings } from '@/components/sales-settings';
+import { getSettings } from '@/lib/settings';
+import { contactLines, getBusiness } from '@/lib/business';
 export const dynamic = 'force-dynamic';
 
 const TONE: Record<LeadStatus, 'blue' | 'amber' | 'gold' | 'green' | 'slate'> = { NEW: 'blue', CONTACTED: 'amber', QUOTED: 'gold', WON: 'green', LOST: 'slate' };
@@ -17,19 +22,37 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   await leadsFromComments().catch(() => 0); // catch up comments analysed before this feature
   const sp = await searchParams;
   const tab = (STATUSES as readonly string[]).includes(sp.s ?? '') ? (sp.s as LeadStatus) : 'open';
-  const [stats, list, accounts, products, counts] = await Promise.all([
+  const [stats, list, accounts, products, counts, sales, settings, business] = await Promise.all([
     leadStats(30),
     prisma.lead.findMany({ where: tab === 'open' ? { status: { in: ['NEW', 'CONTACTED', 'QUOTED'] } } : { status: tab }, orderBy: tab === 'open' ? [{ nextFollowUpAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }] : { updatedAt: 'desc' }, take: 100, include: { account: { select: { name: true } }, product: { select: { titleAr: true } } } }),
     prisma.socialAccount.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.product.findMany({ where: { active: true }, select: { id: true, titleAr: true }, orderBy: { titleAr: 'asc' }, take: 300 }),
     prisma.lead.groupBy({ by: ['status'], _count: true }),
+    salesOverview(), getSettings(), getBusiness(),
   ]);
+  const ctx = { business: business.nameAr, branches: contactLines(business, 'ar'), reactivationDays: settings.sales.reactivationDays };
+  const canSettings = user.perms.includes('accounts:manage');
   const n = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
   const tabs: [string, string, number][] = [['open', 'المفتوحة', n('NEW') + n('CONTACTED') + n('QUOTED')], ['WON', STATUS_AR.WON, n('WON')], ['LOST', STATUS_AR.LOST, n('LOST')]];
   const now = Date.now();
   return (
     <>
       <PageHeader title="العملاء والطلبات" subtitle="كل استفسار يُتابَع حتى يصبح طلبًا: تعليقات الشراء والسعر تُضاف تلقائيًا، وأضف من اتصل أو راسل أو زار الفرع. هكذا تعرف أي حساب يجلب الطلبات فعلًا." />
+      <Card className="mb-4" title="🎯 مبيعات هذا الشهر">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2"><span className="text-2xl font-extrabold text-navy-900">{bhd(sales.month.revenue)}</span><span className="text-sm text-slate-600">{sales.month.target ? `من هدف ${bhd(sales.month.target)} · ${sales.month.pct}%` : 'حدّد هدفًا شهريًا من الإعدادات أدناه'}</span></div>
+            {sales.month.target > 0 && <>
+              <div className="relative h-3 rounded bg-slate-100"><div className={`h-3 rounded ${sales.month.revenue >= sales.month.expectedByNow ? 'bg-emerald-500' : 'bg-gold-500'}`} style={{ width: `${Math.min(100, sales.month.pct ?? 0)}%` }} /><div className="absolute top-[-3px] h-[18px] w-0.5 bg-navy-900" style={{ right: `${sales.month.pacePct}%` }} title="المتوقع حتى اليوم" /></div>
+              <p className={`mt-1 text-xs font-bold ${sales.month.revenue >= sales.month.expectedByNow ? 'text-emerald-700' : 'text-amber-700'}`}>{sales.month.revenue >= sales.month.expectedByNow ? 'متقدم على المعدل ✓' : `متأخر عن المعدل — المتوقع حتى اليوم ${bhd(sales.month.expectedByNow)}. تابع العروض المفتوحة والعملاء السابقين.`}</p>
+            </>}
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+            <div className="rounded-lg bg-slate-50 p-2"><div className="text-lg font-extrabold text-navy-900">{sales.pipeline.quotes}</div><div className="text-slate-500">عروض مفتوحة</div><div className="ltr font-bold">{bhd(sales.pipeline.value)}</div></div>
+            <div className={`rounded-lg p-2 ${sales.pipeline.expiringSoon ? 'bg-amber-50' : 'bg-slate-50'}`}><div className="text-lg font-extrabold text-navy-900">{sales.pipeline.expiringSoon}</div><div className="text-slate-500">تنتهي خلال يومين</div></div>
+          </div>
+        </div>
+      </Card>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="بانتظار متابعتك الآن" value={stats.dueNow} tone={stats.dueNow ? 'red' : 'green'} hint={stats.slowNew ? `${stats.slowNew} جديد ينتظر أكثر من ساعتين` : 'لا تأخير'} />
         <Stat label="مفتوحة" value={stats.open} hint="جديد + تواصل + عرض سعر" />
@@ -64,12 +87,40 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                   <ActionButton url={u} method="PATCH" body={{ followUpDays: 2 }} label="ذكّرني بعد يومين" size="sm" variant="ghost" />
                 </div>
               )}
+              {canEdit && (() => {
+                const lk = { ...l, quote: l.quote as unknown as Quote | null, touches: l.touches as unknown as Touch[] | null };
+                const na = nextAction(lk, ctx);
+                if (!na) return null;
+                const text = scriptText(na.key, lk, ctx);
+                return <SalesAction leadId={l.id} scriptKey={na.key} label={na.label} due={na.due} text={text} wa={waLink(l.contact, text)} />;
+              })()}
+              {canEdit && l.status !== 'LOST' && <div className="mt-1.5 flex flex-wrap gap-3 text-[11px] font-bold">
+                <Link href={`/leads/${l.id}/quote`} className="text-navy-700 underline">{l.quoteNo ? `✎ عرض السعر ${l.quoteNo}` : '🧾 إنشاء عرض سعر'}</Link>
+                {l.quoteNo && <Link href={`/q/${l.id}`} className="text-gold-600 underline">عرض / طباعة</Link>}
+              </div>}
               {l.commentId && <Link href="/comments" className="mt-1 inline-block text-[11px] font-bold text-gold-600 underline">الرد على التعليق ←</Link>}
             </article>
           );
         })}
         {!list.length && <Card className="md:col-span-2 xl:col-span-3"><p className="text-sm text-slate-500">{tab === 'open' ? 'لا يوجد عملاء بانتظار المتابعة. تعليقات الشراء والسعر تظهر هنا تلقائيًا.' : 'لا شيء هنا بعد.'}</p></Card>}
       </div>
+      {sales.reactivate.length > 0 && (
+        <Card className="mb-4" title={`🔁 عملاء سابقون جاهزون لطلب جديد (${sales.reactivate.length})`}>
+          <p className="mb-3 text-xs text-slate-500">طلبوا منك قبل أكثر من {settings.sales.reactivationDays} يومًا ولم يعودوا. العميل السابق أسهل بيعًا من عميل جديد — رسالة لطيفة تكفي.</p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{sales.reactivate.map((r) => {
+            const lk = { name: r.name, contact: r.contact, need: r.need, status: 'WON', createdAt: r.wonAt ?? new Date(), wonAt: r.wonAt, touches: [{ key: 'won_thanks' as const, at: new Date(0).toISOString(), by: '' }] };
+            const text = scriptText('reactivate', lk, ctx);
+            return (
+              <div key={r.id} className="rounded-xl border p-3">
+                <div className="flex items-center justify-between gap-2"><b className="truncate">{r.name ?? r.contact ?? 'عميل'}</b>{r.valueBhd != null && <span className="text-xs font-bold text-emerald-700">{bhd(r.valueBhd)}</span>}</div>
+                <p className="text-xs text-slate-600">{r.need}</p>
+                <div className="text-[11px] text-slate-500">{r.wonAt ? `طلب ${ago(r.wonAt)}` : ''}{r.account ? ` · من ${r.account}` : ''}</div>
+                {canEdit && <SalesAction leadId={r.id} scriptKey="reactivate" label="عميل سابق — طلب جديد" due text={text} wa={waLink(r.contact, text)} />}
+              </div>
+            );
+          })}</div>
+        </Card>
+      )}
       <div className="grid gap-4 xl:grid-cols-3">
         <Card title="أي حساب يجلب الطلبات؟ (30 يومًا)" className="xl:col-span-2">
           {stats.byAccount.length ? <table className="w-full text-sm"><thead><tr className="text-right text-xs text-slate-500"><th className="py-1">الحساب</th><th>استفسارات</th><th>طلبات</th><th>القيمة</th></tr></thead>
@@ -83,6 +134,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           {stats.lostReasons[0]?.reason === 'السعر' && <p className="mt-2 text-xs text-navy-700">💡 أكثر سبب هو السعر — أبرز الجودة والتسليم السريع في التصاميم، واعرض خيارات بكميات مختلفة في عرض السعر.</p>}
         </Card>
       </div>
+      {canSettings && <Card className="mt-4" title="⚙️ إعدادات المبيعات" collapsible><SalesSettings initial={settings.sales} /></Card>}
     </>
   );
 }

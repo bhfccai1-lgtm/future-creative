@@ -61,3 +61,41 @@ describe('leads & orders', () => {
     expect(s).toMatchObject({ slowNew: 1, open: 2, medianHoursToContact: 3, conversion: 100 });
   });
 });
+
+describe('sales layer', () => {
+  it('logging WhatsApp messages advances the stage; quotes are numbered and set the expected value', async () => {
+    const { admin } = await seedBase(); actor.sub = admin.id;
+    const { recordTouch, saveQuote } = await import('@/lib/leads/service');
+    const a = await createLead({ need: '50 كوب', source: 'phone', contact: '36001122' }, actor);
+    const t1 = await recordTouch(a.id, 'first_reply', actor);
+    expect(t1.status).toBe('CONTACTED');
+    const q = await saveQuote(a.id, { items: [{ desc: 'كوب مطبوع', qty: 50, unit: 1.8 }, { desc: '', qty: 1, unit: 1 }], discount: 5 }, actor);
+    expect(q).toMatchObject({ status: 'QUOTED', quoteNo: 1001, valueBhd: 85 });
+    const again = await saveQuote(a.id, { items: [{ desc: 'كوب مطبوع', qty: 60, unit: 1.8 }] }, actor);
+    expect(again.quoteNo).toBe(1001); // editing keeps the number
+    const b = await createLead({ need: 'رول أب', source: 'walkin' }, actor);
+    expect((await saveQuote(b.id, { items: [{ desc: 'رول أب', qty: 2, unit: 15 }] }, actor)).quoteNo).toBe(1002);
+    await expect(saveQuote(b.id, { items: [{ desc: '  ', qty: 0, unit: 1 }] }, actor)).rejects.toThrow(/بندًا/);
+    const sent = await recordTouch(a.id, 'quote_send', actor);
+    expect((sent.touches as unknown[]).length).toBe(2);
+    expect(await prisma.auditLog.count({ where: { action: 'lead.touch' } })).toBe(2);
+  });
+
+  it('month vs target, open-quote pipeline, and past customers due for a new offer (not those who came back)', async () => {
+    const { admin } = await seedBase({ settings: (s) => ({ ...s, sales: { ...s.sales, monthlyTargetBhd: 1000 } }) }); actor.sub = admin.id;
+    const { salesOverview, saveQuote } = await import('@/lib/leads/service');
+    const w = await createLead({ need: 'أكواب', source: 'phone', contact: '36001122' }, actor);
+    await updateLead(w.id, { status: 'WON', valueBhd: 250 }, actor);
+    const q = await createLead({ need: 'بنر', source: 'phone' }, actor);
+    await saveQuote(q.id, { items: [{ desc: 'بنر', qty: 1, unit: 40 }] }, actor);
+    const old = await createLead({ need: 'دفاتر', source: 'phone', contact: '39998877' }, actor);
+    await prisma.lead.update({ where: { id: old.id }, data: { status: 'WON', wonAt: new Date(Date.now() - 90 * 86400_000) } });
+    const back = await createLead({ need: 'ستيكرات', source: 'phone', contact: '38887766' }, actor);
+    await prisma.lead.update({ where: { id: back.id }, data: { status: 'WON', wonAt: new Date(Date.now() - 90 * 86400_000), createdAt: new Date(Date.now() - 95 * 86400_000) } });
+    await createLead({ need: 'طلب جديد', source: 'phone', contact: '38887766' }, actor); // this customer already returned
+    const o = await salesOverview();
+    expect(o.month).toMatchObject({ revenue: 250, won: 1, target: 1000, pct: 25 });
+    expect(o.pipeline).toMatchObject({ quotes: 1, value: 40 });
+    expect(o.reactivate.map((r) => r.id)).toEqual([old.id]);
+  });
+});

@@ -195,6 +195,13 @@ export const SettingsSchema = z.object({
       accountIds: z.array(z.string()).default([]),
     }).default({}),
   }).default({}),
+  /** «المبيعات»: monthly target, quote defaults, reactivation of past customers. Prices are always typed by a person. */
+  sales: z.object({
+    monthlyTargetBhd: z.number().min(0).max(10_000_000).default(0),
+    quoteValidityDays: z.number().int().min(1).max(90).default(7),
+    quoteTerms: z.string().max(600).default('العرض صالح حتى التاريخ المذكور. يبدأ التنفيذ بعد اعتماد التصميم النهائي من العميل.'),
+    reactivationDays: z.number().int().min(14).max(365).default(60),
+  }).default({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
