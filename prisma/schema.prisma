@@ -782,3 +782,29 @@ model EduProject {
   @@index([createdBy, updatedAt])
   @@map("edu_projects")
 }
+
+/** PRINT DESIGN STUDIO project: brief → analysis → concepts → design → approval → prepress/QA → export → (ad) */
+model PrintProject {
+  id           String   @id @default(cuid())
+  title        String
+  productId    String
+  brief        Json
+  analysis     Json?
+  concepts     Json?
+  conceptKey   String?
+  images       Json? // { slot: storageKey }
+  status       String   @default("draft") // draft | designed | approved | exported
+  approvedHash String?
+  approvedAt   DateTime?
+  qa           Json?
+  exports      Json?
+  mockupKey    String?
+  versions     Json?
+  createdBy    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdBy, updatedAt])
+  @@map("print_projects")
+}
+

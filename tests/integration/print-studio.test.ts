@@ -1,0 +1,99 @@
+import sharp from 'sharp';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { prisma } from '@/lib/db';
+import { storage } from '@/lib/storage';
+import { setAiProviderOverride } from '@/lib/ai';
+import { inspectPdf } from '@/lib/edu/pdf';
+import { adFromPrint, approvePrint, createPrint, exportPrint, generateHero, mockupPrint, previewPrint, undoPrint, updatePrint, uploadPrintAsset } from '@/lib/print/service';
+import { captured, captureQueues, FakeAiProvider, logoPng, resetDb, seedBase } from './helpers';
+
+beforeEach(async () => { await resetDb(); captureQueues(); });
+const brief = { productId: 'business_card', activity: 'مقهى قهوة مختصة', business: 'Bean Café', sizeId: 'bc90x50', texts: { headline: 'قهوة مختصة', subline: 'محمصة يومية', name: 'أحمد علي', role: 'مدير العمليات', phone: '3600 1234', email: 'info@cafe.bh' } };
+
+describe('PRINT DESIGN STUDIO — workflow', () => {
+  it('request → analysis + 3 concepts → preview → approve → production files (re-opened) → mockup → ad from the approved version', async () => {
+    const { admin, accounts } = await seedBase({ accounts: 2 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const p = await createPrint(brief, user);
+    expect(p.status).toBe('designed');
+    expect((p.concepts as unknown[]).length).toBe(3);
+    // the client's ORIGINAL logo is stored and placed as-is
+    const withLogo = await uploadPrintAsset(p.id, 'logo', await logoPng(), user);
+    expect((withLogo.brief as { logoKey?: string }).logoKey).toMatch(/^print\//);
+    const pv = await previewPrint(p.id, user);
+    expect(pv.pages).toHaveLength(2);
+    expect(pv.qa.checks.find((c) => c.id === 'client_logo')?.status).toBe('PASS');
+    // files and ads need an approved design
+    await expect(exportPrint(p.id, user)).rejects.toThrow(/اعتمد/);
+    await expect(adFromPrint(p.id, { accountIds: [accounts[0].id], format: 'IMAGE_FEED', clientConsent: false }, user)).rejects.toThrow(/اعتمد/);
+    await approvePrint(p.id, user);
+    const ex = await exportPrint(p.id, user);
+    const kinds = ex.files.map((f) => f.kind);
+    expect(kinds).toEqual(expect.arrayContaining(['pdf', 'png', 'jpg', 'source', 'meta']));
+    const pdf = await storage().get(ex.files.find((f) => f.kind === 'pdf')!.key);
+    const ins = inspectPdf(pdf); expect(ins.ok).toBe(true); expect(ins.pages).toHaveLength(2);
+    expect(ins.pages[0].wMm).toBeCloseTo(96, 0); expect(ins.pages[0].hMm).toBeCloseTo(56, 0);
+    expect(pdf.toString('latin1')).toContain('/Separation /CutContour');
+    const png = await storage().get(ex.files.find((f) => f.kind === 'png')!.key);
+    expect((await sharp(png).metadata()).width).toBe(Math.round(96 * 300 / 25.4));
+    const ticket = JSON.parse((await storage().get(ex.files.find((f) => f.kind === 'meta')!.key)).toString());
+    expect(ticket).toMatchObject({ product: 'business_card', trimMm: { w: 90, h: 50 }, bleedMm: 3 });
+    expect(ex.qa.checks.find((c) => c.id === 'export')?.status).toBe('PASS');
+    expect(ex.qa.checks.find((c) => c.id === 'color')?.status).toBe('NOT_VERIFIED'); // no printer ICC profile configured
+    const mk = await mockupPrint(p.id, user);
+    expect((await sharp(await storage().get(mk.key)).metadata()).format).toBe('jpeg');
+    const ad = await adFromPrint(p.id, { accountIds: [accounts[0].id, accounts[1].id], format: 'IMAGE_FEED', clientConsent: false }, user);
+    expect(captured.generate).toHaveLength(2);
+    const job = captured.generate[0].data as { direction: { realPhotoKey: string; idea: string; contentType: string } };
+    expect(job.direction.contentType).toBe('real_work'); expect(job.direction.idea).toContain('لا تذكر اسم العميل'); expect(job.direction.idea).toContain('لا تذكر أسعارًا');
+    expect(ad.approvedHash).toBeTruthy();
+  });
+
+  it('editing an approved design revokes the approval; undo restores the previous version', async () => {
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const p = await createPrint(brief, user);
+    await approvePrint(p.id, user);
+    const u = await updatePrint(p.id, { brief: { texts: { headline: 'عنوان جديد' } } as never, note: 'تعديل العنوان' }, user);
+    expect(u.status).toBe('designed'); expect(u.approvedHash).toBeNull();
+    await expect(exportPrint(p.id, user)).rejects.toThrow(/اعتمد/);
+    const c = await updatePrint(p.id, { conceptKey: 'B' }, user); expect(c.conceptKey).toBe('B');
+    const back = await undoPrint(p.id, user);
+    expect((back.brief as { texts: { headline: string } }).texts.headline).toBe('عنوان جديد');
+    expect(back.conceptKey).not.toBe('B');
+  });
+
+  it('packaging without a supplier dieline: preview only — never called production-ready', async () => {
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const p = await createPrint({ productId: 'perfume_box', activity: 'متجر عطور', business: 'Oud House', texts: { headline: 'عود فاخر' } }, user);
+    const pv = await previewPrint(p.id, user);
+    expect(pv.qa.overall).toBe('BLOCKED');
+    await approvePrint(p.id, user);
+    const ex = await exportPrint(p.id, user);
+    expect(ex.files.find((f) => f.kind === 'pdf')!.name).toContain('PREVIEW-ONLY');
+    expect(ex.qa.productionReady).toBe(false);
+  });
+
+  it('large format and stickers export with the right geometry; AI picture only with a real key', async () => {
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const s = await createPrint({ productId: 'diecut_sticker', activity: 'محل ألعاب', business: 'Toy Land', sizeId: 's75', texts: { headline: 'Toy Land' } }, user);
+    await expect(generateHero(s.id, user)).rejects.toThrow(/OpenAI/);
+    await approvePrint(s.id, user);
+    const ex = await exportPrint(s.id, user);
+    const svg = (await storage().get(ex.files.find((f) => f.kind === 'svg')!.key)).toString();
+    expect(svg).toContain('width="79mm"'); expect(svg).toContain('id="CutContour"');
+    // with an image model: the picture is a separate layer; text never inside it
+    setAiProviderOverride(new FakeAiProvider());
+    const r = await createPrint({ productId: 'rollup', activity: 'عيادة أسنان', business: 'Smile', texts: { headline: 'ابتسامتك تبدأ هنا' } }, user);
+    const g = await generateHero(r.id, user);
+    expect((g.images as Record<string, string>).hero).toMatch(/^print\//);
+    const pv = await previewPrint(r.id, user);
+    // a 1024-px AI picture on a 2-metre roll-up is honestly flagged (effective PPI below the target for 3 m)
+    const ppi = pv.qa.checks.find((c) => c.id === 'ppi')!;
+    expect(ppi.status).toBe('NEEDS_REVISION'); expect(ppi.detail).toContain('img:hero');
+    const usage = await prisma.aiUsage.count().catch(() => -1);
+    expect(usage === -1 || usage >= 1).toBe(true);
+  });
+});

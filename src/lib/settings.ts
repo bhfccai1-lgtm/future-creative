@@ -202,6 +202,17 @@ export const SettingsSchema = z.object({
     quoteTerms: z.string().max(600).default('العرض صالح حتى التاريخ المذكور. يبدأ التنفيذ بعد اعتماد التصميم النهائي من العميل.'),
     reactivationDays: z.number().int().min(14).max(365).default(60),
   }).default({}),
+  /** PRINT DESIGN STUDIO: what the shop REALLY offers (everything else is shown disabled, never assumed) */
+  print: z.object({
+    disabledProducts: z.array(z.string().max(40)).max(300).default([]),
+    disabledMaterials: z.array(z.string().max(40)).max(200).default([]),
+    disabledFinishes: z.array(z.string().max(40)).max(200).default([]),
+    disabledMethods: z.array(z.string().max(40)).max(100).default([]),
+    /** PDF/X the printer requires — not produced by this system (reported NOT_VERIFIED) */
+    pdfx: z.enum(['none', 'x1a', 'x4']).default('none'),
+    /** file name of the printer's ICC profile in the fonts/profile dir; empty = built-in generic CMYK */
+    iccProfile: z.string().max(120).default(''),
+  }).default({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
