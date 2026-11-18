@@ -84,7 +84,7 @@ describe('publishing channels', () => {
 });
 
 describe('gold poster layout', () => {
-  it('renders badge, benefits, CTA and both branches as separate layers; passes layout + contrast in ar/en/ml', async () => {
+  it('renders badge, CTA and both branches as separate layers inside the Instagram safe zone; passes layout + contrast in ar/en/ml', async () => {
     const [sc, lg] = await Promise.all([scene('poster'), logo()]);
     const cases = [
       { lang: 'ar' as const, h: 'طباعة جميع أنواع', b: 'الأكواب', s: 'بتصاميمك الخاصة', cta: 'اطلب الآن', f: ['تصاميم مخصصة', 'جودة طباعة عالية', 'مناسبات خاصة', 'هدايا الشركات'], c: contacts },
@@ -95,7 +95,8 @@ describe('gold poster layout', () => {
       const r = await composeAdvertisement({ scene: sc, format: 'IMAGE_STORY', lang: k.lang, templateKey: 'gold-poster', headline: k.h, badge: k.b, supportingCopy: k.s, cta: k.cta, logo: lg, contacts: k.c, features: k.f });
       const ids = r.manifest.layers.map((l) => l.id);
       expect(ids).toEqual(expect.arrayContaining(['logo', 'headline', 'badge', 'support', 'cta', 'contact:saar:phone', 'contact:salmabad:phone']));
-      expect(ids.filter((i) => i.startsWith('benefit:'))).toHaveLength(k.f.length);
+      expect(ids.filter((i) => i.startsWith('benefit:'))).toHaveLength(0); // no benefit row on 1920 — Instagram safe zone
+      expect(checkLayout(r.manifest).find((c) => c.id === 'ig_safe_zone')?.passed).toBe(true);
       expect(r.manifest.layers.find((l) => l.id === 'contact:saar:phone')?.text).toBe('33316319');
       expect(checkLayout(r.manifest).filter((x) => !x.passed).map((x) => `${x.id} ${x.detail}`), k.lang).toEqual([]);
       expect((await checkContrast(r.background, r.manifest)).passed, k.lang).toBe(true);

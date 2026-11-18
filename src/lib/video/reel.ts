@@ -216,7 +216,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
         inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', f);
         const a = cap.start.toFixed(2), b = Math.min(cap.end, endStart).toFixed(2);
         filters.push(`[${idx}:v]format=rgba,fade=t=in:st=${a}:d=0.08:alpha=1[c${idx}]`);
-        filters.push(`[${base}][c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${1250 - Math.round(ph / 2)}:enable='between(t,${a},${b})'[v${idx}]`);
+        filters.push(`[${base}][c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${1060 - Math.round(ph / 2)}:enable='between(t,${a},${b})'[v${idx}]`);
         base = `v${idx}`; idx++;
       }
     }

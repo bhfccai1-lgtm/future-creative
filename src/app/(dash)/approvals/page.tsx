@@ -12,7 +12,11 @@ const FORMAT_AR: Record<string, string> = { REEL_VIDEO: 'ريلز', IMAGE_CAROUS
 export default async function ApprovalsPage() {
   const user = await requirePageUser();
   const canPublish = user.perms.includes('publish:now');
+  const canPublishNow = canPublish;
   const items = await prisma.approvalRequest.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' }, include: { advertisement: { include: { media: true, account: true, product: true } } } });
+  // «فشل» but every final file exists (e.g. a late step was stopped) — can still be published by a person
+  const stuck = (await prisma.advertisement.findMany({ where: { state: 'FAILED', dryRun: false, createdAt: { gte: new Date(Date.now() - 14 * 86400_000) }, media: { some: { role: 'FINAL' } } }, orderBy: { createdAt: 'desc' }, take: 12, include: { media: true, account: true } }))
+    .filter((a) => a.format !== 'REEL_VIDEO' || a.media.some((m) => m.role === 'VIDEO'));
   const ready = items.filter((r) => r.advertisement.qcPassed && !r.advertisement.dryRun && r.advertisement.state === 'QUALITY_REVIEW').length;
   return (
     <>
@@ -23,7 +27,28 @@ export default async function ApprovalsPage() {
           <ActionButton url="/api/approvals/publish-all" label={`✓ اعتماد ونشر الكل (${ready})`} variant="success" confirm={`نشر ${ready} تصميم؟ يُوزَّع النشر بفاصل 30 دقيقة لكل حساب. راجع الصور أولًا.`} />
         </div>
       )}
-      {!items.length && <Empty>لا توجد عناصر بانتظار الموافقة. 🎉</Empty>}
+      {!items.length && !stuck.length && <Empty>لا توجد عناصر بانتظار الموافقة. 🎉</Empty>}
+      {stuck.length > 0 && (
+        <section className="mb-5 rounded-2xl border-2 border-amber-200 bg-amber-50 p-3">
+          <h2 className="mb-1 text-sm font-extrabold text-amber-900">متوقفة بحالة «فشل» لكن ملفاتها جاهزة ({stuck.length})</h2>
+          <p className="mb-3 text-xs text-amber-800">توقفت خطوة متأخرة (مثل نفاد ذاكرة السيرفر) بعد اكتمال التصميم. شاهدها، ثم «نشر الآن» أو أعد توليدها.</p>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">{stuck.map((a) => {
+            const img = a.media.find((m) => m.role === 'FINAL');
+            const q = a.qcReport as unknown as QcReport | null;
+            return (
+              <div key={a.id} className="overflow-hidden rounded-xl border bg-white">
+                <Link href={`/ads/${a.id}`}>{img && <img src={`/api/media/${img.storageKey}`} alt={a.headline ?? ''} className="aspect-[9/16] w-full bg-slate-900 object-cover" loading="lazy" />}</Link>
+                <div className="space-y-1.5 p-2">
+                  <div className="truncate text-xs font-bold">{a.headline}</div>
+                  <div className="truncate text-[11px] text-slate-500">{a.account.name} · {FORMAT_AR[a.format] ?? a.format}</div>
+                  {canPublishNow && <ActionButton url={`/api/ads/${a.id}/publish-now`} body={{ overrideQc: !q?.publishable }} label="🚀 نشر الآن" variant="gold" size="sm" block success="أُرسل للنشر — سيُنشر في أقرب وقت آمن" confirm="شاهدت التصميم وتأكدت من النص والأرقام والشعار؟ سيُرسل للنشر في أقرب وقت آمن." />}
+                  <Link href={`/ads/${a.id}`} className="block text-center text-[11px] font-bold text-navy-700 underline">عرض / إعادة التوليد</Link>
+                </div>
+              </div>
+            );
+          })}</div>
+        </section>
+      )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {items.map((r) => {
           const ad = r.advertisement;

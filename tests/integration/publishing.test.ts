@@ -70,6 +70,33 @@ describe('manual approval workflow', () => {
     await expect(publishNow(dry.id, admin, { overrideQc: true })).rejects.toThrow(/Dry-run/);
   });
 
+  it('«فشل» with complete files: publish-now recovers it once; never when already published or in flight', async () => {
+    const { accounts } = await setup('MANUAL');
+    const ad = await readyAd(accounts[0].id);
+    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'FAILED', errorMessage: 'Fatal' } });
+    const job = await publishNow(ad.id, admin);
+    expect(job.state).toBe('QUEUED');
+    expect(await prisma.auditLog.count({ where: { action: 'ad.recover_failed', targetId: ad.id } })).toBe(1);
+    expect((await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } })).errorMessage).toBeNull();
+    // publishing fails at the provider → FAILED again; a second «نشر الآن» makes a NEW request (old one kept, key retired)
+    await prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'FAILED' } });
+    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'FAILED' } });
+    const again = await publishNow(ad.id, admin);
+    expect(again.id).not.toBe(job.id);
+    expect(await prisma.publicationJob.count({ where: { advertisementId: ad.id } })).toBe(2);
+    // already published / uncertain → refused (no duplicate post)
+    await prisma.publicationJob.update({ where: { id: again.id }, data: { state: 'PUBLISHED' } });
+    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'FAILED' } });
+    await expect(publishNow(ad.id, admin)).rejects.toThrow(/نُشر أو جُدول/);
+    await prisma.publicationJob.update({ where: { id: again.id }, data: { state: 'UNKNOWN' } });
+    await expect(publishNow(ad.id, admin)).rejects.toThrow(/غير مؤكدة/);
+    // missing final file → refused
+    const b = await readyAd(accounts[1].id);
+    await prisma.mediaAsset.deleteMany({ where: { advertisementId: b.id, role: 'FINAL' } });
+    await prisma.advertisement.update({ where: { id: b.id }, data: { state: 'FAILED' } });
+    await expect(publishNow(b.id, admin)).rejects.toThrow(/غير مكتملة/);
+  });
+
   it('dry-run ads are refused at publication time', async () => {
     const { accounts, admin: a } = await seedBase();
     setPublishingAdapterOverride(new FakeAdapter());

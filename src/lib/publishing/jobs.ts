@@ -141,7 +141,9 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
 export async function publishNow(adId: string, user: { id: string; email: string }, opts: { overrideQc?: boolean; reason?: string | null } = {}) {
   const s = await getSettings();
   if (s.killSwitch) throw new KillSwitchError();
-  const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId } });
+  let ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId } });
+  // «فشل» but the final files are complete (e.g. a later step was killed) → a person can still publish it
+  if (ad.state === 'FAILED') ad = await recoverFailedForPublish(ad, user);
   const qc = ad.qcReport as unknown as QcReport | null;
   if (opts.overrideQc && ad.dryRun) throw new AppError('DRY_RUN', 'هذا الإعلان معاينة تجريبية (Dry-run) ولا يمكن نشره حتى مع تجاوز الجودة. فعّل OpenAI وأعد التوليد.', 409);
   if (opts.overrideQc && !qc?.publishable && !hasQcOverride(ad) && ['QUALITY_REVIEW', 'APPROVED'].includes(ad.state)) {
@@ -158,4 +160,22 @@ export async function publishNow(adId: string, user: { id: string; email: string
   if (fresh.state !== 'APPROVED') throw new AppError('BAD_STATE', `لا يمكن نشر إعلان في الحالة ${fresh.state}.`, 409);
   await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.publish_now', targetType: 'advertisement', targetId: adId, details: opts.overrideQc ? { qcOverride: true } : undefined });
   return createPublicationJob(adId, new Date(), user.email);
+}
+
+/**
+ * A design marked FAILED whose final files are complete and intact goes back to review so «نشر الآن» can publish it.
+ * Refused when it was (or may have been) published already — never a duplicate post — or when files are missing.
+ */
+async function recoverFailedForPublish(ad: Awaited<ReturnType<typeof prisma.advertisement.findUniqueOrThrow>>, user: { id: string; email: string }) {
+  if (ad.dryRun) throw new AppError('DRY_RUN', 'هذا الإعلان معاينة تجريبية (Dry-run) ولا يمكن نشره. فعّل OpenAI وأعد التوليد.', 409);
+  const jobs = await prisma.publicationJob.findMany({ where: { advertisementId: ad.id }, select: { id: true, state: true, idempotencyKey: true } });
+  if (jobs.some((j) => ['PUBLISHED', 'SCHEDULED'].includes(j.state))) throw new AppError('ALREADY_PUBLISHED', 'هذا التصميم نُشر أو جُدول بالفعل على المزود — لن يُنشر مرة ثانية.', 409);
+  if (jobs.some((j) => ['PUBLISHING', 'UNKNOWN', 'QUEUED'].includes(j.state))) throw new AppError('IN_FLIGHT', 'حالة النشر السابقة غير مؤكدة بعد — انتظر التحقق من المزود (دقائق) ثم أعد المحاولة، حتى لا يُنشر مرتين.', 409);
+  await primaryMediaSha(ad.id); // every final file present (throws NEEDS_ASSET otherwise)
+  // the earlier failed attempt keeps its record; its idempotency key is retired so a fresh request can be made
+  for (const j of jobs) if (j.state === 'FAILED' || j.state === 'REJECTED') await prisma.publicationJob.update({ where: { id: j.id }, data: { idempotencyKey: `${j.idempotencyKey}:retired:${j.id}` } });
+  const qcr = ad.qcReport as unknown as QcReport | null;
+  if (!(await moveAd(ad.id, 'FAILED', 'QUALITY_REVIEW', { errorMessage: null, ...(qcr?.passed ? { qcPassed: true } : {}) }))) throw new AppError('CONFLICT', 'تغيرت حالة الإعلان، حدّث الصفحة.', 409);
+  await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.recover_failed', targetType: 'advertisement', targetId: ad.id, details: { previousError: ad.errorMessage?.slice(0, 300) ?? null, retiredJobs: jobs.length } });
+  return prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } });
 }

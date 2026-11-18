@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import type { MediaFormat } from '@prisma/client';
 import { renderText, type RenderedText } from './text';
-import { FORMAT_SIZE, getTemplate, px } from './templates';
+import { FORMAT_SIZE, px, templateFor } from './templates';
 import { AI_POSTER_KEY, POSTER_KEY, buildAiPosterBackground, buildPosterBackground, composeAiPoster, composePoster } from './poster';
 import type { Lang } from './fonts';
 
@@ -79,7 +79,7 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
   if (input.templateKey === AI_POSTER_KEY) return composeAiPoster(input); // every format (2:3 or 1:1 design, never cropped)
   if (input.templateKey === POSTER_KEY && FORMAT_SIZE[input.format].h === 1920) return composePoster(input);
   const { w: W, h: H } = FORMAT_SIZE[input.format];
-  const t = getTemplate(input.templateKey);
+  const t = templateFor(input.templateKey, H);
   const scale = W / 1080;
 
   const th = THEMES[input.theme ?? 'navy_gold'];
@@ -156,7 +156,7 @@ export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, tem
   if (templateKey === AI_POSTER_KEY) return buildAiPosterBackground(sceneBuf, FORMAT_SIZE[format].h);
   if (templateKey === POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildPosterBackground(sceneBuf, featureCount);
   const { w: W, h: H } = FORMAT_SIZE[format];
-  const t = getTemplate(templateKey);
+  const t = templateFor(templateKey, H);
   const scale = W / 1080;
   const th = THEMES[themeKey];
   // ── Layer 1: scene, cover-fit to canvas (centre crop) ──

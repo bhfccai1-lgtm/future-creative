@@ -1,3 +1,4 @@
+import { IG_SAFE_1920 } from '../render/templates';
 import sharp from 'sharp';
 import type { LayerManifest } from '../render/compose';
 import type { Lang } from '../render/fonts';
@@ -72,7 +73,12 @@ export function checkLayout(m: LayerManifest): QcCheck[] {
     if (intersects(m.layers[i].rect, m.layers[j].rect)) overlaps.push(`${m.layers[i].id} × ${m.layers[j].id}`);
   const margin = 16;
   const outside = m.layers.filter((l) => l.rect.left < margin || l.rect.top < margin || l.rect.left + l.rect.width > m.width - margin || l.rect.top + l.rect.height > m.height - margin).map((l) => l.id);
+  // Stories / Reels: the logo, order button and phone numbers must not sit under Instagram's own UI (IG_SAFE_1920)
+  const igHidden = m.height === 1920
+    ? m.layers.filter((l) => /^(logo|cta|contact:)/.test(l.id) && (l.rect.top < IG_SAFE_1920.top - 8 || l.rect.top + l.rect.height > IG_SAFE_1920.bottom || (l.id.startsWith('contact:') && l.rect.left + l.rect.width > m.width - IG_SAFE_1920.side + 20))).map((l) => l.id)
+    : [];
   return [
+    ...(m.height === 1920 ? [{ id: 'ig_safe_zone', label: 'الشعار وزر الطلب والأرقام ظاهرة فوق واجهة إنستغرام (الستوري والريلز)', passed: igHidden.length === 0, severity: 'BLOCKER' as const, detail: igHidden.length ? `تحت واجهة إنستغرام: ${igHidden.join(', ')}` : undefined }] : []),
     { id: 'text_fit', label: 'النص داخل حدود التصميم دون قص', passed: overflow.length === 0, severity: 'BLOCKER', detail: overflow.length ? `تجاوز: ${overflow.join(', ')}` : undefined },
     { id: 'glyphs', label: 'لا توجد أحرف مفقودة في الخط', passed: missing.length === 0, severity: 'BLOCKER', detail: missing.join('; ') || undefined },
     { id: 'no_overlap', label: 'لا يوجد تداخل بين الطبقات', passed: overlaps.length === 0, severity: 'BLOCKER', detail: overlaps.join(', ') || undefined },

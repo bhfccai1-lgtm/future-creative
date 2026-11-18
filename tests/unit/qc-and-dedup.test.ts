@@ -47,18 +47,28 @@ describe('language / script checks', () => {
 
 describe('layout geometry checks', () => {
   const base: LayerManifest = { width: 1080, height: 1920, templateKey: 't', lang: 'ar', layers: [
-    { id: 'headline', rect: { left: 100, top: 200, width: 800, height: 150 }, box: { x: 0, y: 0, w: 0, h: 0 }, fits: true, missing: [] },
-    { id: 'logo', rect: { left: 400, top: 50, width: 280, height: 120 }, box: { x: 0, y: 0, w: 0, h: 0 }, fits: true, missing: [] },
+    { id: 'headline', rect: { left: 100, top: 420, width: 800, height: 150 }, box: { x: 0, y: 0, w: 0, h: 0 }, fits: true, missing: [] },
+    { id: 'logo', rect: { left: 400, top: 250, width: 280, height: 120 }, box: { x: 0, y: 0, w: 0, h: 0 }, fits: true, missing: [] },
   ] };
   it('passes a clean layout', () => { expect(checkLayout(base).every((c) => c.passed)).toBe(true); });
   it('detects overlap, overflow, missing glyphs and unsafe placement', () => {
     const bad: LayerManifest = { ...base, layers: [
       { ...base.layers[0], fits: false, missing: ['☃'] },
-      { ...base.layers[1], rect: { left: 150, top: 250, width: 300, height: 100 } },
+      { ...base.layers[1], rect: { left: 150, top: 470, width: 300, height: 100 } },
       { id: 'cta', rect: { left: 1000, top: 1900, width: 200, height: 60 }, box: { x: 0, y: 0, w: 0, h: 0 }, fits: true, missing: [] },
     ] };
     const r = Object.fromEntries(checkLayout(bad).map((c) => [c.id, c.passed]));
-    expect(r).toEqual({ text_fit: false, glyphs: false, no_overlap: false, safe_area: false });
+    expect(r).toEqual({ ig_safe_zone: false, text_fit: false, glyphs: false, no_overlap: false, safe_area: false });
+  });
+  it('Stories/Reels: logo, order button or phones under Instagram\'s own UI are flagged; feed formats are not', () => {
+    const at = (id: string, top: number, height = 100, left = 300, width = 400) => ({ id, rect: { left, top, width, height }, box: { x: 0, y: 0, w: 0, h: 0 }, fits: true, missing: [] });
+    const ok: LayerManifest = { ...base, layers: [at('logo', 244, 150), at('cta', 1222), at('contact:saar:phone', 1430, 90, 600, 350)] };
+    expect(checkLayout(ok).find((c) => c.id === 'ig_safe_zone')?.passed).toBe(true);
+    for (const l of [at('logo', 40, 150), at('cta', 1574), at('contact:saar:phone', 1818, 90), at('contact:saar:label', 1400, 70, 700, 330)]) {
+      const c = checkLayout({ ...base, layers: [l] }).find((x) => x.id === 'ig_safe_zone');
+      expect(c?.passed, l.id).toBe(false);
+    }
+    expect(checkLayout({ ...base, height: 1350, layers: [at('cta', 1150)] }).some((c) => c.id === 'ig_safe_zone')).toBe(false);
   });
   it('computes WCAG contrast', () => {
     expect(contrastRatio([255, 255, 255], [11, 23, 48])).toBeGreaterThan(15);

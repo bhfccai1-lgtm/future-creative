@@ -47,6 +47,33 @@ export const TEMPLATES: Template[] = [
 
 export const getTemplate = (key?: string | null) => TEMPLATES.find((t) => t.key === key) ?? TEMPLATES[0];
 
+/**
+ * Instagram safe zone for 1080×1920 (Stories and Reels). Instagram draws its own UI over the design:
+ *  - top ~220 px: story progress bar + account name / «Reels» header
+ *  - bottom ~380 px: Reels caption, @account and audio line / the story «send message» bar
+ *  - right ~120 px (Reels, lower half): like, comment, share, audio icons
+ * The profile grid shows a Reel cover cropped to 3:4 (y 240–1680). Logo, order button and phone numbers must
+ * stay inside top..bottom and away from the right icons, or customers never see them.
+ */
+export const IG_SAFE_1920 = { top: 236, bottom: 1540, side: 120, gridTop: 240, gridBottom: 1680 } as const;
+
+/** The template laid out for the canvas: 1920-high formats keep every brand element inside the Instagram safe zone. */
+export function templateFor(key: string | null | undefined, h: number): Template {
+  const t = getTemplate(key);
+  if (h !== 1920) return t;
+  const lower = t.key === 'gold-frame-lower';
+  return {
+    ...t,
+    shade: lower ? [{ from: 0, to: 0.22, dir: 'down' }, { from: 0.3, to: 0.6, dir: 'up' }] : [{ from: 0, to: 0.47, dir: 'down' }],
+    logo: { x: 0.33, y: 0.123, w: 0.34, h: 0.075 },
+    headline: lower ? { ...t.headline, y: 0.4, h: 0.115 } : { ...t.headline, y: 0.205, h: 0.13 },
+    support: lower ? { ...t.support, y: 0.52, h: 0.05 } : { ...t.support, y: 0.34, h: 0.055 },
+    panel: { y: 0.6 },
+    cta: { ...t.cta, y: 0.615, h: 0.055 },
+    contacts: { y: 0.68, h: 0.115, gap: 0.03, padX: 0.11 },
+  };
+}
+
 /** Layout choices for the UI. 'gold-poster' is the premium default for vertical (1080×1920) formats. */
 export const LAYOUTS = [
   { value: 'gold-poster', ar: 'ملصق ذهبي فاخر (موصى به)' },
