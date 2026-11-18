@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { GetObjectCommand, PutObjectCommand, S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { env } from '../env';
 import { hmac, safeEqual } from '../crypto';
 
@@ -8,6 +8,8 @@ export interface Storage {
   put(key: string, body: Buffer, contentType: string): Promise<void>;
   get(key: string): Promise<Buffer>;
   exists(key: string): Promise<boolean>;
+  /** removes the file; a missing file is not an error */
+  remove(key: string): Promise<void>;
 }
 
 class LocalStorage implements Storage {
@@ -20,6 +22,7 @@ class LocalStorage implements Storage {
   async put(key: string, body: Buffer) { const f = this.p(key); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, body); }
   async get(key: string) { return fs.readFile(this.p(key)); }
   async exists(key: string) { try { await fs.access(this.p(key)); return true; } catch { return false; } }
+  async remove(key: string) { await fs.rm(this.p(key), { force: true }); }
 }
 
 class S3Storage implements Storage {
@@ -43,6 +46,7 @@ class S3Storage implements Storage {
   async exists(key: string) {
     try { await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key })); return true; } catch { return false; }
   }
+  async remove(key: string) { await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key })); }
 }
 
 let instance: Storage | null = null;

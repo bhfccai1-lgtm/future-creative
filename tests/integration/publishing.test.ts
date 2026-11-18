@@ -3,7 +3,8 @@ import { prisma } from '@/lib/db';
 import { generateAdvertisement } from '@/lib/pipeline/generate';
 import { setAiProviderOverride } from '@/lib/ai';
 import { setPublishingAdapterOverride } from '@/lib/publishing/registry';
-import { approveAdvertisement, createPublicationJob, publishNow, rejectAdvertisement } from '@/lib/publishing/jobs';
+import { approveAdvertisement, createPublicationJob, deleteAdvertisement, publishNow, rejectAdvertisement } from '@/lib/publishing/jobs';
+import { storage } from '@/lib/storage';
 import { processPublishJob } from '@/lib/publishing/publisher';
 import { reconcileJob, resolveUnknownJob } from '@/lib/publishing/reconcile';
 import { recoverAfterRestart } from '@/lib/ops/recovery';
@@ -95,6 +96,27 @@ describe('manual approval workflow', () => {
     await prisma.mediaAsset.deleteMany({ where: { advertisementId: b.id, role: 'FINAL' } });
     await prisma.advertisement.update({ where: { id: b.id }, data: { state: 'FAILED' } });
     await expect(publishNow(b.id, admin)).rejects.toThrow(/غير مكتملة/);
+  });
+
+  it('delete a design: files and failed attempts removed, audited; never one that is published, scheduled or on its way', async () => {
+    const { accounts } = await setup('MANUAL');
+    const ad = await readyAd(accounts[0].id);
+    const keys = (await prisma.mediaAsset.findMany({ where: { advertisementId: ad.id } })).map((m) => m.storageKey);
+    expect(keys.length).toBeGreaterThan(0);
+    const job = await publishNow(ad.id, admin);
+    await expect(deleteAdvertisement(ad.id, admin)).rejects.toThrow(/قيد التوليد أو الإرسال/);
+    await prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'PUBLISHED' } });
+    await expect(deleteAdvertisement(ad.id, admin)).rejects.toThrow(/منشور أو مجدول/);
+    await prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'FAILED' } });
+    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'FAILED' } });
+    expect((await deleteAdvertisement(ad.id, admin)).files).toBe(keys.length);
+    expect(await prisma.advertisement.count({ where: { id: ad.id } })).toBe(0);
+    expect(await prisma.publicationJob.count({ where: { advertisementId: ad.id } })).toBe(0);
+    for (const k of keys) expect(await storage().exists(k)).toBe(false);
+    expect(await prisma.auditLog.count({ where: { action: 'ad.delete', targetId: ad.id } })).toBe(1);
+    const pending = await readyAd(accounts[1].id); // a design waiting for review can be deleted too
+    await deleteAdvertisement(pending.id, admin);
+    expect(await prisma.approvalRequest.count({ where: { advertisementId: pending.id } })).toBe(0);
   });
 
   it('dry-run ads are refused at publication time', async () => {

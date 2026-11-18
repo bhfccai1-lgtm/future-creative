@@ -21,8 +21,9 @@ export const POST = api<{ params: Promise<{ id: string }> }>('ads:approve', asyn
   const { id } = await params;
   const { note } = Body.parse(await req.json());
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id } });
-  if (!['QUALITY_REVIEW', 'APPROVED'].includes(ad.state)) throw new AppError('BAD_STATE', 'يمكن طلب التعديل قبل الإرسال إلى النشر فقط.', 409);
-  await rejectAdvertisement(id, { id: user.sub, email: user.email }, `طلب تعديل: ${note}`);
+  if (!['QUALITY_REVIEW', 'APPROVED', 'FAILED'].includes(ad.state)) throw new AppError('BAD_STATE', 'يمكن طلب التعديل قبل الإرسال إلى النشر فقط.', 409);
+  // a pending version is closed (rejected with the note); a failed one stays as it is — the revision replaces it
+  if (ad.state !== 'FAILED') await rejectAdvertisement(id, { id: user.sub, email: user.email }, `طلب تعديل: ${note}`);
   const opts = (ad.options ?? {}) as { direction?: Direction | null };
   const prev = opts.direction ?? {};
   const direction: Direction = { ...prev, idea: `${prev.idea ? prev.idea + '\n' : ''}تعديلات مطلوبة على النسخة السابقة: ${note}`.slice(-500) };

@@ -12,6 +12,7 @@ import { bundleSha, publishableMedia } from './media';
 import { targetNetworks } from './publisher';
 import { lockAccount, spacedTime } from './spacing';
 import { hasQcOverride, type QcOverride } from './qc-override';
+import { storage } from '../storage';
 
 /** SHA-256 recorded at render time for the asset that will actually be published (video for Reels). */
 export async function primaryMediaSha(adId: string) {
@@ -178,4 +179,22 @@ async function recoverFailedForPublish(ad: Awaited<ReturnType<typeof prisma.adve
   if (!(await moveAd(ad.id, 'FAILED', 'QUALITY_REVIEW', { errorMessage: null, ...(qcr?.passed ? { qcPassed: true } : {}) }))) throw new AppError('CONFLICT', 'تغيرت حالة الإعلان، حدّث الصفحة.', 409);
   await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.recover_failed', targetType: 'advertisement', targetId: ad.id, details: { previousError: ad.errorMessage?.slice(0, 300) ?? null, retiredJobs: jobs.length } });
   return prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } });
+}
+
+/**
+ * Deletes a design from the system (images, video, failed / cancelled publishing attempts). Never a design that is
+ * on Instagram or on its way there: published or scheduled posts stay as history (delete them on Instagram itself),
+ * queued or unconfirmed ones must be cancelled first. The audit log keeps who deleted what.
+ */
+export async function deleteAdvertisement(adId: string, user: { id: string; email: string }) {
+  const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId }, include: { media: { select: { storageKey: true } }, jobs: { select: { id: true, state: true } }, account: { select: { name: true } } } });
+  if (ad.state === 'PUBLISHED' || ad.jobs.some((j) => ['PUBLISHED', 'SCHEDULED'].includes(j.state))) throw new AppError('PUBLISHED', 'هذا التصميم منشور أو مجدول على المزود — يبقى في السجل. لإزالته من إنستغرام احذفه من التطبيق أو من Metricool.', 409);
+  if (['QUEUED', 'PUBLISHING', 'UNKNOWN', 'GENERATING'].includes(ad.state) || ad.jobs.some((j) => ['QUEUED', 'PUBLISHING', 'UNKNOWN'].includes(j.state))) throw new AppError('IN_FLIGHT', 'التصميم قيد التوليد أو الإرسال الآن — ارفضه أو انتظر انتهاء العملية ثم احذفه.', 409);
+  await prisma.$transaction([
+    prisma.publicationJob.deleteMany({ where: { advertisementId: adId } }),
+    prisma.advertisement.delete({ where: { id: adId } }),
+  ]);
+  for (const m of ad.media) await storage().remove(m.storageKey).catch(() => undefined);
+  await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.delete', targetType: 'advertisement', targetId: adId, details: { headline: ad.headline, account: ad.account.name, state: ad.state, files: ad.media.length } });
+  return { files: ad.media.length };
 }

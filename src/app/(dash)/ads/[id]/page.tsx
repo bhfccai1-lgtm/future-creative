@@ -4,6 +4,7 @@ import { requirePageUser } from '@/lib/auth/server';
 import { Card, PageHeader, Badge } from '@/components/ui';
 import { StateBadge, FORMAT_AR, LANG_AR } from '@/components/state-badge';
 import { ActionButton } from '@/components/action-button';
+import { DeleteAdButton } from '@/components/delete-ad-button';
 import { fmtLocal } from '@/lib/time';
 import { qcVerdict, QC_VERDICT_AR, type QcReport } from '@/lib/qc';
 import Link from 'next/link';
@@ -31,7 +32,7 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
           <StateBadge state={ad.state} />
           {ad.dryRun && <Badge tone="amber">معاينة تجريبية — غير قابلة للنشر</Badge>}
           <Badge tone={verdict === 'PASS' ? 'green' : verdict === 'NEEDS_REVIEW' ? 'blue' : verdict === 'NEEDS_ASSET' ? 'amber' : 'red'}>QC: {QC_VERDICT_AR[verdict]}</Badge>
-          {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/request-changes`} label="طلب تعديل" variant="outline" prompt="ما التعديل المطلوب؟ (سيُنشأ تصميم جديد بنفس الإعدادات مع ملاحظتك)" promptKey="note" />}
+          {['QUALITY_REVIEW', 'APPROVED', 'FAILED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/request-changes`} label="✎ تعديل" variant="outline" prompt="ما التعديل المطلوب؟ (سيُنشأ تصميم جديد بنفس الإعدادات مع ملاحظتك)" promptKey="note" />}
           {canDecide && ad.qcPassed && <ActionButton url={`/api/ads/${id}/approve`} label="اعتماد" variant="success" />}
           {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && qc?.publishable && <ActionButton url={`/api/ads/${id}/publish-now`} label="نشر الآن" variant="gold" confirm="سيتم إرسال الإعلان إلى المزود لأقرب موعد آمن. متابعة؟" />}
           {ad.state === 'FAILED' && !ad.dryRun && ad.media.some((m) => m.role === 'FINAL') && (ad.format !== 'REEL_VIDEO' || ad.media.some((m) => m.role === 'VIDEO')) && <ActionButton url={`/api/ads/${id}/publish-now`} body={{ overrideQc: !qc?.publishable }} label="🚀 نشر الآن" variant="gold" success="أُرسل للنشر — سيُنشر في أقرب وقت آمن"
@@ -40,6 +41,7 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
             confirm={`نشر هذا التصميم بدون اجتياز فحص الجودة؟\n\nالملاحظات:\n${(qc?.checks ?? []).filter((c) => !c.passed).map((c) => `• ${c.label}`).join('\n') || '• يحتاج مراجعة بشرية'}\n\nتأكد بنفسك من النص والأرقام والشعار. يُسجَّل القرار باسمك.`}
             prompt="سبب النشر رغم الملاحظات (اختياري)" promptKey="reason" />}
           {ad.media.some((m) => m.role === 'FINAL') && <a href={`/api/ads/${id}/export`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50" download>تنزيل PNG</a>}
+          {!['PUBLISHED', 'SCHEDULED', 'QUEUED', 'PUBLISHING', 'UNKNOWN', 'GENERATING'].includes(ad.state) && <DeleteAdButton adId={id} headline={ad.headline} after="/library" />}
           {['QUALITY_REVIEW', 'APPROVED', 'QUEUED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/reject`} label="رفض" variant="danger" prompt="سبب الرفض (اختياري)" promptKey="note" />}
         </>} />
       {ad.errorMessage && <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{ad.errorMessage}
