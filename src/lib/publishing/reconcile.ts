@@ -96,7 +96,10 @@ export async function reconcileJob(jobId: string): Promise<string> {
         prisma.publicationResult.update({ where: { jobId: job.id }, data: { providerStatus: 'ERROR' } }),
         adWrite(job.primary, job.advertisementId, { state: 'FAILED', errorMessage: st.message }),
       ]);
-      await notify('ERROR', 'PROVIDER_ERROR', 'المزود أبلغ عن فشل النشر', st.message, job.accountId);
+      // the provider could not download our file (server busy / down at that moment) → one automatic retry later
+      const retry = job.primary ? await import('./jobs').then((m) => m.autoRetryTransient(job.id)).catch(() => null) : null;
+      if (retry) await notify('WARNING', 'PUBLISH_AUTO_RETRY', 'تعذّر على إنستغرام تنزيل الملف — إعادة محاولة تلقائية', `${job.account.name}: يُعاد النشر تلقائيًا ${retry.scheduledFor.toISOString().slice(11, 16)} UTC (مرة واحدة). السبب: ${st.message.slice(0, 200)}`, job.accountId);
+      else await notify('ERROR', 'PROVIDER_ERROR', 'المزود أبلغ عن فشل النشر', st.message, job.accountId);
       await emitEvent('publication.failed', { jobId: job.id, adId: job.advertisementId, accountId: job.accountId, account: job.account.name, reason: st.message, source: 'provider' });
       return 'FAILED';
     }

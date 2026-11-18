@@ -198,3 +198,33 @@ export async function deleteAdvertisement(adId: string, user: { id: string; emai
   await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.delete', targetType: 'advertisement', targetId: adId, details: { headline: ad.headline, account: ad.account.name, state: ad.state, files: ad.media.length } });
   return { files: ad.media.length };
 }
+
+/** Instagram / the provider could not DOWNLOAD our media (server busy or down at that moment) — worth one retry. */
+export const isTransientMediaError = (msg: string | null | undefined) =>
+  !!msg && /media could not be fetched|could not (be )?download|failed to (fetch|download)|download(ing)? (the )?media|timed? ?out|timeout|temporarily unavailable|try again later/i.test(msg);
+
+/**
+ * One automatic retry, 30 minutes later, when a post failed only because the provider could not fetch the file
+ * (e.g. the server was overloaded). Same approved files (the publisher re-checks their SHA-256), the 30-minute gap
+ * per account is kept, never more than one automatic retry per design, nothing while the kill switch is on.
+ */
+export async function autoRetryTransient(jobId: string, now = new Date()) {
+  const s = await getSettings();
+  if (s.killSwitch) return null;
+  const job = await prisma.publicationJob.findUniqueOrThrow({ where: { id: jobId }, include: { advertisement: true } });
+  if (!job.primary || job.state !== 'FAILED' || !isTransientMediaError(job.lastError) || job.advertisement.state !== 'FAILED' || job.advertisement.dryRun) return null;
+  if (await prisma.publicationJob.count({ where: { advertisementId: job.advertisementId, idempotencyKey: { contains: ':retired:' } } })) return null; // retried before
+  if (!(await prisma.approvalRequest.count({ where: { advertisementId: job.advertisementId, status: 'APPROVED' } }))) return null;
+  const when = new Date(now.getTime() + 30 * 60_000);
+  const fresh = await prisma.$transaction(async (tx) => {
+    await lockAccount(tx, job.accountId);
+    const slot = await spacedTime(tx, job.accountId, when, s.publishing.minGapMinutes);
+    await tx.publicationJob.update({ where: { id: job.id }, data: { idempotencyKey: `${job.idempotencyKey}:retired:${job.id}` } });
+    const moved = await tx.advertisement.updateMany({ where: { id: job.advertisementId, state: 'FAILED' }, data: { state: 'QUEUED', errorMessage: null } });
+    if (moved.count !== 1) throw new AppError('CONFLICT', 'state changed', 409);
+    return tx.publicationJob.create({ data: { idempotencyKey: job.idempotencyKey, advertisementId: job.advertisementId, accountId: job.accountId, provider: job.provider, state: 'QUEUED', scheduledFor: slot, networks: job.networks, primary: true } });
+  });
+  await audit({ actorLabel: 'worker', action: 'publication.auto_retry', targetType: 'publication_job', targetId: fresh.id, details: { previousJob: job.id, reason: job.lastError?.slice(0, 200) ?? null, scheduledFor: fresh.scheduledFor.toISOString() } });
+  await enq.publish(fresh.id);
+  return fresh;
+}

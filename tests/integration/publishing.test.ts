@@ -216,6 +216,37 @@ describe('verification: SCHEDULED is not PUBLISHED', () => {
   });
 });
 
+describe('provider could not download the media', () => {
+  it('one automatic retry 30 min later (same files, gap kept); a second failure or a real rejection is not retried', async () => {
+    const { accounts } = await setup();
+    const job = await publishNow((await readyAd(accounts[0].id)).id, admin);
+    await processPublishJob(job.id, 'w');
+    adapter.status = { kind: 'ERROR', providerPostId: 'post-1', message: 'The media could not be fetched from this URI: https://x/api/m/1/sig/final.jpg', raw: {} };
+    expect(await reconcileJob(job.id)).toBe('FAILED');
+    const jobs = await prisma.publicationJob.findMany({ where: { advertisementId: job.advertisementId }, orderBy: { createdAt: 'asc' } });
+    expect(jobs).toHaveLength(2);
+    expect(jobs[0]).toMatchObject({ state: 'FAILED' });
+    expect(jobs[0].idempotencyKey).toContain(':retired:');
+    expect(jobs[1].state).toBe('QUEUED');
+    expect(jobs[1].scheduledFor.getTime()).toBeGreaterThan(Date.now() + 25 * 60_000);
+    expect((await prisma.advertisement.findUniqueOrThrow({ where: { id: job.advertisementId } })).state).toBe('QUEUED');
+    expect(await prisma.notification.count({ where: { code: 'PUBLISH_AUTO_RETRY' } })).toBe(1);
+    // the retry fails the same way → no second automatic retry
+    await prisma.publicationJob.update({ where: { id: jobs[1].id }, data: { scheduledFor: new Date(Date.now() + 5 * 60_000) } });
+    await processPublishJob(jobs[1].id, 'w');
+    expect(await reconcileJob(jobs[1].id)).toBe('FAILED');
+    expect(await prisma.publicationJob.count({ where: { advertisementId: job.advertisementId } })).toBe(2);
+  });
+  it('a real rejection (not a download problem) is not retried', async () => {
+    const { accounts } = await setup();
+    const job = await publishNow((await readyAd(accounts[0].id)).id, admin);
+    await processPublishJob(job.id, 'w');
+    adapter.status = { kind: 'ERROR', providerPostId: 'post-1', message: 'Instagram rejected media: aspect ratio not supported', raw: {} };
+    expect(await reconcileJob(job.id)).toBe('FAILED');
+    expect(await prisma.publicationJob.count({ where: { advertisementId: job.advertisementId } })).toBe(1);
+  });
+});
+
 describe('failed publishing requests', () => {
   it('definitive rejection → FAILED; 401 also revokes the connection publish permission', async () => {
     const { accounts } = await setup();
