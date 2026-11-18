@@ -67,3 +67,31 @@ describe('EDUCATION MASTER — every design type renders and passes layout QC', 
     expect(fails).toEqual([]);
   }, 60000);
 });
+
+describe('EDUCATION MASTER — styles, auto-fit, balanced columns', () => {
+  const base = { subject: 'العلوم', lesson: 'درس', size: 'A4' as const };
+  it('smart style by grade and type', async () => {
+    const { resolveStyle } = await import('@/lib/edu/render');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الثاني' }))).toBe('kids_cartoon');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الخامس' }))).toBe('school_colorful');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'Grade 9' }))).toBe('creative');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'certificate', grade: 'الصف الثاني' }))).toBe('luxury');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الثاني', style: 'minimal' }))).toBe('minimal');
+  });
+  it('auto-fit grows sparse text without overflow; manual size is respected', async () => {
+    const s = SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الرابع', orientation: 'landscape', columns: 3 });
+    const c = normalizeContent({ title: 'قصير', sections: [{ id: 's1', heading: 'قسم', body: 'جملة واحدة.' }] });
+    const auto = await renderDoc(s, c, { dpi: 50 });
+    expect(auto.fontScale).toBeGreaterThan(1.2);
+    expect(auto.pages.every((p) => p.placed.every((x) => x.fits))).toBe(true);
+    const manual = await renderDoc({ ...s, autoFit: false, fontScale: 0.9 }, c, { dpi: 50 });
+    expect(manual.fontScale).toBe(0.9);
+  }, 60000);
+  it('poster columns are balanced (no near-empty last column)', async () => {
+    const s = SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الرابع', orientation: 'landscape', columns: 3, autoFit: false });
+    const c = normalizeContent({ title: 't', sections: Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, heading: `قسم ${i + 1}`, body: 'نص تعليمي قصير يشرح الفكرة الأساسية لهذا القسم.' })) });
+    const d = await renderDoc(s, c, { dpi: 50 });
+    const per = ['col1', 'col2', 'col3'].map((id) => d.pages[0].placed.filter((x) => x.region === id).length);
+    expect(Math.min(...per)).toBeGreaterThan(0);
+  }, 60000);
+});

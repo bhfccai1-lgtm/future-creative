@@ -39,7 +39,7 @@ type Qc = { status: 'PASS' | 'WARNING' | 'FAIL'; checks: Check[]; printReady: bo
 type Project = { id: string; title: string; type: EduType; settings: EduSettings; content: EduContent | null; source: string | null; steps: StepState[] | null; qc: Qc | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number }[] } | null; versions: unknown[] | null };
 type Row = { id: string; title: string; type: EduType; updatedAt: string; source: string | null; qc: Qc | null };
 
-const blank = (type: EduType): Partial<EduSettings> => ({ type, lang: 'ar', subject: '', grade: '', lesson: '', objectives: '', student: '', classSection: '', school: '', size: PRESETS[type].size, orientation: PRESETS[type].orientation, sides: PRESETS[type].sides, columns: PRESETS[type].columns, style: 'auto', palette: 'blue', detail: 'medium', images: 'none', fontScale: 1, digits: 'arabic', equationDir: 'rtl', exerciseCount: 8, cardCount: 8, marginMm: 10, bleedMm: 0, answerKey: false });
+const blank = (type: EduType): Partial<EduSettings> => ({ type, lang: 'ar', subject: '', grade: '', lesson: '', objectives: '', student: '', classSection: '', school: '', size: PRESETS[type].size, orientation: PRESETS[type].orientation, sides: PRESETS[type].sides, columns: PRESETS[type].columns, style: 'auto', palette: 'blue', detail: 'medium', images: 'none', fontScale: 1, digits: 'arabic', equationDir: 'rtl', exerciseCount: 8, cardCount: 8, marginMm: 10, bleedMm: 0, answerKey: false, autoFit: true });
 const BADGE: Record<string, string> = { PASS: 'bg-emerald-100 text-emerald-800', WARNING: 'bg-amber-100 text-amber-800', FAIL: 'bg-red-100 text-red-800', done: 'bg-emerald-100 text-emerald-800', warning: 'bg-amber-100 text-amber-800', failed: 'bg-red-100 text-red-800', running: 'bg-sky-100 text-sky-800', pending: 'bg-slate-100 text-slate-500', skipped: 'bg-slate-100 text-slate-500' };
 
 export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[]; aiLive: boolean }) {
@@ -52,6 +52,7 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
   const [pages, setPages] = useState<PreviewPage[]>([]);
   const [prevPages, setPrevPages] = useState<PreviewPage[]>([]);
   const [qc, setQc] = useState<Qc | null>(null);
+  const [fit, setFit] = useState<{ fontScale: number; style: string } | null>(null);
   const [panelOrder, setPanelOrder] = useState<number[][] | null>(null);
   const [page, setPage] = useState(0);
   const [zoom, setZoom] = useState(100);
@@ -78,7 +79,8 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
 
   const refreshList = useCallback(async () => { const r = await apiCall<{ projects: Row[] }>('/api/edu/projects'); setRows(r.projects); }, []);
   const loadPreview = useCallback(async (id: string) => {
-    const r = await apiCall<{ pages: PreviewPage[]; qc: Qc; panelOrder: number[][] | null }>(`/api/edu/projects/${id}/preview`, { method: 'POST' });
+    const r = await apiCall<{ pages: PreviewPage[]; qc: Qc; panelOrder: number[][] | null; fontScale: number; style: string }>(`/api/edu/projects/${id}/preview`, { method: 'POST' });
+    setFit({ fontScale: r.fontScale, style: r.style });
     setPrevPages((old) => (old.length ? old : r.pages)); setPages((cur) => { if (cur.length) setPrevPages(cur); return r.pages; });
     setQc(r.qc); setPanelOrder(r.panelOrder); setPage((p) => Math.min(p, r.pages.length - 1));
     const pr = await apiCall<{ project: Project }>(`/api/edu/projects/${id}`); setProj(pr.project); setDraft(pr.project.content);
@@ -159,7 +161,7 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
               <Field label={t('style')}><select className="input" value={form.style} onChange={(e) => set('style', e.target.value as EduSettings['style'])}>{STYLES.map((x) => <option key={x} value={x}>{ui === 'ar' ? STYLE_AR[x] : x.replace('_', ' ')}</option>)}</select></Field>
               <Field label={t('detail')}><select className="input" value={form.detail} onChange={(e) => set('detail', e.target.value as EduSettings['detail'])}><option value="short">{ui === 'ar' ? 'مختصر' : 'Short'}</option><option value="medium">{ui === 'ar' ? 'متوسط' : 'Medium'}</option><option value="detailed">{ui === 'ar' ? 'مفصّل' : 'Detailed'}</option></select></Field>
               {has('images') && <Field label={t('images')}><select className="input" value={form.images} onChange={(e) => set('images', e.target.value as EduSettings['images'])}><option value="none">{ui === 'ar' ? 'بدون صور' : 'None'}</option><option value="low">{ui === 'ar' ? 'رسم واحد للغلاف' : 'One cover illustration'}</option><option value="medium">{ui === 'ar' ? 'رسم بجودة أعلى' : 'Higher-quality illustration'}</option></select></Field>}
-              <Field label={t('fontScale')}><input type="range" min={0.8} max={1.4} step={0.05} value={form.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} className="w-full" /></Field>
+              <Field label={t('fontScale')}><label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={form.autoFit !== false} onChange={(e) => set('autoFit', e.target.checked)} />{ui === 'ar' ? 'تلقائي — يملأ الصفحة' : 'Auto-fit'}</label>{form.autoFit === false && <input type="range" min={0.8} max={1.4} step={0.05} value={form.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} className="w-full" />}</Field>
               <Field label={t('digits')}><select className="input" value={form.digits} onChange={(e) => set('digits', e.target.value as EduSettings['digits'])}><option value="arabic">٠١٢٣٤٥٦٧٨٩</option><option value="latin">0123456789</option></select></Field>
               <Field label={t('equationDir')}><select className="input" value={form.equationDir} onChange={(e) => set('equationDir', e.target.value as EduSettings['equationDir'])}><option value="rtl">{ui === 'ar' ? 'من اليمين (٣ + ٤ = ٧)' : 'Right-to-left'}</option><option value="ltr">{ui === 'ar' ? 'من اليسار (3 + 4 = 7)' : 'Left-to-right'}</option></select></Field>
               {(has('exercises') || preset.engine === 'worksheet') && <Field label={t('exerciseCount')}><input className="input ltr" type="number" min={0} max={30} value={form.exerciseCount} onChange={(e) => set('exerciseCount', Number(e.target.value))} /></Field>}
@@ -225,7 +227,7 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
                 </div>
               </div>
             )}
-            {cur && <p className="text-[11px] text-slate-500"><span dir="ltr">{cur.trimMm.w} × {cur.trimMm.h} mm{cur.bleedMm ? ` + ${cur.bleedMm} mm bleed` : ''}</span> · {ui === 'ar' ? 'المعاينة بنفس محرك ملفات الطباعة' : 'same engine as the print files'}{compare ? (ui === 'ar' ? ' · تعرض النسخة السابقة' : ' · showing previous version') : ''}</p>}
+            {cur && <p className="text-[11px] text-slate-500"><span dir="ltr">{cur.trimMm.w} × {cur.trimMm.h} mm{cur.bleedMm ? ` + ${cur.bleedMm} mm bleed` : ''}</span> · {ui === 'ar' ? 'المعاينة بنفس محرك ملفات الطباعة' : 'same engine as the print files'}{compare ? (ui === 'ar' ? ' · تعرض النسخة السابقة' : ' · showing previous version') : ''}{fit ? ` · ${ui === 'ar' ? 'الخط' : 'text'} ${Math.round(fit.fontScale * 100)}%${proj.settings.autoFit !== false ? (ui === 'ar' ? ' (تلقائي)' : ' (auto)') : ''} · ${ui === 'ar' ? STYLE_AR[fit.style as keyof typeof STYLE_AR] ?? fit.style : fit.style}` : ''}</p>}
             {panelOrder && proj.type === 'brochure' && (
               <div className="rounded-xl bg-slate-50 p-3 text-xs">
                 <b>{ui === 'ar' ? 'ترتيب الأعمدة حسب طريقة الطي' : 'Panel order (fold)'}</b>
@@ -245,7 +247,9 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
                 <Button size="sm" variant="outline" disabled={!!busy || !(proj.versions?.length)} onClick={() => run('undo', async () => { await apiCall(`/api/edu/projects/${proj.id}/undo`, { method: 'POST' }); await loadPreview(proj.id); toast(ui === 'ar' ? 'تم التراجع ✓' : 'Undone ✓'); })}>{t('undo')}</Button>
               </div>
               <div className="mb-2 flex flex-wrap items-center gap-1.5">{PALETTES.map(([k, hex]) => <button key={k} type="button" aria-label={k} disabled={!!busy} onClick={() => saveDraft(ui === 'ar' ? 'تغيير الألوان' : 'Colours', { palette: k })} className={`h-7 w-7 rounded-full border-2 ${proj.settings.palette === k ? 'border-slate-900' : 'border-white'} shadow`} style={{ background: hex }} />)}
-                <select className="input !w-auto !py-1 text-xs" value={proj.settings.fontScale} disabled={!!busy} onChange={(e) => saveDraft(ui === 'ar' ? 'حجم الخط' : 'Font size', { fontScale: Number(e.target.value) })}>{[0.85, 0.9, 1, 1.1, 1.2, 1.3].map((v) => <option key={v} value={v}>{Math.round(v * 100)}%</option>)}</select>
+                <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={proj.settings.autoFit !== false} disabled={!!busy} onChange={(e) => saveDraft(ui === 'ar' ? 'ملء الصفحة تلقائيًا' : 'Auto-fit', { autoFit: e.target.checked })} />{ui === 'ar' ? 'خط تلقائي يملأ الصفحة' : 'Auto-fit text'}</label>
+                <select className="input !w-auto !py-1 text-xs" value={proj.settings.fontScale} disabled={!!busy || proj.settings.autoFit !== false} title={ui === 'ar' ? 'حجم يدوي (أوقف التلقائي أولًا)' : 'Manual size'} onChange={(e) => saveDraft(ui === 'ar' ? 'حجم الخط' : 'Font size', { fontScale: Number(e.target.value), autoFit: false })}>{[0.85, 0.9, 1, 1.1, 1.2, 1.3, 1.4].map((v) => <option key={v} value={v}>{Math.round(v * 100)}%</option>)}</select>
+                <select className="input !w-auto !py-1 text-xs" value={proj.settings.style} disabled={!!busy} onChange={(e) => saveDraft(ui === 'ar' ? 'تغيير النمط' : 'Style', { style: e.target.value as EduSettings['style'] })}>{STYLES.map((x) => <option key={x} value={x}>{ui === 'ar' ? STYLE_AR[x] : x.replace('_', ' ')}</option>)}</select>
                 <select className="input !w-auto !py-1 text-xs" value={proj.settings.digits} disabled={!!busy} onChange={(e) => saveDraft(t('digits'), { digits: e.target.value as EduSettings['digits'] })}><option value="arabic">٠١٢</option><option value="latin">012</option></select>
               </div>
               {draft && <ContentEditor draft={draft} setDraft={setDraft} ui={ui} t={t} busy={!!busy} onRewrite={(sid) => run('rewrite', async () => { await apiCall(`/api/edu/projects/${proj.id}/section`, { body: { sectionId: sid } }); await loadPreview(proj.id); toast(ui === 'ar' ? 'أُعيدت كتابة القسم ✓' : 'Section rewritten ✓'); })} aiLive={aiLive} />}
@@ -321,6 +325,7 @@ function ContentEditor({ draft, setDraft, ui, t, busy, onRewrite, aiLive }: { dr
   const up = (p: Partial<EduContent>) => setDraft({ ...draft, ...p });
   const lines = (v: string) => v.split('\n').map((x) => x.trim()).filter(Boolean);
   const sec = useMemo(() => draft.sections, [draft.sections]);
+  const [added, setAdded] = useState<string | null>(null);
   const upSec = (i: number, p: Partial<EduContent['sections'][number]>) => up({ sections: sec.map((s, j) => (j === i ? { ...s, ...p } : s)) });
   return (
     <div className="max-h-[60vh] space-y-3 overflow-y-auto pe-1">
@@ -328,19 +333,27 @@ function ContentEditor({ draft, setDraft, ui, t, busy, onRewrite, aiLive }: { dr
       <label className="block"><span className="label">{ui === 'ar' ? 'المقدمة' : 'Intro'}</span><textarea className="input" rows={2} maxLength={800} value={draft.intro} onChange={(e) => up({ intro: e.target.value })} /></label>
       <label className="block"><span className="label">{ui === 'ar' ? 'أهداف التعلم (سطر لكل هدف)' : 'Objectives (one per line)'}</span><textarea className="input" rows={3} value={draft.objectives.join('\n')} onChange={(e) => up({ objectives: lines(e.target.value).slice(0, 8) })} /></label>
       {sec.map((s, i) => (
-        <details key={s.id} className="rounded-xl border p-2" open={i === 0}>
+        <details key={s.id} className="rounded-xl border p-2" open={i === 0 || s.id === added}>
           <summary className="cursor-pointer text-sm font-bold text-indigo-900">{s.heading || `#${i + 1}`}</summary>
           <div className="mt-2 space-y-2">
             <input className="input" maxLength={120} value={s.heading} onChange={(e) => upSec(i, { heading: e.target.value })} />
             <textarea className="input" rows={2} maxLength={1200} placeholder={ui === 'ar' ? 'الشرح' : 'Body'} value={s.body} onChange={(e) => upSec(i, { body: e.target.value })} />
             <textarea className="input" rows={2} placeholder={ui === 'ar' ? 'نقاط (سطر لكل نقطة)' : 'Bullets'} value={s.bullets.join('\n')} onChange={(e) => upSec(i, { bullets: lines(e.target.value).slice(0, 10) })} />
-            {s.exercises.length > 0 && <div className="space-y-1">{s.exercises.map((ex, j) => (
-              <div key={j} className="grid grid-cols-[1fr_90px] gap-1"><input className="input text-xs" value={ex.q} onChange={(e) => upSec(i, { exercises: s.exercises.map((x, k) => (k === j ? { ...x, q: e.target.value } : x)) })} /><input className="input ltr text-xs" placeholder={ui === 'ar' ? 'الإجابة' : 'Answer'} value={ex.answer} onChange={(e) => upSec(i, { exercises: s.exercises.map((x, k) => (k === j ? { ...x, answer: e.target.value } : x)) })} /></div>
-            ))}</div>}
+            <div className="space-y-1">{s.exercises.map((ex, j) => (
+              <div key={j} className="grid grid-cols-[1fr_80px_28px] gap-1"><input className="input text-xs" value={ex.q} placeholder={ui === 'ar' ? 'السؤال: مثل 23 + 15 = __' : 'Question e.g. 23 + 15 = __'} onChange={(e) => upSec(i, { exercises: s.exercises.map((x, k) => (k === j ? { ...x, q: e.target.value } : x)) })} /><input className="input ltr text-xs" placeholder={ui === 'ar' ? 'الإجابة' : 'Answer'} value={ex.answer} onChange={(e) => upSec(i, { exercises: s.exercises.map((x, k) => (k === j ? { ...x, answer: e.target.value } : x)) })} /><button type="button" aria-label="remove" className="rounded border text-red-600" onClick={() => upSec(i, { exercises: s.exercises.filter((_, k) => k !== j) })}>✕</button></div>
+            ))}
+              {s.exercises.length < 30 && <button type="button" className="text-xs font-bold text-indigo-700 underline" onClick={() => upSec(i, { exercises: [...s.exercises, { q: '', answer: '', kind: 'text', choices: [] }] })}>+ {ui === 'ar' ? 'تمرين' : 'Exercise'}</button>}
+            </div>
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              <button type="button" disabled={i === 0} className="rounded border px-2 py-0.5 disabled:opacity-40" onClick={() => { const a = [...sec]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; up({ sections: a }); }}>↑ {ui === 'ar' ? 'أعلى' : 'Up'}</button>
+              <button type="button" disabled={i === sec.length - 1} className="rounded border px-2 py-0.5 disabled:opacity-40" onClick={() => { const a = [...sec]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; up({ sections: a }); }}>↓ {ui === 'ar' ? 'أسفل' : 'Down'}</button>
+              <button type="button" className="rounded border px-2 py-0.5 text-red-700" onClick={() => { if (window.confirm(ui === 'ar' ? `حذف القسم «${s.heading}»؟` : 'Delete this section?')) up({ sections: sec.filter((_, k) => k !== i) }); }}>🗑 {ui === 'ar' ? 'حذف القسم' : 'Delete'}</button>
+            </div>
             <button type="button" disabled={busy || !aiLive} title={aiLive ? '' : (ui === 'ar' ? 'يحتاج مفتاح OpenAI' : 'Needs an OpenAI key')} className="text-xs font-bold text-indigo-700 underline disabled:text-slate-400 disabled:no-underline" onClick={() => onRewrite(s.id)}>↻ {t('rewrite')}{aiLive ? '' : (ui === 'ar' ? ' (غير متاح — وضع التجربة)' : ' (unavailable — dry-run)')}</button>
           </div>
         </details>
       ))}
+      {sec.length < 12 && <button type="button" className="w-full rounded-xl border-2 border-dashed p-2 text-sm font-bold text-indigo-700" onClick={() => { const id = `s${Date.now().toString(36)}`; setAdded(id); up({ sections: [...sec, { id, heading: ui === 'ar' ? 'قسم جديد' : 'New section', body: '', bullets: [], examples: [], exercises: [], image: '' }] }); }}>+ {ui === 'ar' ? 'إضافة قسم' : 'Add section'}</button>}
       <label className="block"><span className="label">{ui === 'ar' ? 'الملخص (سطر لكل نقطة)' : 'Summary'}</span><textarea className="input" rows={3} value={draft.summary.join('\n')} onChange={(e) => up({ summary: lines(e.target.value).slice(0, 8) })} /></label>
       {draft.cards.length > 0 && <label className="block"><span className="label">{ui === 'ar' ? 'البطاقات (أمام | خلف)' : 'Cards (front | back)'}</span><textarea className="input ltr" rows={4} value={draft.cards.map((c) => `${c.front} | ${c.back}`).join('\n')} onChange={(e) => up({ cards: lines(e.target.value).slice(0, 24).map((l) => { const [f, b] = l.split('|'); return { front: (f ?? '').trim(), back: (b ?? '').trim() }; }) })} /></label>}
     </div>

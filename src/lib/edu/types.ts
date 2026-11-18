@@ -72,6 +72,8 @@ export const SettingsSchema = z.object({
   brand: z.boolean().default(false),
   /** worksheets: an extra answer-key page for the teacher */
   answerKey: z.boolean().default(false),
+  /** font size chosen automatically so the content fills the page without overflowing (fontScale is then ignored) */
+  autoFit: z.boolean().default(true),
 });
 export type EduSettings = z.infer<typeof SettingsSchema>;
 

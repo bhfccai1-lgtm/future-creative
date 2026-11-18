@@ -14,7 +14,7 @@ import { tokenize, visualOrder, withDigits, type Token } from './math';
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Placed { id: string; kind: 'text' | 'equation' | 'image' | 'box'; rect: Rect; region: string; fits: boolean; missing?: string[]; text?: string }
 export interface RenderedPage { png: Buffer; widthPx: number; heightPx: number; dpi: number; trimMm: { w: number; h: number }; bleedMm: number; placed: Placed[]; regions: { id: string; label: string; rect: Rect; safe: Rect }[]; folds: number[]; label: string }
-export interface RenderedDoc { pages: RenderedPage[]; engine: string }
+export interface RenderedDoc { pages: RenderedPage[]; engine: string; fontScale: number }
 
 const THEMES = {
   blue: { p: '#1d4ed8', s: '#38bdf8', a: '#f59e0b', bg: '#ffffff', soft: '#eff6ff', ink: '#0f172a', mute: '#475569' },
@@ -117,12 +117,19 @@ async function stack(c: Ctx, w: number, blocks: (Text & { id: string; kind?: Pla
 function sectionItems(c: Ctx, content: EduContent, sections = content.sections, opt: { numbering?: { n: number }; showAnswers?: boolean } = {}): Item[] {
   const items: Item[] = [];
   for (const sec of sections) {
+    const secNo = content.sections.indexOf(sec) + 1;
     items.push({ id: `${sec.id}:head`, render: async (w) => {
-      const h = await text(c, sec.heading, { size: 15, weight: 'extrabold', color: c.t.p, w: w - c.k * 8 });
-      const bar = Math.round(c.k * 9); const H = h.h + Math.round(c.k * 3);
-      const png = await sharp({ create: { width: Math.round(w), height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-        .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H}"><rect x="${c.rtl ? w - Math.round(c.k * 1.6) : 0}" y="${Math.round(c.k * 0.8)}" width="${Math.round(c.k * 1.6)}" height="${H - Math.round(c.k * 2)}" rx="${Math.round(c.k * 0.8)}" fill="${c.t.a}"/></svg>`) }, { input: h.png, left: c.rtl ? Math.round(w - bar / 2 - c.k * 2 - h.w) : Math.round(c.k * 4), top: 0 }]).png().toBuffer();
-      return { png, h: H, parts: [{ id: `${sec.id}:head`, kind: 'text', rect: { x: 0, y: 0, w: Math.round(w), h: H }, fits: h.fits, missing: h.missing, text: sec.heading }] };
+      // numbered heading: the section number in a coloured circle, then the heading
+      const nt = await text(c, String(secNo), { size: 11, weight: 'extrabold', color: '#ffffff', w: Math.round(c.k * 10), align: 'centre', ltr: true });
+      const D = Math.max(nt.w, nt.h) + Math.round(c.k * 2.6);
+      const h = await text(c, sec.heading, { size: 15, weight: 'extrabold', color: c.t.p, w: Math.round(w - D - c.k * 3) });
+      const H = Math.max(h.h, D) + Math.round(c.k * 2);
+      const cx = c.rtl ? w - D / 2 : D / 2, cy = H / 2 - c.k * 0.5;
+      const png = await sharp({ create: { width: Math.round(w), height: Math.round(H), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+        .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${Math.round(H)}"><circle cx="${cx}" cy="${cy}" r="${D / 2}" fill="${c.t.a}"/><line x1="${c.rtl ? 0 : D + c.k * 3}" y1="${H - c.k * 0.6}" x2="${c.rtl ? w - D - c.k * 3 : w}" y2="${H - c.k * 0.6}" stroke="${c.t.p}" stroke-opacity="0.18" stroke-width="${Math.max(1, c.k * 0.4)}"/></svg>`) },
+          { input: nt.png, left: Math.round(cx - nt.w / 2), top: Math.round(cy - nt.h / 2) },
+          { input: h.png, left: c.rtl ? Math.round(w - D - c.k * 3 - h.w) : Math.round(D + c.k * 3), top: Math.round(cy - h.h / 2) }]).png().toBuffer();
+      return { png, h: Math.round(H), parts: [{ id: `${sec.id}:head`, kind: 'text', rect: { x: 0, y: 0, w: Math.round(w), h: Math.round(H) }, fits: h.fits, missing: h.missing, text: sec.heading }] };
     } });
     if (sec.body.trim()) items.push({ id: `${sec.id}:body`, render: async (w) => { const b = await text(c, sec.body, { size: 11, w }); return stack(c, w, [{ ...b, id: `${sec.id}:body`, text: sec.body }]); } });
     if (sec.bullets.length) items.push({ id: `${sec.id}:bullets`, render: async (w) => stack(c, w, await Promise.all(sec.bullets.map(async (b, i) => ({ ...(await text(c, `• ${b}`, { size: 11, w })), id: `${sec.id}:b${i}`, text: b, gapAfter: Math.round(c.k * 1.2) })))) });
@@ -199,17 +206,29 @@ function listItem(c: Ctx, id: string, title: string, lines: string[], boxed = tr
 }
 
 /** Places items into columns (in reading order); returns what did not fit. */
-async function flow(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect: Rect }[]): Promise<Item[]> {
-  let ci = 0, y = cols[0]?.rect.y ?? 0;
+async function flow(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect: Rect }[], opts: { balance?: boolean } = {}): Promise<Item[]> {
   const gap = Math.round(c.k * 3);
+  // balanced columns: measure everything once, then break so columns end at about the same height (reading order kept)
+  let target = Infinity;
+  const pre = new Map<number, Awaited<ReturnType<Item['render']>>>();
+  if (opts.balance && cols.length > 1 && cols.every((x) => Math.abs(x.rect.w - cols[0].rect.w) < 2)) {
+    let total = 0;
+    for (let i = 0; i < items.length; i++) { const r = await items[i].render(cols[0].rect.w); pre.set(i, r); total += r.h + gap; }
+    const capacity = cols[0].rect.h;
+    if (total <= capacity * cols.length) target = Math.max(total / cols.length, Math.max(...[...pre.values()].map((r) => r.h)));
+  }
+  let ci = 0, y = cols[0]?.rect.y ?? 0, inCol = 0;
   for (let i = 0; i < items.length; i++) {
     const col = cols[ci]; if (!col) return items.slice(i);
-    const r = await items[i].render(col.rect.w);
-    if (y + r.h > col.rect.y + col.rect.h && y > col.rect.y) { ci++; i--; y = cols[ci]?.rect.y ?? 0; if (!cols[ci]) return items.slice(i + 1); continue; }
+    const r = pre.get(i) ?? await items[i].render(col.rect.w);
+    const used = y - col.rect.y;
+    const tooTall = y + r.h > col.rect.y + col.rect.h && y > col.rect.y;
+    const pastTarget = inCol > 0 && ci < cols.length - 1 && used + r.h / 2 > target;
+    if (tooTall || pastTarget) { ci++; i--; inCol = 0; y = cols[ci]?.rect.y ?? 0; if (!cols[ci]) return items.slice(i + 1); continue; }
     const fits = y + r.h <= col.rect.y + col.rect.h;
     cv.comps.push({ input: r.png, left: Math.round(col.rect.x), top: Math.round(y) });
     for (const p of r.parts) cv.placed.push({ ...p, region: col.id, fits: p.fits && fits, rect: { x: p.rect.x + col.rect.x, y: p.rect.y + y, w: p.rect.w, h: p.rect.h } });
-    y += r.h + gap;
+    y += r.h + gap; inCol++;
   }
   return [];
 }
@@ -261,7 +280,7 @@ async function infoLines(c: Ctx, cv: Canvas, r: Rect, region: string, withBlanks
 async function subjectBadge(c: Ctx, cv: Canvas, r: Rect, region: string) {
   const cx = r.x + r.w / 2, cy = r.y + r.h / 2, R = Math.min(r.w, r.h) * 0.42;
   cv.svg.push(`<circle cx="${cx}" cy="${cy}" r="${R}" fill="${c.t.s}" fill-opacity="0.22"/><circle cx="${cx}" cy="${cy}" r="${R * 0.74}" fill="#ffffff" stroke="${c.t.p}" stroke-width="${c.k * 1.2}"/>`);
-  const t = await text(c, `${c.s.subject}\n${c.s.grade}`, { size: 15, weight: 'extrabold', color: c.t.p, w: Math.round(R * 1.3), align: 'centre', maxH: R * 1.3 });
+  const t = await text(c, `${c.s.subject}\n${c.s.grade}`, { size: Math.min(15, (R * 0.32 * 72) / (c.k * 25.4)) / c.s.fontScale, weight: 'extrabold', color: c.t.p, w: Math.round(R * 1.25), align: 'centre', maxH: R * 1.3 });
   cv.comps.push({ input: t.png, left: Math.round(cx - t.w / 2), top: Math.round(cy - t.h / 2) });
   cv.placed.push({ id: 'badge', kind: 'text', rect: { x: Math.round(cx - t.w / 2), y: Math.round(cy - t.h / 2), w: t.w, h: t.h }, region, fits: t.fits, missing: t.missing, text: c.s.subject });
 }
@@ -360,7 +379,7 @@ async function flowEngine(c: Ctx, content: EduContent, W: number, H: number, b: 
     const colRects = Array.from({ length: cols }, (_, i) => { const pos = c.rtl ? cols - 1 - i : i; return { id: `col${i + 1}`, rect: { x: inner.x + pos * (colW + gap), y: top, w: colW, h: inner.y + inner.h - top } }; });
     for (const cr of colRects) pg.regions.push({ id: cr.id, label: `${c.s.lang === 'en' ? 'Column' : 'العمود'} ${cr.id.slice(3)}`, rect: cr.rect, safe: cr.rect });
     const before = items.length;
-    items = await flow(c, cv, items, colRects);
+    items = await flow(c, cv, items, colRects, { balance: true });
     pages.push(pg); pageNo++;
     if (items.length === before || pageNo > 8) { if (items.length) cv.placed.push({ id: 'overflow', kind: 'text', rect: { x: 0, y: 0, w: 1, h: 1 }, region: 'col1', fits: false, text: `${items.length} عنصر لم يتسع` }); break; }
   }
@@ -502,8 +521,49 @@ async function tableEngine(c: Ctx, content: EduContent, W: number, H: number, b:
   return [pg];
 }
 
+const gradeNo = (g: string) => { const m = g.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).match(/\d+/); if (m) return Number(m[0]); const w = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس']; const i = w.findIndex((x) => g.includes(x)); return i >= 0 ? i + 1 : 5; };
+/** «اختيار ذكي»: young pupils get the playful style, middle grades colourful, certificates luxury, the rest creative. */
+export function resolveStyle(s: EduSettings): Exclude<EduSettings['style'], 'auto'> {
+  if (s.style !== 'auto') return s.style;
+  if (PRESETS[s.type].engine === 'certificate') return 'luxury';
+  const g = gradeNo(s.grade);
+  return g <= 3 ? 'kids_cartoon' : g <= 6 ? 'school_colorful' : 'creative';
+}
+const star = (cx: number, cy: number, r: number) => Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r; return `${(cx + rr * Math.cos(a)).toFixed(1)},${(cy + rr * Math.sin(a)).toFixed(1)}`; }).join(' ');
+
+/** Background decoration of the visual style — only in the margins/corners, never under text (not part of QC regions). */
+function decor(c: Ctx, W: number, H: number, b: number, engine: string): string {
+  const st = resolveStyle(c.s), m = c.k * c.s.marginMm, t = c.t;
+  const x0 = b, y0 = b, x1 = W - b, y1 = H - b, out: string[] = [];
+  if (st === 'kids_cartoon') {
+    const r = m * 0.34;
+    for (const [x, y, col] of [[x0 + m * 0.5, y0 + m * 0.5, t.a], [x1 - m * 0.5, y0 + m * 0.5, t.s], [x0 + m * 0.5, y1 - m * 0.5, t.s], [x1 - m * 0.5, y1 - m * 0.5, t.a]] as [number, number, string][]) out.push(`<polygon points="${star(x, y, r)}" fill="${col}" fill-opacity="0.85"/>`);
+    const n = Math.floor((x1 - x0 - 3 * m) / (m * 0.9));
+    for (let i = 0; i < n; i++) { const cx = x0 + 1.5 * m + i * m * 0.9 + m * 0.45; out.push(`<circle cx="${cx}" cy="${y1 - m * 0.5}" r="${m * 0.16}" fill="${[t.p, t.a, t.s][i % 3]}" fill-opacity="0.55"/><circle cx="${cx}" cy="${y0 + m * 0.5}" r="${m * 0.12}" fill="${[t.s, t.p, t.a][i % 3]}" fill-opacity="0.4"/>`); }
+  } else if (st === 'luxury') {
+    const i1 = m * 0.32, i2 = m * 0.5;
+    out.push(`<rect x="${x0 + i1}" y="${y0 + i1}" width="${x1 - x0 - 2 * i1}" height="${y1 - y0 - 2 * i1}" fill="none" stroke="${t.a}" stroke-width="${c.k * 0.9}"/><rect x="${x0 + i2}" y="${y0 + i2}" width="${x1 - x0 - 2 * i2}" height="${y1 - y0 - 2 * i2}" fill="none" stroke="${t.s}" stroke-width="${c.k * 0.35}"/>`);
+    const L = m * 1.4;
+    for (const [x, y, dx, dy] of [[x0 + i2, y0 + i2, 1, 1], [x1 - i2, y0 + i2, -1, 1], [x0 + i2, y1 - i2, 1, -1], [x1 - i2, y1 - i2, -1, -1]]) out.push(`<path d="M${x} ${y + dy * L} L${x} ${y} L${x + dx * L} ${y}" fill="none" stroke="${t.a}" stroke-width="${c.k * 1.4}"/><circle cx="${x + dx * m * 0.25}" cy="${y + dy * m * 0.25}" r="${c.k * 0.9}" fill="${t.a}"/>`);
+  } else if (st === 'school_colorful') {
+    const band = m * 0.38, cols = [t.p, t.a, t.s, '#10b981', '#ef4444'], seg = (x1 - x0) / cols.length;
+    cols.forEach((col, i) => out.push(`<rect x="${x0 + i * seg}" y="${y0}" width="${seg + 1}" height="${band}" fill="${col}"/><rect x="${x0 + i * seg}" y="${y1 - band}" width="${seg + 1}" height="${band}" fill="${cols[(i + 2) % cols.length]}"/>`));
+  } else if (st === 'minimal') {
+    out.push(`<line x1="${x0 + m}" y1="${y1 - m * 0.45}" x2="${x1 - m}" y2="${y1 - m * 0.45}" stroke="${t.p}" stroke-opacity="0.35" stroke-width="${c.k * 0.3}"/>`);
+  } else if (st === 'illustrated') {
+    out.push(`<defs><pattern id="dots" width="${c.k * 5}" height="${c.k * 5}" patternUnits="userSpaceOnUse"><circle cx="${c.k * 2.5}" cy="${c.k * 2.5}" r="${c.k * 0.45}" fill="${t.p}" fill-opacity="0.13"/></pattern></defs><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="url(#dots)"/>`);
+  } else if (st === 'three_d') {
+    out.push(`<rect x="${x0 + m * 0.35}" y="${y0 + m * 0.35}" width="${x1 - x0 - m * 0.7}" height="${y1 - y0 - m * 0.7}" rx="${c.k * 5}" fill="none" stroke="${t.p}" stroke-opacity="0.14" stroke-width="${c.k * 2.4}"/>`);
+  } else { // creative: corner triangles
+    const L = m * 2.6;
+    out.push(`<polygon points="${x0},${y0} ${x0 + L},${y0} ${x0},${y0 + L}" fill="${t.a}" fill-opacity="0.9"/><polygon points="${x0},${y0} ${x0 + L * 0.55},${y0} ${x0},${y0 + L * 0.55}" fill="${t.p}"/><polygon points="${x1},${y1} ${x1 - L},${y1} ${x1},${y1 - L}" fill="${t.s}" fill-opacity="0.9"/><polygon points="${x1},${y1} ${x1 - L * 0.55},${y1} ${x1},${y1 - L * 0.55}" fill="${t.p}"/>`);
+  }
+  void engine;
+  return out.join('');
+}
+
 /** Renders the whole document. `images` maps slot → storage key (only images that really exist are placed). */
-export async function renderDoc(s: EduSettings, content: EduContent, opts: { dpi: number; images?: Record<string, string> }): Promise<RenderedDoc> {
+async function renderOnce(s: EduSettings, content: EduContent, opts: { dpi: number; images?: Record<string, string> }): Promise<RenderedDoc> {
   const preset = PRESETS[s.type];
   const trim = paperMm(s), bleed = s.bleedMm;
   const k = opts.dpi / 25.4;
@@ -519,9 +579,38 @@ export async function renderDoc(s: EduSettings, content: EduContent, opts: { dpi
     : await flowEngine(c, content, W, H, b, 'poster');
   const pages: RenderedPage[] = [];
   for (const d of drafts) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="${c.t.bg}"/>${d.cv.svg.join('')}</svg>`;
+    const bg = resolveStyle(s) === 'luxury' && s.palette !== 'navy_gold' ? '#fffdf7' : c.t.bg;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="${bg}"/>${decor(c, W, H, b, preset.engine)}${d.cv.svg.join('')}</svg>`;
     const png = await sharp(Buffer.from(svg)).composite(d.cv.comps).png({ compressionLevel: 6 }).toBuffer();
     pages.push({ png, widthPx: W, heightPx: H, dpi: opts.dpi, trimMm: trim, bleedMm: bleed, placed: d.cv.placed, regions: d.regions, folds: d.folds, label: d.label });
   }
-  return { pages, engine: preset.engine };
+  return { pages, engine: preset.engine, fontScale: s.fontScale };
+}
+
+const overflowed = (d: RenderedDoc) => d.pages.some((p) => p.placed.some((x) => !x.fits || x.id === 'overflow'));
+/**
+ * Auto-fit («ملء الصفحة»): the largest font scale (0.8 up to 1.7 for posters/brochures, 1.5 for worksheets) at which nothing overflows and no page is added,
+ * found by a quick binary search on low-resolution renders, then rendered at the requested DPI with a small safety
+ * margin. Sparse layouts get bigger, readable text; dense ones shrink before they would overflow.
+ */
+export async function fitScale(s: EduSettings, content: EduContent, images?: Record<string, string>): Promise<number> {
+  const eng = PRESETS[s.type].engine;
+  if (!s.autoFit || !['panels', 'poster', 'worksheet'].includes(eng)) return s.fontScale;
+  const probe = (f: number) => renderOnce({ ...s, fontScale: f }, content, { dpi: 40, images });
+  const minDoc = await probe(0.8);
+  const basePages = minDoc.pages.length;
+  if (overflowed(minDoc)) return 0.8;
+  const ok = async (f: number) => { const d = await probe(f); return !overflowed(d) && d.pages.length <= basePages; };
+  let lo = 0.8, hi = eng === 'worksheet' ? 1.5 : 1.7;
+  if (await ok(hi)) return hi;
+  for (let i = 0; i < 5; i++) { const mid = (lo + hi) / 2; if (await ok(mid)) lo = mid; else hi = mid; }
+  return Math.round(Math.max(0.8, lo * 0.96) * 100) / 100;
+}
+
+export async function renderDoc(s: EduSettings, content: EduContent, opts: { dpi: number; images?: Record<string, string> }): Promise<RenderedDoc> {
+  const f = await fitScale(s, content, opts.images);
+  let doc = await renderOnce({ ...s, fontScale: f }, content, opts);
+  // safety: if rounding at full resolution made something overflow, step down until it fits
+  for (let step = 1; step <= 3 && s.autoFit && overflowed(doc) && f - step * 0.05 >= 0.75; step++) doc = await renderOnce({ ...s, fontScale: f - step * 0.05 }, content, opts);
+  return doc;
 }

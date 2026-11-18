@@ -10,7 +10,7 @@ import { getAiProvider } from '../ai';
 import { assertBudget, estimateImageCost, recordUsage } from '../ai/cost';
 import { ContentSchema, PRESETS, SettingsSchema, STEPS, type EduContent, type EduSettings, type StepId, type StepState } from './types';
 import { generateContent, regenerateSection } from './content';
-import { renderDoc, defaultPanelOrder } from './render';
+import { renderDoc, defaultPanelOrder, resolveStyle } from './render';
 import { buildPdf, inspectPdf } from './pdf';
 import { runQc, type EduQc } from './qc';
 
@@ -141,7 +141,7 @@ export async function preview(id: string, user: User, dpi = 110) {
   let steps = mark(mark(stepsOf(p), 'layout', 'done', `${doc.pages.length} ${PRESETS[s.type].engine === 'panels' ? 'وجه' : 'صفحة'}`), 'preview', 'done');
   steps = mark(steps, 'qc', qc.status === 'FAIL' ? 'failed' : qc.status === 'WARNING' ? 'warning' : 'done', `فحص مبدئي: ${qc.status}`);
   await prisma.eduProject.update({ where: { id }, data: { steps: steps as unknown as Prisma.InputJsonValue, qc: qc as unknown as Prisma.InputJsonValue } });
-  return { pages, qc, panelOrder: s.panelOrder ?? (PRESETS[s.type].engine === 'panels' ? defaultPanelOrder(s.lang) : null) };
+  return { pages, qc, fontScale: doc.fontScale, style: resolveStyle(s), panelOrder: s.panelOrder ?? (PRESETS[s.type].engine === 'panels' ? defaultPanelOrder(s.lang) : null) };
 }
 
 /** STEP 10–12: print files at 300 DPI (PDF + PNG/JPG per page), re-opened and checked before they are offered. */
