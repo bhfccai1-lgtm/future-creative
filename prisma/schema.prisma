@@ -760,3 +760,25 @@ model Lead {
   @@index([accountId, createdAt])
   @@map("leads")
 }
+
+/// EDUCATION MASTER AI: an educational print project (lesson → content → layout → files). Student fields are only
+/// what the user typed; files live in storage under edu/<id>/.
+model EduProject {
+  id        String   @id @default(cuid())
+  title     String
+  type      String
+  settings  Json
+  content   Json?
+  source    String? // ai | sample | edited
+  images    Json? // { slot: storageKey }
+  steps     Json? // workflow step states
+  qc        Json?
+  exports   Json? // { at, files: [{ kind, name, key, bytes }] }
+  versions  Json? // last versions of { at, content, settings, note }
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdBy, updatedAt])
+  @@map("edu_projects")
+}

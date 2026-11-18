@@ -195,6 +195,20 @@ export class OpenAiProvider implements AiProvider {
     return { items, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async generateJson(system: string, user: string, model: string) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'system' as const, content: system }, { role: 'user' as const, content: user }],
+        response_format: { type: 'json_object' },
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('json'));
+    } catch (e) { throw mapError(e); }
+    let json: unknown;
+    try { json = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    return { json, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
   async describeStyle(png: Buffer, model: string) {
     let res;
     try {

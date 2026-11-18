@@ -78,4 +78,4 @@ export function verifyMediaSignature(key: string, exp: string, sig: string, now 
 }
 
 export const contentTypeFor = (key: string) =>
-  key.endsWith('.png') ? 'image/png' : key.endsWith('.jpg') || key.endsWith('.jpeg') ? 'image/jpeg' : key.endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream';
+  key.endsWith('.png') ? 'image/png' : key.endsWith('.jpg') || key.endsWith('.jpeg') ? 'image/jpeg' : key.endsWith('.mp4') ? 'video/mp4' : key.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';

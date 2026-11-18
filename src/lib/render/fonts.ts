@@ -1,6 +1,10 @@
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import opentype from 'opentype.js';
+import * as opentypeNs from 'opentype.js';
+import type { Font } from 'opentype.js';
+// opentype.js is CommonJS: under tsx/Node the namespace has `.default`, under the Next.js bundler it may not —
+// resolve parse() from whichever shape is present (the default import was undefined inside Next.js routes)
+const opentype = ((opentypeNs as unknown as { default?: typeof opentypeNs }).default ?? opentypeNs) as typeof opentypeNs;
 
 export type Lang = 'ar' | 'en' | 'ml';
 export type Weight = 'regular' | 'bold' | 'extrabold';
@@ -25,7 +29,7 @@ export function fontFor(lang: Lang, weight: Weight) {
   return { fontfile: path.join(fontDir(), f.file), desc: f.desc };
 }
 
-const cache = new Map<string, opentype.Font>();
+const cache = new Map<string, Font>();
 function load(file: string) {
   let f = cache.get(file);
   if (!f) { const b = readFileSync(file); f = opentype.parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); cache.set(file, f); }
