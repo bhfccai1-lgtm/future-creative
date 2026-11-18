@@ -3,6 +3,8 @@
 ## 9.1.0 — 2026-11-18 (releases install themselves on the server)
 - **Automatic release deploy** (opt-in): `bash scripts/autoupdate.sh on` once; after that every GitHub Release is installed by the server within 10 minutes — exactly the released tag, through `scripts/update.sh` with all its safety (green CI required, build while running, health check, automatic rollback). A failed release is retried at most every 6 hours; a manual newer version is left alone. `autoupdate.sh off` / status. Guide: `docs/RELEASES.md`.
 - **update.sh:** `FC_REF=<tag>` updates to a precise release; the GitHub check compares with the version that actually runs; after a failed build or a rollback the code returns to the running version (the next try checks GitHub again).
+- **Readable in the Hetzner web console:** that console cannot draw Arabic (◆◆◆), so the update scripts print English there (TERM=linux) and Arabic everywhere else (`FC_LANG=ar|en` to choose).
+- **`bash scripts/swap.sh`** (one time): adds swap memory (4 GB on small servers, kept after reboot). Seen live: the update build ran out of memory and the kernel killed a running reel render (ffmpeg). `update.sh` warns when memory is low and there is no swap.
 - **CI:** test failures are annotated on the exact lines in GitHub; pull requests get GitHub's dependency review (blocks high/critical vulnerabilities and incompatible licences).
 
 ## 9.0.0 — 2026-11-18 (sales, growth program, real-work posts, professional GitHub)

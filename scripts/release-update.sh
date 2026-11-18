@@ -23,6 +23,6 @@ if [ -f "$STATE" ]; then
   read -r LT LR LAT < "$STATE" || true
   if [ "${LT:-}" = "$TAG" ] && [ "${LR:-}" = fail ] && [ $(( $(date +%s) - ${LAT:-0} )) -lt 21600 ]; then exit 0; fi
 fi
-echo "===== $(date -Is) نشر الإصدار $TAG (${SHA:0:7}) تلقائيًا ====="
-if FC_REF="$TAG" bash scripts/update.sh; then echo "$TAG ok $(date +%s)" > "$STATE"; echo "✓ $TAG يعمل"
-else echo "$TAG fail $(date +%s)" > "$STATE"; echo "✗ فشل تحديث $TAG — النظام بقي على الإصدار السابق. إعادة المحاولة بعد 6 ساعات."; fi
+echo "===== $(date -Is) release $TAG (${SHA:0:7}) — auto deploy ====="
+if FC_REF="$TAG" bash scripts/update.sh; then echo "$TAG ok $(date +%s)" > "$STATE"; echo "✓ $TAG running"
+else echo "$TAG fail $(date +%s)" > "$STATE"; echo "✗ $TAG failed — still on the previous version, retry in 6 h"; fi
