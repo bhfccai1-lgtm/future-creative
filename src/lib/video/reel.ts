@@ -136,6 +136,9 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
   try {
     const inputs: string[] = [];
     const filters: string[] = [];
+    const addStill = (file: string) => inputs.push('-framerate', String(FPS), '-i', file);
+    // Reuse the decoded frame for timed fades instead of decoding the same PNG at 30 fps.
+    const timedStill = `format=rgba,tpad=stop_mode=clone:stop_duration=${D}`;
     let baseHasAudio = false;
     if (opts.baseVideo) {
       // AI clip as the moving base: fill 9:16, 30 fps, hold the last frame under the end card, add a contrast shade for the verified text layers
@@ -151,7 +154,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       const th = THEMES[c.themeKey ?? 'navy_gold'];
       const shade = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920"><defs><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${th.panel}" stop-opacity="0.75"/><stop offset="0.3" stop-color="${th.panel}" stop-opacity="0"/><stop offset="0.58" stop-color="${th.panel}" stop-opacity="0"/><stop offset="1" stop-color="${th.panel}" stop-opacity="0.92"/></linearGradient></defs><rect width="1080" height="1920" fill="url(#t)"/></svg>`);
       const sf = path.join(dir, 'shade.png'); await fs.writeFile(sf, await sharp(shade).png().toBuffer());
-      inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', sf);
+      addStill(sf);
       filters.push(`[0:v]setpts=${slow.toFixed(4)}*PTS,scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,fps=${FPS},setsar=1,trim=duration=${clip.toFixed(3)},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${D},trim=duration=${D},format=rgba[raw0]`);
       filters.push(`[1:v]format=rgba[shade]`);
       filters.push(`[raw0][shade]overlay=0:0[s0]`);
@@ -160,10 +163,11 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       const f = path.join(dir, `bg${i}.png`);
       await fs.writeFile(f, backgrounds[i]);
       const len = n === 1 ? D : L;
-      const frames = Math.round(len * FPS);
-      inputs.push('-loop', '1', '-framerate', String(FPS), '-t', len.toFixed(3), '-i', f);
+      const frames = Math.ceil(len * FPS);
+      addStill(f);
       const motion = i === 0 && opts.hook !== false ? HOOK_MOTION(frames) : MOTIONS[i % MOTIONS.length](frames);
-      filters.push(`[${i}:v]scale=2160:3840:flags=lanczos,zoompan=${motion}:d=1:s=1080x1920:fps=${FPS},format=rgba,setsar=1[s${i}]`);
+      // Generate the full move from one scaled frame. Each scene has its own zoompan clock.
+      filters.push(`[${i}:v]scale=2160:3840:flags=lanczos,zoompan=${motion}:d=${frames}:s=1080x1920:fps=${FPS},format=rgba,setsar=1[s${i}]`);
     }
     let base = 's0';
     for (let i = 1; i < n; i++) {
@@ -192,10 +196,10 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     for (const t of timeline) {
       const f = path.join(dir, `l${idx}.png`);
       await fs.writeFile(f, t.layer.png);
-      inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', f);
+      addStill(f);
       filters.push(t.start === 0 && t.fade <= 0.25
         ? `[${idx}:v]format=rgba[o${idx}]` // fully visible on frame 0 (no fade-from-transparent)
-        : `[${idx}:v]format=rgba,fade=t=in:st=${t.start.toFixed(2)}:d=${t.fade}:alpha=1[o${idx}]`);
+        : `[${idx}:v]${timedStill},fade=t=in:st=${t.start.toFixed(2)}:d=${t.fade}:alpha=1[o${idx}]`);
       const y = t.slide ? `'${t.layer.top}+${t.slide}*pow(max(0\\,1-(t-${t.start.toFixed(2)})/${t.fade})\\,3)'` : String(t.layer.top); // cubic ease-out
       filters.push(`[${base}][o${idx}]overlay=x=${t.layer.left}:y=${y}:enable='gte(t,${t.start.toFixed(2)})':eval=frame[v${idx}]`);
       base = `v${idx}`;
@@ -213,26 +217,26 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
         const pill = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${Math.min(40, ph / 2)}" fill="#0b1730" fill-opacity="0.78" stroke="#e6c25a" stroke-width="3"/></svg>`);
         const png = await sharp(pill).composite([{ input: t.png, left: 32, top: 17 }]).png().toBuffer();
         const f = path.join(dir, `cap${idx}.png`); await fs.writeFile(f, png);
-        inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', f);
+        addStill(f);
         const a = cap.start.toFixed(2), b = Math.min(cap.end, endStart).toFixed(2);
-        filters.push(`[${idx}:v]format=rgba,fade=t=in:st=${a}:d=0.08:alpha=1[c${idx}]`);
+        filters.push(`[${idx}:v]${timedStill},fade=t=in:st=${a}:d=0.08:alpha=1[c${idx}]`);
         filters.push(`[${base}][c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${1060 - Math.round(ph / 2)}:enable='between(t,${a},${b})'[v${idx}]`);
         base = `v${idx}`; idx++;
       }
     }
     const end = await buildEndCard(c);
     await fs.writeFile(path.join(dir, 'end.png'), end);
-    inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', path.join(dir, 'end.png'));
+    addStill(path.join(dir, 'end.png'));
     const endIdx = idx++;
-    filters.push(`[${endIdx}:v]format=rgba,fade=t=in:st=${endStart}:d=0.7:alpha=1[end]`);
+    filters.push(`[${endIdx}:v]${timedStill},fade=t=in:st=${endStart}:d=0.7:alpha=1[end]`);
     // finishing: light sharpening of the upscaled AI image, correct BT.709 conversion (no washed-out colours on phones),
     // debanding of smooth gradients and a very fine temporal grain so platform re-encoding doesn't band or smear
     let loopIdx = -1;
     if (opts.loop !== false) {
       await fs.writeFile(path.join(dir, 'loop.png'), c.png);
-      inputs.push('-loop', '1', '-framerate', String(FPS), '-t', String(D), '-i', path.join(dir, 'loop.png'));
+      addStill(path.join(dir, 'loop.png'));
       loopIdx = idx++;
-      filters.push(`[${loopIdx}:v]format=rgba,fade=t=in:st=${(D - 0.5).toFixed(2)}:d=0.45:alpha=1[loopin]`);
+      filters.push(`[${loopIdx}:v]${timedStill},fade=t=in:st=${(D - 0.5).toFixed(2)}:d=0.45:alpha=1[loopin]`);
     }
     filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})'${loopIdx >= 0 ? '[ended];[ended][loopin]overlay=0:0:enable=\'gte(t,' + (D - 0.5).toFixed(2) + ')\'' : ''},unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
     // ── Audio: music bed (native Veo / licensed track / synthesised) + voice-over with ducking + sound design, mastered to −14 LUFS ──
