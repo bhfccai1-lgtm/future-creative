@@ -34,7 +34,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
-        run: npm run test:unit
+        run: npm run test:unit -- --reporter=default --reporter=github-actions
       - name: Production build (same as the Docker image, includes lint)
         run: npm run build
 
@@ -67,7 +67,7 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
       - name: Integration tests (PostgreSQL + Redis) — shard ${{ matrix.shard }}/3
-        run: npm run test:integration -- --shard=${{ matrix.shard }}/3
+        run: npm run test:integration -- --shard=${{ matrix.shard }}/3 --reporter=default --reporter=github-actions
 
   docker:
     runs-on: ubuntu-latest

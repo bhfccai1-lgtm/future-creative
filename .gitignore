@@ -9,3 +9,4 @@ coverage
 backups
 dump.rdb
 .tmp/
+.autoupdate-state

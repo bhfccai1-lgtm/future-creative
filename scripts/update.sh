@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Safe one-command update for the Future Creative server.
 #   Usage (inside /opt/future-creative):   bash scripts/update.sh
+#   FC_REF=v9.1.0 bash scripts/update.sh   → update to that exact release tag (used by the automatic release deploy)
 # 1) pulls the latest code   2) builds the new version WHILE the current one keeps running
 # 3) only if the build succeeds: switches over and waits for the health check
 # 4) if the new version does not become healthy: rolls back to the previous image automatically.
@@ -22,6 +23,7 @@ LOG=/tmp/fc-update.log
 
 step "التحديث يبدأ — النظام الحالي يبقى يعمل حتى ينجح البناء"
 OLD=$(git rev-parse --short HEAD)
+OLD_FULL=$(git rev-parse HEAD)
 
 # ── GitHub CI guard: update only to a version whose CI check (ci-ok) is green. «bash scripts/update.sh force» skips it. ──
 ci_state() { # prints success | failure | pending | unknown  for commit $1 (public repo: no token needed)
@@ -39,9 +41,11 @@ elif any(r.get("status")!="completed" for r in ci): print("pending")
 elif all(r.get("conclusion")=="success" for r in ci): print("success")
 else: print("failure")' 2>/dev/null || echo unknown
 }
-if [ "${1:-}" != "force" ] && command -v python3 >/dev/null && command -v curl >/dev/null && git fetch -q origin 2>>"$LOG"; then
-  TARGET=$(git rev-parse "@{u}" 2>/dev/null || echo "")
-  if [ -n "$TARGET" ] && [ "$TARGET" != "$(git rev-parse HEAD)" ]; then
+if [ "${1:-}" != "force" ] && command -v python3 >/dev/null && command -v curl >/dev/null && git fetch -q --tags origin 2>>"$LOG"; then
+  if [ -n "${FC_REF:-}" ]; then TARGET=$(git rev-parse "${FC_REF}^{commit}" 2>/dev/null || echo ""); else TARGET=$(git rev-parse "@{u}" 2>/dev/null || echo ""); fi
+  RUNNING_NOW=$(docker compose exec -T web printenv APP_VERSION 2>/dev/null | tr -d '\r')
+  # compare with the version that RUNS (not the checked-out code: a failed earlier attempt may have pulled already)
+  if [ -n "$TARGET" ] && [ "$(git rev-parse --short "$TARGET")" != "$RUNNING_NOW" ]; then
     step "فحص GitHub للإصدار ${TARGET:0:7} قبل التحديث..."
     for i in $(seq 1 40); do
       ST=$(ci_state "$TARGET")
@@ -57,7 +61,8 @@ if [ "${1:-}" != "force" ] && command -v python3 >/dev/null && command -v curl >
     esac
   fi
 fi
-if ! git pull --ff-only >>"$LOG" 2>&1; then
+if [ -n "${FC_REF:-}" ]; then PULL=(bash -c "git fetch -q --tags origin && git merge --ff-only \"\$0\"" "$FC_REF"); else PULL=(git pull --ff-only); fi
+if ! "${PULL[@]}" >>"$LOG" 2>&1; then
   fail "فشل تنزيل التحديث (git pull). آخر سطور السجل:"; tail -15 "$LOG"; exit 1
 fi
 NEW=$(git rev-parse --short HEAD)
@@ -74,6 +79,7 @@ docker image inspect future-creative-app:latest >/dev/null 2>&1 && docker tag fu
 
 step "بناء الإصدار الجديد (قد يستغرق 3–8 دقائق)..."
 if ! docker compose build >>"$LOG" 2>&1; then
+  git reset -q --keep "$OLD_FULL" 2>/dev/null || true   # code back to the running version (the next try checks GitHub again)
   fail "فشل البناء — لم يتغير شيء، النظام مستمر على الإصدار السابق ($OLD)."
   echo "   صوّر هذه السطور وأرسلها للدعم:"; grep -iE "error|failed" "$LOG" | tail -12; exit 1
 fi
@@ -100,6 +106,7 @@ fail "الإصدار الجديد لم يجتز فحص الصحة خلال 3 د�
 docker compose logs --tail=25 web worker migrate 2>/dev/null | tail -30
 if docker image inspect future-creative-app:previous >/dev/null 2>&1; then
   docker tag future-creative-app:previous future-creative-app:latest
+  git reset -q --keep "$OLD_FULL" 2>/dev/null || true
   docker compose up -d --no-build --no-deps web worker >>"$LOG" 2>&1 && ok "رجع النظام للإصدار السابق"
 fi
 echo "   صوّر هذه الشاشة وأرسلها للدعم."

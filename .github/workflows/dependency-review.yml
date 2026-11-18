@@ -1,0 +1,18 @@
+# Pull requests (incl. Dependabot): block a new dependency with a known high/critical vulnerability or a
+# copyleft licence that would not fit a closed business system. GitHub's own action, no third-party code.
+name: Dependency review
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: AGPL-3.0-only, AGPL-3.0-or-later, GPL-3.0-only, GPL-3.0-or-later
+          comment-summary-in-pr: on-failure

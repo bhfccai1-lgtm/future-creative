@@ -34,7 +34,7 @@ A self-hosted platform that plans, designs, quality-checks, schedules and publis
 ## Contributing / workflow
 - Open an issue with the Arabic forms (bug, feature, design problem). Security problems: private advisory (see `SECURITY.md`).
 - Every change runs CI; `ci-ok` must be green before the server updates.
-- Releases: add a `## X.Y.Z — date` section to `CHANGELOG.md`, set `version` in `package.json`, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+- Releases: add a `## X.Y.Z — date` section to `CHANGELOG.md`, set `version` in `package.json`, then publish the release on GitHub. With `bash scripts/autoupdate.sh on` the server installs each release by itself — see [`docs/RELEASES.md`](docs/RELEASES.md).
 
 ## Quick start (development)
 ```bash
