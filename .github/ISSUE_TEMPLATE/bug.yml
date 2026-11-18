@@ -1,0 +1,20 @@
+name: 🐞 مشكلة / خطأ
+description: شيء لا يعمل كما يجب في النظام
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes: { label: ماذا حدث؟, description: صف المشكلة باختصار, placeholder: "مثال: زر «نشر الآن» يعطي رسالة خطأ في طابور الموافقات" }
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes: { label: خطوات تكرارها, placeholder: "1) افتح ...\n2) اضغط ...\n3) تظهر ..." }
+  - type: input
+    id: page
+    attributes: { label: الصفحة, placeholder: "/approvals" }
+  - type: input
+    id: version
+    attributes: { label: الإصدار, description: يظهر أسفل القائمة أو في /api/health, placeholder: "a1b2c3d" }
+  - type: textarea
+    id: screens
+    attributes: { label: صور الشاشة, description: اسحب الصور هنا — لا تضع كلمات مرور أو مفاتيح API أبدًا }

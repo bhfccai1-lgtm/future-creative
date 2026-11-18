@@ -1,12 +1,12 @@
-# FUTURE CREATIVE AI PUBLISHING SYSTEM v1.0
-[![CI](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/ci.yml/badge.svg)](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/ci.yml) [![CodeQL](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/codeql.yml/badge.svg)](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/codeql.yml)
+# FUTURE CREATIVE AI PUBLISHING SYSTEM v9
+[![CI](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/ci.yml/badge.svg)](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/ci.yml) [![CodeQL](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/codeql.yml/badge.svg)](https://github.com/bhfccai1-lgtm/future-creative/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/bhfccai1-lgtm/future-creative)](https://github.com/bhfccai1-lgtm/future-creative/releases)
 
-> **Server update:** `bash scripts/update.sh` — only when the latest commit shows a green ✓ in GitHub Actions.
+> **Server update:** `bash scripts/update.sh` — it checks the GitHub CI result of the new version itself and refuses a red one. What changed: [CHANGELOG.md](CHANGELOG.md) · [Releases](https://github.com/bhfccai1-lgtm/future-creative/releases).
 **مطبعة إبداع المستقبل — Future Creative Printing (Bahrain)**
 
 A self-hosted platform that plans, designs, quality-checks, schedules and publishes printing-service advertisements to many social accounts. The dashboard is Arabic and right-to-left. Ads can be produced in Arabic, English or Malayalam. All scheduling runs on Asia/Bahrain time.
 
-> **Status:** the code is complete and tested against mocked providers (72 automated tests passing, see `docs/TEST_EVIDENCE.md`).
+> **Status:** in production on the owner's server. Every push runs typecheck, unit and integration tests (PostgreSQL + Redis), the production build and the Docker image build in GitHub Actions.
 > **Live publishing has not been verified.** No real OpenAI key or Metricool account was available during development. Follow `docs/PRODUCTION_CHECKLIST.md` before enabling it.
 
 ## What it does
@@ -22,6 +22,19 @@ A self-hosted platform that plans, designs, quality-checks, schedules and publis
 | Safety | Starts in MANUAL mode with auto-publishing off. Autonomous mode needs a global authorisation (typed confirmation) **and** per-account authorisation. There is a global kill switch, and every action is written to the audit log. |
 | Cost control | Monthly USD cap, checked up front for the whole ad, plus per-call checks. Daily and per-account limits. Token and image cost tracking with an alert threshold. An offline dry-run mode makes no API calls and costs nothing. |
 | Security | Login with bcrypt, lockout and rate limiting. HS256 sessions with server-side revocation. RBAC with ADMIN/EDITOR/VIEWER roles. CSRF protection (double-submit token plus Origin check). AES-256-GCM encrypted secrets. HMAC-signed expiring media URLs. A signed webhook endpoint, security headers and an audit log. |
+
+### Added in v9 (sales, growth, real work)
+| Area | Implementation |
+|---|---|
+| Customers & orders | `/leads`: comment inquiries become leads automatically; manual phone / WhatsApp / walk-in leads with the account that brought them; pipeline with follow-ups, order value, lost reasons; orders and value per account. |
+| Sales playbook | Next best step per customer with a ready WhatsApp message (human-sent via wa.me), logged; owner-priced, numbered, printable branded quotes; monthly target with pace; past-customer reactivation. |
+| Growth | Real Metricool analytics per account, smart posting plan (rhythm + format mix), 30-day growth program with diagnosis, targets, weekly phases followed by the designer, weekly notes. |
+| Real work | `/portfolio`: branded posts from real photos of delivered jobs, no AI image, client named only with consent. |
+
+## Contributing / workflow
+- Open an issue with the Arabic forms (bug, feature, design problem). Security problems: private advisory (see `SECURITY.md`).
+- Every change runs CI; `ci-ok` must be green before the server updates.
+- Releases: add a `## X.Y.Z — date` section to `CHANGELOG.md`, set `version` in `package.json`, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 ## Quick start (development)
 ```bash

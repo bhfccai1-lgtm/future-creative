@@ -1,6 +1,7 @@
 # Quality gate for every push / pull request. A green ✓ on the commit = safe to run `bash scripts/update.sh` on the server.
 #   build        — clean `npm ci`, typecheck, unit tests, production build (lint included)
-#   integration  — the full integration suite against real PostgreSQL 16 + Redis 7 (publishing, approvals, campaigns…)
+#   integration  — the full integration suite against real PostgreSQL 16 + Redis 7, split over 3 parallel runners
+#   ci-ok        — one summary check (green only when every job above is green) — scripts/update.sh waits for it
 #   docker       — builds the exact production image the server builds (catches Dockerfile / dependency breaks)
 name: CI
 on:
@@ -38,8 +39,13 @@ jobs:
         run: npm run build
 
   integration:
+    name: integration (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:16-alpine
@@ -60,8 +66,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: npm ci
       - run: npx prisma generate
-      - name: Integration tests (PostgreSQL + Redis)
-        run: npm run test:integration
+      - name: Integration tests (PostgreSQL + Redis) — shard ${{ matrix.shard }}/3
+        run: npm run test:integration -- --shard=${{ matrix.shard }}/3
 
   docker:
     runs-on: ubuntu-latest
@@ -78,3 +84,15 @@ jobs:
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [build, integration, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: All jobs green
+        run: |
+          echo "build=${{ needs.build.result }} integration=${{ needs.integration.result }} docker=${{ needs.docker.result }}"
+          test "${{ needs.build.result }}" = success && test "${{ needs.integration.result }}" = success && test "${{ needs.docker.result }}" = success

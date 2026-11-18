@@ -1,0 +1,21 @@
+name: 🎨 مشكلة في تصميم
+description: تصميم ناتج فيه خطأ (نص، شعار، أرقام، تنسيق)
+labels: [design]
+body:
+  - type: input
+    id: ad
+    attributes: { label: رابط التصميم في النظام, placeholder: "/ads/..." }
+    validations: { required: true }
+  - type: checkboxes
+    id: kind
+    attributes:
+      label: نوع المشكلة
+      options:
+        - label: نص خطأ أو إملاء
+        - label: الشعار
+        - label: أرقام الهاتف
+        - label: تداخل أو قص في التصميم
+        - label: الفكرة أو الأسلوب لا يناسب
+  - type: textarea
+    id: details
+    attributes: { label: التفاصيل وصورة التصميم }
