@@ -100,3 +100,34 @@ describe('EDUCATION MASTER AI — acceptance projects', () => {
     expect(back.qc.checks.find((x) => x.id === 'math')?.status).toBe('PASS');
   }, 240000);
 });
+
+describe('EDUCATION MASTER — AI artwork', () => {
+  it('plans cover + 2 face backgrounds + one picture per section, generates them, places them, and redoes one', async () => {
+    const { admin } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+    const ai = new EduAi(iman); setAiProviderOverride(ai);
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const { imagePlan, generateImages } = await import('@/lib/edu/service');
+    const p = await createProject({ type: 'brochure', subject: 'التربية الإسلامية', grade: 'الصف الرابع', lesson: 'أركان الإيمان', images: 'rich', aiBackground: true }, user);
+    await generate(p.id, user);
+    const plan = await imagePlan(p.id, user);
+    expect(plan.slots.map((x) => x.id)).toEqual(['cover', 'bg:0', 'bg:1', 'sec:s1', 'sec:s2', 'sec:s3', 'sec:s4', 'sec:s5', 'sec:s6']);
+    expect(plan.missing).toBe(9); expect(plan.costUsd).toBeGreaterThan(0);
+    const r = await generateImages(p.id, user);
+    expect(r).toMatchObject({ generated: 9, failed: [] });
+    expect(ai.lastScenePrompt).toMatch(/NO text, letters, words, numbers/);
+    expect(ai.lastScenePrompt).toMatch(/NEVER draw people, faces/); // Islamic studies rule
+    expect(await prisma.aiUsage.count({ where: { kind: 'image' } })).toBe(9);
+    const pv = await preview(p.id, user);
+    const imgs = pv.qc.checks.find((c) => c.id === 'image_quality');
+    expect(imgs?.detail).toContain('الخلفية');
+    const { files, qc } = await exportFiles(p.id, ['pdf'], user);
+    expect(qc.checks.filter((c) => c.status === 'FAIL').map((c) => c.id)).toEqual([]);
+    expect(inspectPdf(await storage().get(files[0].key)).pages).toHaveLength(2);
+    // redo only the cover: a new file replaces the old one
+    const before = (await prisma.eduProject.findUniqueOrThrow({ where: { id: p.id } })).images as Record<string, string>;
+    await generateImages(p.id, user, { only: ['cover'] });
+    const after = (await prisma.eduProject.findUniqueOrThrow({ where: { id: p.id } })).images as Record<string, string>;
+    expect(after['bg:0']).toBe(before['bg:0']);
+    expect(await storage().exists(after.cover)).toBe(true);
+  }, 300000);
+});

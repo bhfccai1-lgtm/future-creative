@@ -131,6 +131,18 @@ function sectionItems(c: Ctx, content: EduContent, sections = content.sections, 
           { input: h.png, left: c.rtl ? Math.round(w - D - c.k * 3 - h.w) : Math.round(D + c.k * 3), top: Math.round(cy - h.h / 2) }]).png().toBuffer();
       return { png, h: Math.round(H), parts: [{ id: `${sec.id}:head`, kind: 'text', rect: { x: 0, y: 0, w: Math.round(w), h: Math.round(H) }, fits: h.fits, missing: h.missing, text: sec.heading }] };
     } });
+    const imgKey = c.images[`sec:${sec.id}`];
+    if (imgKey) items.push({ id: `${sec.id}:img`, render: async (w) => {
+      // the section's AI illustration (no text inside it), rounded, 2:1
+      try {
+        const buf = await storage().get(imgKey); const meta = await sharp(buf).metadata();
+        // brochure panels are narrow (2:1 picture); posters/worksheets use a wide 3:1 band so a page holds every part
+        const iw = Math.round(w), ih = Math.round(w * (PRESETS[c.s.type].engine === 'panels' ? 0.5 : 0.33));
+        const img = await sharp(buf).resize(iw, ih, { fit: 'cover' }).png().toBuffer();
+        const png = await sharp(img).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${iw}" height="${ih}"><rect width="${iw}" height="${ih}" rx="${Math.round(c.k * 3)}" fill="#fff"/></svg>`), blend: 'dest-in' }]).png().toBuffer();
+        return { png, h: ih, parts: [{ id: `img:sec:${sec.id}`, kind: 'image' as const, rect: { x: 0, y: 0, w: iw, h: ih }, fits: true, text: `${meta.width}x${meta.height}` }] };
+      } catch { return { png: await sharp({ create: { width: 1, height: 1, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer(), h: 1, parts: [] }; }
+    } });
     if (sec.body.trim()) items.push({ id: `${sec.id}:body`, render: async (w) => { const b = await text(c, sec.body, { size: 11, w }); return stack(c, w, [{ ...b, id: `${sec.id}:body`, text: sec.body }]); } });
     if (sec.bullets.length) items.push({ id: `${sec.id}:bullets`, render: async (w) => stack(c, w, await Promise.all(sec.bullets.map(async (b, i) => ({ ...(await text(c, `• ${b}`, { size: 11, w })), id: `${sec.id}:b${i}`, text: b, gapAfter: Math.round(c.k * 1.2) })))) });
     for (const [i, ex] of sec.examples.entries()) items.push({ id: `${sec.id}:ex${i}`, render: async (w) => {
@@ -207,6 +219,18 @@ function listItem(c: Ctx, id: string, title: string, lines: string[], boxed = tr
 
 /** Places items into columns (in reading order); returns what did not fit. */
 async function flow(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect: Rect }[], opts: { balance?: boolean } = {}): Promise<Item[]> {
+  if (opts.balance) {
+    // balanced breaks must never cost a page: if they leave something over, undo and fill the columns in order
+    const mark = { comps: cv.comps.length, placed: cv.placed.length };
+    const left = await flowOnce(c, cv, items, cols, true);
+    if (!left.length) return left;
+    cv.comps.length = mark.comps; cv.placed.length = mark.placed;
+  }
+  return flowOnce(c, cv, items, cols, false);
+}
+
+async function flowOnce(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect: Rect }[], balance: boolean): Promise<Item[]> {
+  const opts = { balance };
   const gap = Math.round(c.k * 3);
   // balanced columns: measure everything once, then break so columns end at about the same height (reading order kept)
   let target = Infinity;
@@ -315,7 +339,7 @@ async function panelsEngine(c: Ctx, content: EduContent, W: number, H: number, b
     if (side === 0) {
       // front cover
       const f = reg('front');
-      cv.svg.push(`<rect x="${f.rect.x}" y="${f.rect.y}" width="${f.rect.w}" height="${f.rect.h}" fill="${c.t.soft}"/>`);
+      if (!c.images['bg:0']) cv.svg.push(`<rect x="${f.rect.x}" y="${f.rect.y}" width="${f.rect.w}" height="${f.rect.h}" fill="${c.t.soft}"/>`);
       await headerBand(c, cv, content, { x: f.safe.x, y: f.safe.y, w: f.safe.w, h: f.safe.h * 0.36 }, 'front', 22);
       const imgR = { x: f.safe.x + f.safe.w * 0.1, y: f.safe.y + f.safe.h * 0.4, w: f.safe.w * 0.8, h: f.safe.h * 0.36 };
       if (!(await placeImage(c, cv, 'cover', imgR, 'front'))) await subjectBadge(c, cv, imgR, 'front');
@@ -521,6 +545,18 @@ async function tableEngine(c: Ctx, content: EduContent, W: number, H: number, b:
   return [pg];
 }
 
+/** The AI background of a face (brochure: one per face; other designs: one for all pages), softened for print. */
+async function background(c: Ctx, W: number, H: number, i: number, engine: string): Promise<{ png: Buffer; meta: string } | null> {
+  const key = c.images[`bg:${i}`] ?? (engine !== 'panels' ? c.images['bg:0'] : undefined);
+  if (!key) return null;
+  try {
+    const buf = await storage().get(key);
+    const meta = await sharp(buf).metadata();
+    const png = await sharp(buf).resize(W, H, { fit: 'cover' }).modulate({ brightness: 1.04, saturation: 0.92 }).removeAlpha().png().toBuffer();
+    return { png, meta: `${meta.width}x${meta.height}` };
+  } catch { return null; }
+}
+
 const gradeNo = (g: string) => { const m = g.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).match(/\d+/); if (m) return Number(m[0]); const w = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس']; const i = w.findIndex((x) => g.includes(x)); return i >= 0 ? i + 1 : 5; };
 /** «اختيار ذكي»: young pupils get the playful style, middle grades colourful, certificates luxury, the rest creative. */
 export function resolveStyle(s: EduSettings): Exclude<EduSettings['style'], 'auto'> {
@@ -578,11 +614,22 @@ async function renderOnce(s: EduSettings, content: EduContent, opts: { dpi: numb
     : preset.engine === 'table' ? await tableEngine(c, content, W, H, b)
     : await flowEngine(c, content, W, H, b, 'poster');
   const pages: RenderedPage[] = [];
-  for (const d of drafts) {
+  for (const [i, d] of drafts.entries()) {
     const bg = resolveStyle(s) === 'luxury' && s.palette !== 'navy_gold' ? '#fffdf7' : c.t.bg;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="${bg}"/>${decor(c, W, H, b, preset.engine)}${d.cv.svg.join('')}</svg>`;
-    const png = await sharp(Buffer.from(svg)).composite(d.cv.comps).png({ compressionLevel: 6 }).toBuffer();
-    pages.push({ png, widthPx: W, heightPx: H, dpi: opts.dpi, trimMm: trim, bleedMm: bleed, placed: d.cv.placed, regions: d.regions, folds: d.folds, label: d.label });
+    const art = await background(c, W, H, i, preset.engine);
+    // over an AI painting every reading area sits on a frosted card (readable text, real contrast)
+    // the frosted card wraps only what is printed in each area, so the painting stays visible around it
+    const frost = art ? d.regions.map((r) => {
+      const inR = d.cv.placed.filter((x) => x.region === r.id && x.id !== 'overflow');
+      if (!inR.length) return '';
+      const e = c.k * 3, top = Math.max(r.rect.y, Math.min(...inR.map((x) => x.rect.y)) - e), bottom = Math.min(r.rect.y + r.rect.h, Math.max(...inR.map((x) => x.rect.y + x.rect.h)) + e);
+      return `<rect x="${r.safe.x - e}" y="${top}" width="${r.safe.w + 2 * e}" height="${bottom - top}" rx="${c.k * 4}" fill="#ffffff" fill-opacity="0.88"/>`;
+    }).join('') : '';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${art ? '' : `<rect width="${W}" height="${H}" fill="${bg}"/>`}${decor(c, W, H, b, preset.engine)}${frost}${d.cv.svg.join('')}</svg>`;
+    const layers: OverlayOptions[] = [...(art ? [{ input: art.png, left: 0, top: 0 }] : []), { input: Buffer.from(svg), left: 0, top: 0 }, ...d.cv.comps];
+    const png = await sharp({ create: { width: W, height: H, channels: 4, background: bg } }).composite(layers).png({ compressionLevel: 6 }).toBuffer();
+    const placed = art ? [...d.cv.placed, { id: 'img:bg', kind: 'image' as const, rect: { x: 0, y: 0, w: W, h: H }, region: '__page', fits: true, text: art.meta }] : d.cv.placed;
+    pages.push({ png, widthPx: W, heightPx: H, dpi: opts.dpi, trimMm: trim, bleedMm: bleed, placed, regions: d.regions, folds: d.folds, label: d.label });
   }
   return { pages, engine: preset.engine, fontScale: s.fontScale };
 }
@@ -597,14 +644,17 @@ export async function fitScale(s: EduSettings, content: EduContent, images?: Rec
   const eng = PRESETS[s.type].engine;
   if (!s.autoFit || !['panels', 'poster', 'worksheet'].includes(eng)) return s.fontScale;
   const probe = (f: number) => renderOnce({ ...s, fontScale: f }, content, { dpi: 40, images });
-  const minDoc = await probe(0.8);
-  const basePages = minDoc.pages.length;
-  if (overflowed(minDoc)) return 0.8;
+  // a poster / teaching aid / project / custom design is ONE page: shrink (down to 60 %) rather than add a page
+  const singlePage = eng === 'poster' && s.type !== 'booklet';
+  const floor = singlePage ? 0.6 : 0.8;
+  const minDoc = await probe(floor);
+  const basePages = singlePage ? 1 : minDoc.pages.length;
+  if (overflowed(minDoc) || minDoc.pages.length > basePages) return floor;
   const ok = async (f: number) => { const d = await probe(f); return !overflowed(d) && d.pages.length <= basePages; };
-  let lo = 0.8, hi = eng === 'worksheet' ? 1.5 : 1.7;
+  let lo = floor, hi = eng === 'worksheet' ? 1.5 : 1.7;
   if (await ok(hi)) return hi;
   for (let i = 0; i < 5; i++) { const mid = (lo + hi) / 2; if (await ok(mid)) lo = mid; else hi = mid; }
-  return Math.round(Math.max(0.8, lo * 0.96) * 100) / 100;
+  return Math.round(Math.max(floor, lo * 0.96) * 100) / 100;
 }
 
 export async function renderDoc(s: EduSettings, content: EduContent, opts: { dpi: number; images?: Record<string, string> }): Promise<RenderedDoc> {

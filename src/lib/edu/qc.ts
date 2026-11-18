@@ -77,7 +77,8 @@ export function runQc(s: EduSettings, content: EduContent, doc: RenderedDoc, opt
 
   // 8) images — real pixels vs printed size (target 300 DPI)
   const imgs = doc.pages.flatMap((p) => p.placed.filter((x) => x.kind === 'image').map((x) => { const [w] = (x.text ?? '0x0').split('x').map(Number); const mmW = x.rect.w / ((p.dpi) / 25.4); return { dpi: Math.round(w / (mmW / 25.4)), id: x.id }; }));
-  if (imgs.length) { const low = imgs.filter((i) => i.dpi < 200); add('image_quality', 'دقة الصور عند الطباعة', low.length ? 'WARNING' : 'PASS', imgs.map((i) => `${i.id}: ${i.dpi} DPI`).join(' · ')); }
+  // pictures need ~200+ DPI at print size; a softened full-page background is acceptable from ~110 DPI
+  if (imgs.length) { const low = imgs.filter((i) => i.dpi < (i.id === 'img:bg' ? 110 : 200)); const uniq = [...new Map(imgs.map((i) => [i.id, i])).values()]; add('image_quality', 'دقة الصور عند الطباعة', low.length ? 'WARNING' : 'PASS', uniq.map((i) => `${i.id === 'img:bg' ? 'الخلفية' : i.id.replace('img:sec:', 'قسم ').replace('img:', '')}: ${i.dpi} DPI`).join(' · ') + (low.length ? ' — دقة منخفضة لهذا المقاس' : '')); }
 
   // 9) identity policy for school work
   add('identity', 'بدون شعار المطبعة أو أرقام أو إعلانات أو علامة مائية', s.brand ? 'WARNING' : 'PASS', s.brand ? 'الهوية التجارية مفعّلة — غير مناسبة للتسليم المدرسي' : 'سياسة المشاريع المدرسية مطبّقة');

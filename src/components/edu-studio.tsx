@@ -39,7 +39,7 @@ type Qc = { status: 'PASS' | 'WARNING' | 'FAIL'; checks: Check[]; printReady: bo
 type Project = { id: string; title: string; type: EduType; settings: EduSettings; content: EduContent | null; source: string | null; steps: StepState[] | null; qc: Qc | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number }[] } | null; versions: unknown[] | null };
 type Row = { id: string; title: string; type: EduType; updatedAt: string; source: string | null; qc: Qc | null };
 
-const blank = (type: EduType): Partial<EduSettings> => ({ type, lang: 'ar', subject: '', grade: '', lesson: '', objectives: '', student: '', classSection: '', school: '', size: PRESETS[type].size, orientation: PRESETS[type].orientation, sides: PRESETS[type].sides, columns: PRESETS[type].columns, style: 'auto', palette: 'blue', detail: 'medium', images: 'none', fontScale: 1, digits: 'arabic', equationDir: 'rtl', exerciseCount: 8, cardCount: 8, marginMm: 10, bleedMm: 0, answerKey: false, autoFit: true });
+const blank = (type: EduType): Partial<EduSettings> => ({ type, lang: 'ar', subject: '', grade: '', lesson: '', objectives: '', student: '', classSection: '', school: '', size: PRESETS[type].size, orientation: PRESETS[type].orientation, sides: PRESETS[type].sides, columns: PRESETS[type].columns, style: 'auto', palette: 'blue', detail: 'medium', images: 'none', fontScale: 1, digits: 'arabic', equationDir: 'rtl', exerciseCount: 8, cardCount: 8, marginMm: 10, bleedMm: 0, answerKey: false, autoFit: true, aiBackground: false });
 const BADGE: Record<string, string> = { PASS: 'bg-emerald-100 text-emerald-800', WARNING: 'bg-amber-100 text-amber-800', FAIL: 'bg-red-100 text-red-800', done: 'bg-emerald-100 text-emerald-800', warning: 'bg-amber-100 text-amber-800', failed: 'bg-red-100 text-red-800', running: 'bg-sky-100 text-sky-800', pending: 'bg-slate-100 text-slate-500', skipped: 'bg-slate-100 text-slate-500' };
 
 export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[]; aiLive: boolean }) {
@@ -53,6 +53,7 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
   const [prevPages, setPrevPages] = useState<PreviewPage[]>([]);
   const [qc, setQc] = useState<Qc | null>(null);
   const [fit, setFit] = useState<{ fontScale: number; style: string } | null>(null);
+  const [plan, setPlan] = useState<{ slots: { id: string; label: string; kind: string; done: boolean }[]; missing: number; costUsd: number; live: boolean } | null>(null);
   const [panelOrder, setPanelOrder] = useState<number[][] | null>(null);
   const [page, setPage] = useState(0);
   const [zoom, setZoom] = useState(100);
@@ -84,7 +85,11 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
     setPrevPages((old) => (old.length ? old : r.pages)); setPages((cur) => { if (cur.length) setPrevPages(cur); return r.pages; });
     setQc(r.qc); setPanelOrder(r.panelOrder); setPage((p) => Math.min(p, r.pages.length - 1));
     const pr = await apiCall<{ project: Project }>(`/api/edu/projects/${id}`); setProj(pr.project); setDraft(pr.project.content);
+    setPlan(await apiCall<{ slots: { id: string; label: string; kind: string; done: boolean }[]; missing: number; costUsd: number; live: boolean }>(`/api/edu/projects/${id}/images`).catch(() => null));
   }, []);
+  const makeImages = useCallback(async (id: string, only?: string[]) => {
+    await run('images', async () => { const r = await apiCall<{ message: string }>(`/api/edu/projects/${id}/images`, { body: only ? { only } : {} }); toast(r.message); await loadPreview(id); });
+  }, [run, loadPreview]);
   const openProject = useCallback(async (id: string) => {
     await run('open', async () => { setPages([]); setPrevPages([]); const pr = await apiCall<{ project: Project }>(`/api/edu/projects/${id}`); setProj(pr.project); setDraft(pr.project.content); setTab('preview'); if (pr.project.content) await loadPreview(id); });
   }, [run, loadPreview]);
@@ -95,7 +100,9 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
     const created = await run('create', () => apiCall<{ id: string }>('/api/edu/projects', { body: form }));
     if (!created) return;
     const go = async () => { await run('generate', async () => { await apiCall(`/api/edu/projects/${created.id}/generate`, { method: 'POST' }); setPages([]); setPrevPages([]); await loadPreview(created.id); setTab('preview'); }, go); };
-    await go(); await refreshList().catch(() => undefined);
+    await go();
+    if (aiLive && (form.aiBackground || (form.images && form.images !== 'none' && has('images')))) await makeImages(created.id);
+    await refreshList().catch(() => undefined);
   };
 
   const saveDraft = async (note = ui === 'ar' ? 'تعديل النص' : 'Text edit', settings?: Partial<EduSettings>) => {
@@ -127,7 +134,7 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
         <button key={k} type="button" disabled={(k === 'preview' || k === 'export') && !proj} onClick={() => setTab(k)} className={`shrink-0 rounded-full border px-3 py-1.5 font-bold disabled:opacity-40 ${tab === k ? 'border-indigo-700 bg-indigo-700 text-white' : 'bg-white text-slate-700'}`}>{t(k)}</button>
       ))}</nav>
       {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"><span>{error.msg}</span>{error.retry && <Button size="sm" variant="outline" onClick={error.retry}>{ui === 'ar' ? 'إعادة المحاولة' : 'Retry'}</Button>}</div>}
-      {busy && <div className="rounded-xl bg-sky-50 p-3 text-sm font-bold text-sky-800">⏳ {t('working')} {busy === 'generate' ? (ui === 'ar' ? 'تحليل الدرس وكتابة المحتوى وتنسيق الصفحات (قد يستغرق دقيقة)' : 'analysing the lesson, writing and laying out (up to a minute)') : busy === 'export' ? (ui === 'ar' ? 'إنشاء ملفات 300 DPI وفحصها' : 'creating and checking 300-DPI files') : ''}</div>}
+      {busy && <div className="rounded-xl bg-sky-50 p-3 text-sm font-bold text-sky-800">⏳ {t('working')} {busy === 'generate' ? (ui === 'ar' ? 'تحليل الدرس وكتابة المحتوى وتنسيق الصفحات (قد يستغرق دقيقة)' : 'analysing the lesson, writing and laying out (up to a minute)') : busy === 'export' ? (ui === 'ar' ? 'إنشاء ملفات 300 DPI وفحصها' : 'creating and checking 300-DPI files') : busy === 'images' ? (ui === 'ar' ? 'الذكاء الاصطناعي يرسم الصور (٣ في نفس الوقت — قد يستغرق دقيقة أو اثنتين)' : 'the AI is painting the pictures (3 at a time, 1–2 minutes)') : ''}</div>}
 
       {tab === 'new' && (
         <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -160,7 +167,8 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
               {(has('columns') || preset.engine === 'cards') && <Field label={t('columns')}><select className="input" value={form.columns} onChange={(e) => set('columns', Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>}
               <Field label={t('style')}><select className="input" value={form.style} onChange={(e) => set('style', e.target.value as EduSettings['style'])}>{STYLES.map((x) => <option key={x} value={x}>{ui === 'ar' ? STYLE_AR[x] : x.replace('_', ' ')}</option>)}</select></Field>
               <Field label={t('detail')}><select className="input" value={form.detail} onChange={(e) => set('detail', e.target.value as EduSettings['detail'])}><option value="short">{ui === 'ar' ? 'مختصر' : 'Short'}</option><option value="medium">{ui === 'ar' ? 'متوسط' : 'Medium'}</option><option value="detailed">{ui === 'ar' ? 'مفصّل' : 'Detailed'}</option></select></Field>
-              {has('images') && <Field label={t('images')}><select className="input" value={form.images} onChange={(e) => set('images', e.target.value as EduSettings['images'])}><option value="none">{ui === 'ar' ? 'بدون صور' : 'None'}</option><option value="low">{ui === 'ar' ? 'رسم واحد للغلاف' : 'One cover illustration'}</option><option value="medium">{ui === 'ar' ? 'رسم بجودة أعلى' : 'Higher-quality illustration'}</option></select></Field>}
+              {has('images') && <Field label={t('images')}><select className="input" value={form.images} onChange={(e) => set('images', e.target.value as EduSettings['images'])}><option value="none">{ui === 'ar' ? 'بدون صور' : 'None'}</option><option value="low">{ui === 'ar' ? 'رسم واحد للغلاف' : 'One cover illustration'}</option><option value="medium">{ui === 'ar' ? 'رسم للغلاف بجودة أعلى' : 'Higher-quality cover'}</option><option value="rich">{ui === 'ar' ? 'غني: غلاف + رسم لكل قسم' : 'Rich: cover + one per section'}</option></select></Field>}
+              <label className="col-span-2 flex items-start gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-xs sm:col-span-3"><input type="checkbox" className="mt-0.5" checked={!!form.aiBackground} onChange={(e) => set('aiBackground', e.target.checked)} /><span><b>{ui === 'ar' ? '🎨 خلفية فنية بالذكاء الاصطناعي لكل وجه' : '🎨 AI artwork behind every face'}</b> — {ui === 'ar' ? 'لوحة مرسومة حسب الدرس والنمط، والنص فوقها في بطاقات واضحة. النصوص والأرقام تبقى دقيقة (لا تُرسم داخل الصور).' : 'painted for the lesson and style; text stays exact on clear cards.'}</span></label>
               <Field label={t('fontScale')}><label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={form.autoFit !== false} onChange={(e) => set('autoFit', e.target.checked)} />{ui === 'ar' ? 'تلقائي — يملأ الصفحة' : 'Auto-fit'}</label>{form.autoFit === false && <input type="range" min={0.8} max={1.4} step={0.05} value={form.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} className="w-full" />}</Field>
               <Field label={t('digits')}><select className="input" value={form.digits} onChange={(e) => set('digits', e.target.value as EduSettings['digits'])}><option value="arabic">٠١٢٣٤٥٦٧٨٩</option><option value="latin">0123456789</option></select></Field>
               <Field label={t('equationDir')}><select className="input" value={form.equationDir} onChange={(e) => set('equationDir', e.target.value as EduSettings['equationDir'])}><option value="rtl">{ui === 'ar' ? 'من اليمين (٣ + ٤ = ٧)' : 'Right-to-left'}</option><option value="ltr">{ui === 'ar' ? 'من اليسار (3 + 4 = 7)' : 'Left-to-right'}</option></select></Field>
@@ -254,6 +262,22 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
               </div>
               {draft && <ContentEditor draft={draft} setDraft={setDraft} ui={ui} t={t} busy={!!busy} onRewrite={(sid) => run('rewrite', async () => { await apiCall(`/api/edu/projects/${proj.id}/section`, { body: { sectionId: sid } }); await loadPreview(proj.id); toast(ui === 'ar' ? 'أُعيدت كتابة القسم ✓' : 'Section rewritten ✓'); })} aiLive={aiLive} />}
             </div>
+            <section className="rounded-2xl border border-indigo-200 bg-gradient-to-b from-indigo-50 to-white p-3">
+              <b className="text-sm text-indigo-900">🎨 {ui === 'ar' ? 'الرسومات بالذكاء الاصطناعي' : 'AI artwork'}</b>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <select className="input !w-auto !py-1 text-xs" value={proj.settings.images} disabled={!!busy} onChange={(e) => saveDraft(ui === 'ar' ? 'مستوى الصور' : 'Images', { images: e.target.value as EduSettings['images'] })}><option value="none">{ui === 'ar' ? 'بدون صور' : 'None'}</option><option value="low">{ui === 'ar' ? 'غلاف' : 'Cover'}</option><option value="medium">{ui === 'ar' ? 'غلاف بجودة أعلى' : 'Cover HQ'}</option><option value="rich">{ui === 'ar' ? 'غني: رسم لكل قسم' : 'Rich'}</option></select>
+                <label className="flex items-center gap-1"><input type="checkbox" checked={!!proj.settings.aiBackground} disabled={!!busy} onChange={(e) => saveDraft(ui === 'ar' ? 'خلفية فنية' : 'AI background', { aiBackground: e.target.checked })} />{ui === 'ar' ? 'خلفية فنية لكل وجه' : 'Background per face'}</label>
+              </div>
+              {plan && plan.slots.length > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs">{plan.slots.map((sl) => (
+                  <li key={sl.id} className="flex items-center justify-between gap-2"><span className="min-w-0 flex-1 truncate">{sl.done ? '✅' : '⏳'} {sl.label}</span>{sl.done && plan.live && <button type="button" disabled={!!busy} className="shrink-0 text-indigo-700 underline disabled:text-slate-400" onClick={() => makeImages(proj.id, [sl.id])}>{ui === 'ar' ? 'تغيير' : 'Redo'}</button>}</li>
+                ))}</ul>
+              ) : <p className="mt-2 text-xs text-slate-500">{ui === 'ar' ? 'اختر مستوى الصور أو الخلفية الفنية.' : 'Choose images or a background.'}</p>}
+              {plan && plan.missing > 0 && (plan.live
+                ? <Button size="sm" variant="gold" className="mt-2" disabled={!!busy} onClick={() => makeImages(proj.id)}>{ui === 'ar' ? `توليد ${plan.missing} صورة` : `Generate ${plan.missing}`} <span className="ltr">(~${plan.costUsd})</span></Button>
+                : <p className="mt-2 text-xs text-amber-700">{ui === 'ar' ? 'توليد الصور يحتاج مفتاح OpenAI — غير متاح في وضع التجربة.' : 'Needs an OpenAI key (dry-run).'}</p>)}
+              <p className="mt-2 text-[11px] text-slate-500">{ui === 'ar' ? 'الصور بلا أي نص أو أرقام داخلها؛ العناوين والمعادلات طبقات حقيقية. للتربية الإسلامية: زخارف ومساجد وكتب فقط، بلا أشخاص.' : 'No text inside pictures; titles and equations stay real text.'}</p>
+            </section>
             <QcPanel qc={qc} t={t} />
             <StepsPanel steps={steps} ui={ui} t={t} />
           </aside>

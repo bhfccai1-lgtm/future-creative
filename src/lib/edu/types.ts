@@ -58,7 +58,10 @@ export const SettingsSchema = z.object({
   style: z.enum(STYLES).default('auto'),
   palette: z.enum(['blue', 'green', 'purple', 'orange', 'navy_gold', 'pink']).default('blue'),
   detail: z.enum(['short', 'medium', 'detailed']).default('medium'),
-  images: z.enum(['none', 'low', 'medium']).default('low'),
+  /** none · low (cover) · medium (cover, higher quality) · rich (cover + an illustration per section) */
+  images: z.enum(['none', 'low', 'medium', 'rich']).default('low'),
+  /** an AI-painted artwork behind every face/page (text stays real, on frosted cards) */
+  aiBackground: z.boolean().default(false),
   fontScale: z.number().min(0.8).max(1.4).default(1),
   digits: z.enum(['arabic', 'latin']).default('arabic'),
   equationDir: z.enum(['rtl', 'ltr']).default('rtl'),

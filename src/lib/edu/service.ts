@@ -8,10 +8,11 @@ import { storage } from '../storage';
 import { getSettings } from '../settings';
 import { getAiProvider } from '../ai';
 import { assertBudget, estimateImageCost, recordUsage } from '../ai/cost';
-import { ContentSchema, PRESETS, SettingsSchema, STEPS, type EduContent, type EduSettings, type StepId, type StepState } from './types';
+import { ContentSchema, PRESETS, SettingsSchema, STEPS, type StepId, type StepState } from './types';
 import { generateContent, regenerateSection } from './content';
 import { renderDoc, defaultPanelOrder, resolveStyle } from './render';
 import { buildPdf, inspectPdf } from './pdf';
+import { plannedSlots } from './art';
 import { runQc, type EduQc } from './qc';
 
 type User = { sub: string; email: string; perms: readonly string[] };
@@ -60,9 +61,9 @@ export async function generate(id: string, user: User) {
     const g = await generateContent(s);
     steps = mark(mark(steps, 'plan', 'done', `${s.subject} · ${s.grade}`), 'content', 'done', g.source === 'ai' ? `ذكاء اصطناعي (${g.model})` : 'محتوى نموذجي — لا يوجد مفتاح ذكاء اصطناعي');
     steps = mark(steps, 'review', g.fixes.length ? 'warning' : 'done', g.fixes.length ? `صُحّح مفتاح الإجابة آليًا: ${g.fixes.length}` : 'تحقق آلي من العمليات الحسابية');
-    const images = await maybeImages(id, s, g.content, (p.images as Record<string, string> | null) ?? {});
-    steps = mark(steps, 'images', images.status, images.note);
-    const upd = await prisma.eduProject.update({ where: { id }, data: { title: g.content.title || p.title, content: g.content as unknown as Prisma.InputJsonValue, source: g.source, images: images.map as unknown as Prisma.InputJsonValue, steps: steps as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'قبل إنشاء المحتوى') } });
+    const slots = plannedSlots(s, g.content);
+    steps = mark(steps, 'images', slots.length ? 'pending' : 'skipped', slots.length ? `${slots.length} صورة بانتظار التوليد` : 'بدون صور (حسب الإعداد)');
+    const upd = await prisma.eduProject.update({ where: { id }, data: { title: g.content.title || p.title, content: g.content as unknown as Prisma.InputJsonValue, source: g.source, steps: steps as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'قبل إنشاء المحتوى') } });
     await audit({ actorId: user.sub, actorLabel: user.email, action: 'edu.generate', targetType: 'edu_project', targetId: id, details: { source: g.source, fixes: g.fixes.length } });
     return upd;
   } catch (e) {
@@ -72,25 +73,59 @@ export async function generate(id: string, user: User) {
   }
 }
 
-async function maybeImages(id: string, s: EduSettings, content: EduContent, current: Record<string, string>): Promise<{ map: Record<string, string>; status: StepState['status']; note: string }> {
-  if (s.images === 'none') return { map: current, status: 'skipped', note: 'بدون صور (حسب الإعداد)' };
-  if (current.cover) return { map: current, status: 'done', note: 'الصورة الحالية محفوظة' };
+/** The images this project would generate, with the estimated cost (shown before anything is paid for). */
+export async function imagePlan(id: string, user: User) {
+  const p = await loadProject(id, user);
+  const s = settingsOf(p), c = contentOf(p);
+  const settings = await getSettings();
+  const have = (p.images as Record<string, string> | null) ?? {};
+  const slots = c ? plannedSlots(s, c) : [];
+  const quality = s.images === 'medium' || s.images === 'rich' ? 'medium' : 'low';
+  const missing = slots.filter((x) => !have[x.id]);
+  const live = !(await getAiProvider(settings)).isDryRun;
+  return { slots: slots.map((x) => ({ id: x.id, label: x.label, kind: x.kind, done: !!have[x.id] })), missing: missing.length, quality, costUsd: Math.round(estimateImageCost(settings, quality, missing.length) * 1000) / 1000, live };
+}
+
+/**
+ * STEP 6: AI artwork — generates the missing slots (or `only` the given ones again), 3 at a time, within the
+ * monthly AI budget. Each picture is checked to be a real image before it is kept. Text is never inside them.
+ */
+export async function generateImages(id: string, user: User, opts: { only?: string[] } = {}) {
+  const p = await loadProject(id, user);
+  const s = settingsOf(p), c = contentOf(p);
+  if (!c) throw new AppError('NO_CONTENT', 'أنشئ المحتوى أولًا.', 409);
   const settings = await getSettings();
   const provider = await getAiProvider(settings);
-  if (provider.isDryRun) return { map: current, status: 'skipped', note: 'توليد الصور يحتاج مفتاح OpenAI — التصميم بدون صورة' };
-  const islamic = /إسلام|دين|قرآن|islam/i.test(s.subject);
-  const prompt = [`Educational illustration for ${s.grade} pupils about "${content.title}" (${s.subject}).`, `Style: ${s.style === 'auto' ? 'friendly flat educational illustration' : s.style.replace('_', ' ')}, clean, bright, print quality.`,
-    islamic ? 'Islamic studies: ONLY geometric Islamic patterns, a mosque, an open book, nature or calligraphy-free ornaments — never people, faces, angels or prophets.' : 'Accurate and age-appropriate; culturally appropriate for Bahrain.',
-    'ABSOLUTELY NO text, letters, numbers, words or symbols anywhere in the image. White or very light background.'].join(' ');
-  const quality = s.images === 'medium' ? 'medium' : 'low';
-  try {
-    await assertBudget(settings, estimateImageCost(settings, quality));
-    const img = await provider.generateScene(prompt, { model: settings.ai.imageModel, quality, size: '1024x1024', seedHint: id });
-    await recordUsage({ provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(settings, quality) });
-    const key = `edu/${id}/img-cover-${crypto.createHash('sha256').update(img.png).digest('hex').slice(0, 10)}.png`;
-    await storage().put(key, img.png, 'image/png');
-    return { map: { ...current, cover: key }, status: 'done', note: 'رسم تعليمي بدون نصوص (النصوص طبقات حقيقية)' };
-  } catch (e) { return { map: current, status: 'warning', note: `تعذّر توليد الصورة: ${(e as Error).message.slice(0, 120)} — التصميم يكتمل بدونها` }; }
+  if (provider.isDryRun) throw new AppError('NO_AI', 'توليد الصور يحتاج مفتاح OpenAI (وضع التجربة مفعّل).', 412);
+  const have = { ...((p.images as Record<string, string> | null) ?? {}) };
+  const all = plannedSlots(s, c);
+  const todo = all.filter((x) => (opts.only ? opts.only.includes(x.id) : !have[x.id]));
+  if (!todo.length) return { project: p, generated: 0, failed: [] as string[] };
+  const quality = s.images === 'medium' || s.images === 'rich' ? 'medium' : 'low';
+  await assertBudget(settings, estimateImageCost(settings, quality, todo.length));
+  let steps = mark(stepsOf(p), 'images', 'running', `${todo.length} صورة…`);
+  await prisma.eduProject.update({ where: { id }, data: { steps: steps as unknown as Prisma.InputJsonValue } });
+  const failed: string[] = []; let generated = 0;
+  const queue = [...todo];
+  const worker = async () => {
+    for (let slot = queue.shift(); slot; slot = queue.shift()) {
+      try {
+        const img = await provider.generateScene(slot.prompt, { model: settings.ai.imageModel, quality, size: slot.size, seedHint: `${id}:${slot.id}:${Date.now()}` });
+        const meta = await sharp(img.png).metadata();
+        if (!meta.width || !meta.height) throw new Error('صورة غير صالحة');
+        await recordUsage({ provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(settings, quality) });
+        const key = `edu/${id}/img-${slot.id.replace(/[^a-z0-9]+/gi, '-')}-${crypto.createHash('sha256').update(img.png).digest('hex').slice(0, 10)}.png`;
+        await storage().put(key, img.png, 'image/png');
+        if (have[slot.id]) await storage().remove(have[slot.id]).catch(() => undefined);
+        have[slot.id] = key; generated++;
+      } catch (e) { failed.push(`${slot.label}: ${(e as Error).message.slice(0, 100)}`); }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  steps = mark(steps, 'images', failed.length ? (generated ? 'warning' : 'failed') : 'done', failed.length ? `تم ${generated} — تعذّر ${failed.length}: ${failed[0]}` : `${generated} صورة بالذكاء الاصطناعي (بدون نصوص داخلها)`);
+  const upd = await prisma.eduProject.update({ where: { id }, data: { images: have as unknown as Prisma.InputJsonValue, steps: steps as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'قبل توليد الصور') } });
+  await audit({ actorId: user.sub, actorLabel: user.email, action: 'edu.images', targetType: 'edu_project', targetId: id, details: { generated, failed: failed.length, slots: todo.map((x) => x.id) } });
+  return { project: upd, generated, failed };
 }
 
 /** STEP 9: edits — content and/or settings; every change keeps the previous version (undo). */
