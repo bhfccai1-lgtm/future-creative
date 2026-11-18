@@ -5,6 +5,7 @@ import { api } from '@/lib/auth/server';
 import { audit } from '@/lib/audit';
 import { getSettings, updateSettings, secretStatus, setSecret, getSecret } from '@/lib/settings';
 import { FREELLM_BASE_URL } from '@/lib/ai';
+import { probeFreeLlmGeneration } from '@/lib/ai/freellm-check';
 
 /** FreeLLMAPI (optional, ideas only): status, enable/disable, model, unified key (write-only), connection test. */
 export const GET = api('settings:ai', async () => {
@@ -22,15 +23,32 @@ export const PUT = api('settings:ai', async (req, { user }) => {
   return NextResponse.json({ ...s.ai.freeLlm, key: await secretStatus('FREELLM_API_KEY') });
 });
 
-/** Connection test: lists the router's models with the saved key (no tokens spent). */
+/** Live verification: a models list alone does not prove provider keys can generate.
+ * This sends one short completion, which may consume free-tier quota.
+ */
 export const POST = api('settings:ai', async () => {
   const key = await getSecret('FREELLM_API_KEY');
-  if (!key) return NextResponse.json({ ok: false, message: 'أدخل المفتاح الموحد من لوحة FreeLLMAPI أولًا.' });
+  if (!key) return NextResponse.json({ ok: false, message: 'احفظ المفتاح الموحد أولًا ثم اختبر التوليد.' });
+  const s = await getSettings();
+  const model = s.ai.freeLlm.model?.trim() || 'auto';
   try {
-    const list = await new OpenAI({ apiKey: key, baseURL: FREELLM_BASE_URL, timeout: 15_000, maxRetries: 0 }).models.list();
-    const n = list.data.length;
-    return NextResponse.json({ ok: n > 0, message: n ? `متصل ✓ — ${n} نموذج متاح` : 'متصل، لكن لا توجد نماذج: أضف مفاتيح المزوّدين في لوحة FreeLLMAPI.' });
+    const client = new OpenAI({ apiKey: key, baseURL: FREELLM_BASE_URL, timeout: 30_000, maxRetries: 0 });
+    const { servedModel } = await probeFreeLlmGeneration(() => client.chat.completions.create({
+      model,
+      messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+      stream: false,
+    }));
+    return NextResponse.json({ ok: true, message: `نجح اختبار التوليد الفعلي ✓ — النموذج: ${servedModel}` });
   } catch (e) {
-    return NextResponse.json({ ok: false, message: `تعذّر الاتصال بـ FreeLLMAPI (${(e as Error).message.slice(0, 120)}). شغّله على السيرفر: bash scripts/freellm.sh` });
+    // Do not return raw SDK/network errors: they can contain internal URLs and provider details.
+    let message = 'تعذّر توليد رد عبر FreeLLMAPI. تأكد أن الخدمة تعمل وأن مفاتيح المزوّدين صالحة.';
+    if (e instanceof OpenAI.APIError) {
+      if (e.status === 401 || e.status === 403) message = 'المفتاح الموحد غير صالح أو ليس له صلاحية (401/403).';
+      else if (e.status === 429) message = 'بلغت حدود استخدام المزوّد. جرّب لاحقًا أو أضف مزوّدًا آخر.';
+      else if (e.status === 404 || e.status === 400) message = 'النموذج غير متاح أو لا يقبل الطلب. جرّب auto وتحقق من إعدادات المزوّدين.';
+    } else if (e instanceof Error && e.message === 'FREELLM_EMPTY_COMPLETION') {
+      message = 'وصل الطلب، لكن النموذج لم يُرجع نصًا. لم ينجح اختبار التوليد.';
+    }
+    return NextResponse.json({ ok: false, message });
   }
 });

@@ -80,7 +80,7 @@ services:
   # Optional FreeLLMAPI (free provider tiers, OpenAI-compatible) — used by the app ONLY for idea suggestions.
   # Setup: bash scripts/freellm.sh   ·  dashboard: https://ai.${DOMAIN} (behind a password)  ·  app → http://freellmapi:3001/v1
   freellmapi:
-    image: ghcr.io/tashfeenahmed/freellmapi:v0.9.9 # pinned; no self-update container (it would need the Docker socket)
+    image: ghcr.io/tashfeenahmed/freellmapi:v0.16.23 # pinned maintained release; backup freellmapi_data and ENCRYPTION_KEY before upgrading an existing install
     profiles: ["freellm"]
     environment:
       NODE_ENV: production
