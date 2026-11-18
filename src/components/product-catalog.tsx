@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Upload, Download } from 'lucide-react';
 import { apiCall } from '@/lib/client/api';
 import { Button, Badge } from './ui';
+import { ReferenceUpload } from './reference-upload';
 
 type Summary = { dryRun: boolean; total: number; create: number; update: number; newCategories: string[]; errors: { line: number; message: string }[]; errorCount: number; sample: { line: number; titleAr: string; category: string }[] };
 
@@ -57,7 +58,7 @@ export function ProductImport({ presets = [] }: { presets?: string[] }) {
   );
 }
 
-type Row = { id: string; titleAr: string; titleEn: string; category: string; active: boolean; ads: number; perf: number; price: number | null };
+type Row = { id: string; titleAr: string; titleEn: string; category: string; active: boolean; ads: number; perf: number; price: number | null; photoKey?: string | null };
 export function ProductTable({ rows }: { rows: Row[] }) {
   const router = useRouter();
   const [sel, setSel] = useState<string[]>([]);
@@ -76,10 +77,11 @@ export function ProductTable({ rows }: { rows: Row[] }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
-          <thead><tr><th className="th w-8"></th><th className="th">المنتج</th><th className="th">الفئة</th><th className="th">السعر يبدأ من</th><th className="th">الأداء</th><th className="th">الإعلانات</th><th className="th">الحالة</th></tr></thead>
+          <thead><tr><th className="th w-8"></th><th className="th" title="صورة حقيقية للمنتج — يرسمه الذكاء الاصطناعي كما هو">📷 الصورة</th><th className="th">المنتج</th><th className="th">الفئة</th><th className="th">السعر يبدأ من</th><th className="th">الأداء</th><th className="th">الإعلانات</th><th className="th">الحالة</th></tr></thead>
           <tbody>{rows.map((p) => (
             <tr key={p.id} className="border-t">
               <td className="td"><input type="checkbox" checked={sel.includes(p.id)} onChange={(e) => setSel(e.target.checked ? [...sel, p.id] : sel.filter((x) => x !== p.id))} aria-label={p.titleAr} /></td>
+              <td className="td"><ReferenceUpload compact endpoint={`/api/products/${p.id}/photo`} current={p.photoKey ?? null} label={`صورة ${p.titleAr}`} /></td>
               <td className="td"><div className="font-bold">{p.titleAr}</div><div className="text-xs text-slate-500 ltr">{p.titleEn}</div></td>
               <td className="td text-xs">{p.category}</td>
               <td className="td"><PriceCell id={p.id} value={p.price} /></td>

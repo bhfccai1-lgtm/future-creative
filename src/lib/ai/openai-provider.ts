@@ -1,5 +1,6 @@
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { normalizeBrief, briefIssueAr } from './brief-normalize';
+import type { CommentAnalysis, CommentAnalysisRequest } from './types';
 import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion, type VoiceoverRequest } from './types';
 import { voiceoverSystemPrompt } from './prompts';
 import { briefSystemPrompt, briefUserPrompt, ideasSystemPrompt } from './prompts';
@@ -141,6 +142,73 @@ export class OpenAiProvider implements AiProvider {
     return { text: res.choices[0]?.message?.content ?? '', model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async inspectPoster(png: Buffer, model: string, zones: { bottomPct: number; productHint: string }) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: [
+            'You are a strict print-advertising QA inspector. Inspect this poster image and answer in JSON only:',
+            '{"text": "<ALL visible text exactly as written, any language, one item per line; do not translate or correct; append [?] to malformed or illegible words>",',
+            ` "productVisible": <true if the hero product (${zones.productHint}) is clearly shown, sharp and complete — not cut off by the frame edges, not distorted>,`,
+            ` "bottomClear": <true if the bottom ${zones.bottomPct}% of the image contains ONLY background/surface/decoration — no product, no text, no icons, no badges>,`,
+            ' "issues": ["<short concrete problems: e.g. product cut off at the left edge, icons in the bottom zone, warped letters, extra stray text>"]}',
+          ].join('\n') },
+          { type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${png.toString('base64')}` } },
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('inspect-poster'));
+    } catch (e) { throw mapError(e); }
+    let j: { text?: unknown; productVisible?: unknown; bottomClear?: unknown; issues?: unknown };
+    try { j = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    const issues = Array.isArray(j.issues) ? j.issues.map(String).filter((x) => x.trim()).slice(0, 6) : [];
+    return { text: String(j.text ?? ''), layout: { productVisible: j.productVisible !== false, bottomClear: j.bottomClear !== false, issues }, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
+  async analyzeComments(req: CommentAnalysisRequest, model: string) {
+    const schema = { type: 'object', additionalProperties: false, required: ['items'], properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false,
+      required: ['id', 'category', 'sentiment', 'urgent', 'language', 'summary', 'reply'], properties: {
+        id: { type: 'string' }, category: { type: 'string', enum: ['order', 'price', 'info', 'praise', 'complaint', 'spam', 'other'] },
+        sentiment: { type: 'string', enum: ['positive', 'neutral', 'negative'] }, urgent: { type: 'boolean' },
+        language: { type: 'string', enum: ['ar', 'en', 'ml', 'other'] }, summary: { type: 'string' }, reply: { type: 'string' },
+      } } } } };
+    const system = [
+      `You are the community manager of "${req.business}", a print shop in Bahrain. Triage each Instagram comment and draft ONE reply.`,
+      'category: order (wants to buy/order/book), price (asks price/cost), info (other question), praise, complaint, spam (links, self-promotion, bots, scams), other.',
+      'urgent = true for order, price and complaint (a customer is waiting). summary = 3-8 Arabic words describing what the person wants.',
+      'reply: in the commenter\'s language (Arabic → warm, natural Bahraini/Gulf dialect; English → friendly English). Start with @username when given. Max 220 characters, at most 2 emojis.',
+      `For order/price/info: invite them to WhatsApp or a call using EXACTLY these numbers: ${req.phones.map((p) => `${p.label} ${p.phone}`).join(' · ')}.`,
+      'For complaints: apologise sincerely, no excuses, move to DM/phone. For praise: thank warmly. For spam: reply "".',
+      'NEVER state prices, discounts, free items, delivery times, guarantees, rankings ("الأفضل") or any number other than the two phones. Never invent facts about the order. No links.',
+    ].join('\n');
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'system' as const, content: system }, { role: 'user' as const, content: JSON.stringify({ comments: req.comments }) }],
+        response_format: { type: 'json_schema', json_schema: { name: 'comment_triage', strict: true, schema } },
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('comments'));
+    } catch (e) { throw mapError(e); }
+    let items: CommentAnalysis[] = [];
+    try { items = (JSON.parse(res.choices[0]?.message?.content ?? '{}').items ?? []) as CommentAnalysis[]; } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    return { items, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
+  async describeStyle(png: Buffer, model: string) {
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: 'You are an art director. Describe ONLY the visual style of this advertising poster so a designer can reach the same quality level for a DIFFERENT product: colour palette, lighting and mood, background treatment, typography style (weight, effects such as gold 3D, outlines, shadows), badge/ribbon/frame shapes, decorative elements, layout rhythm and hierarchy, finish and level of detail. Do NOT mention or describe the product, any objects, people, characters, illustrations, written words, slogans, logos, brand names or phone numbers. 80–120 words, English, one paragraph.' },
+          { type: 'image_url' as const, image_url: { url: `data:image/png;base64,${png.toString('base64')}` } },
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('describe-style'));
+    } catch (e) { throw mapError(e); }
+    return { text: (res.choices[0]?.message?.content ?? '').trim().slice(0, 1200), model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
   async judgeImages(images: Buffer[], brief: string, model: string) {
     let res;
     try {
@@ -162,10 +230,16 @@ export class OpenAiProvider implements AiProvider {
     return { best, scores, reason: String(parsed.reason ?? '').slice(0, 300), usage, model: res.model ?? model };
   }
 
-  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024' }) {
+  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; references?: Buffer[] }) {
     let res;
     try {
-      res = await callWithParamFallback(
+      // reference images (real product photo / reference design) → the edits endpoint with several input images
+      if (opts.references?.length) {
+        const image = await Promise.all(opts.references.slice(0, 4).map((b, i) => toFile(b, `reference-${i + 1}.png`, { type: 'image/png' })));
+        res = await callWithParamFallback(
+          { model: opts.model, prompt, image, size: opts.size, quality: opts.quality, n: 1, input_fidelity: 'high' },
+          (p) => this.client.images.edit(p as unknown as OpenAI.Images.ImageEditParamsNonStreaming), warnDrop('image-edit'));
+      } else res = await callWithParamFallback(
         { model: opts.model, prompt, size: opts.size, quality: opts.quality, n: 1 },
         (p) => this.client.images.generate(p as unknown as OpenAI.Images.ImageGenerateParamsNonStreaming), warnDrop('image'));
     } catch (e) { throw mapError(e); }

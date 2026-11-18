@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { hasQcOverride } from './qc-override';
 import { env } from '../env';
 import { prisma } from '../db';
 import { audit, notify } from '../audit';
@@ -131,7 +132,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
 
   // ── Pre-flight validation ──
   const qc = ad.qcReport as unknown as QcReport | null;
-  if (ad.dryRun || !qc?.publishable) { await fail(job.id, ad.id, 'الإعلان غير صالح للنشر (فحص الجودة/وضع التجربة).', job.accountId); return 'FAILED'; }
+  if (ad.dryRun || (!qc?.publishable && !hasQcOverride(ad))) { await fail(job.id, ad.id, 'الإعلان غير صالح للنشر (فحص الجودة/وضع التجربة).', job.accountId); return 'FAILED'; }
   try {
     const logo = await loadApprovedLogo(job.account.businessId);
     if (logo.sha256 !== ad.logoSha256) { await fail(job.id, ad.id, 'الشعار المعتمد تغيّر منذ إنشاء التصميم — أعد التوليد.', job.accountId); return 'FAILED'; }

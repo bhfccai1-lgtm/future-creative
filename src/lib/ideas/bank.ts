@@ -1,7 +1,7 @@
 import type { Idea, SocialAccount } from '@prisma/client';
 import { prisma } from '../db';
 import { getSettings } from '../settings';
-import { getAiProvider } from '../ai';
+import { getAiProvider, getIdeasProvider } from '../ai';
 import { assertBudget, estimateTextCost, recordUsage } from '../ai/cost';
 import { recentIdeas } from '../dedup';
 import { getBusiness, ctaFor } from '../business';
@@ -10,6 +10,7 @@ import { IDEA_ANGLES, OCCASIONS, type Direction } from '../creative/options';
 import { analyse, labelOf, loadSamples } from '../analytics/insights';
 import { marketOf, upcomingOccasions } from '../creative/planner';
 import { pickLeastRecent } from '../pipeline/generate';
+import { tasteProfile } from '../creative/taste';
 import { audit } from '../audit';
 import type { Lang } from '../render/fonts';
 
@@ -40,18 +41,19 @@ export async function generateIdeas(accountId: string, opts: { count?: number; p
   const product = opts.productId ? await prisma.product.findFirstOrThrow({ where: { id: opts.productId, active: true } }) : await selectProductForAccount(account);
   if (!product) return [];
   const lang = account.language as Lang;
-  const provider = await getAiProvider(s);
+  const provider = await getIdeasProvider(s);
   if (!provider.isDryRun) await assertBudget(s, estimateTextCost(s, 2500, 900));
   const ctx = await ideaContext(account);
   const prevAngles = (await prisma.idea.findMany({ where: { accountId }, orderBy: { createdAt: 'desc' }, take: 24, select: { angle: true } })).map((x) => x.angle);
   const angles: string[] = [];
   for (let i = 0; i < count; i++) angles.push(pickLeastRecent(IDEA_ANGLES.map((a) => a.value as string).filter((a) => !angles.includes(a)), [...angles, ...prevAngles].reverse()));
   const history = await recentIdeas(accountId, s.duplicateWindowDays);
+  const taste = await tasteProfile();
   const banked = await prisma.idea.findMany({ where: { accountId, status: { in: ['NEW', 'APPROVED'] } }, select: { title: true, idea: true }, take: 60 });
   const r = await provider.suggestIdeas({
     language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
     accountName: account.name, businessCategory: account.businessCategory, creativeStyle: s.ai.creativeStyle,
-    defaultCta: ctaFor(await getBusiness(), lang), avoidIdeas: [...history.ideas, ...banked.map((b) => b.idea)], avoidHeadlines: [...history.headlines, ...banked.map((b) => b.title)],
+    defaultCta: ctaFor(await getBusiness(), lang), avoidIdeas: [...history.ideas, ...banked.map((b) => b.idea), ...taste.avoid.ideas], avoidHeadlines: [...history.headlines, ...banked.map((b) => b.title), ...taste.avoid.headlines], ownerFeedback: taste.feedback,
     attempt: Math.floor(Math.random() * 1000), ideaContext: { winners: ctx.winners, upcoming: ctx.upcoming, angles: angles.map((a) => `${a}: ${IDEA_ANGLES.find((x) => x.value === a)!.prompt}`) },
   }, s.ai.textModel, count);
   if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
@@ -102,7 +104,8 @@ export const angleAr = (v: string | null) => IDEA_ANGLES.find((a) => a.value ===
 
 /** Scheduler generation: uses the best approved idea when there is one (product, best format for growth-mix accounts, idea text). */
 export async function generateFromBank<T extends { accountId: string; productId?: string; format?: string; direction?: Direction }, R extends { advertisement: { id: string } }>(data: T, run: (d: T) => Promise<R>): Promise<R> {
-  if (data.productId || data.direction?.idea) return run(data);
+  // the owner fixed the product/category/idea (or a multi-choice list) → the bank never overrides it
+  if (data.productId || data.direction?.idea || data.direction?.productIds?.length || data.direction?.categoryIds?.length || data.direction?.categoryId) return run(data);
   const take = await takeApprovedIdea(data.accountId);
   if (!take) return run(data);
   const acc = await prisma.socialAccount.findUnique({ where: { id: data.accountId }, select: { formatStrategy: true } });

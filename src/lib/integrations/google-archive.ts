@@ -40,7 +40,9 @@ function doPost(e) {
     if (p.event !== 'archive.google' && p.event !== 'test.ping') return out({ ok: false, error: 'unknown event' });
     if (p.event === 'test.ping') return out({ ok: true, test: true });
     const d = p.data || {};
-    const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('published');
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = ss.getSheetByName('published');
+    if (!sheet) { sheet = ss.insertSheet('published'); sheet.appendRow(['تاريخ النشر', 'الحساب', 'الصيغة', 'العنوان', 'رابط المنشور', 'رابط الملف', 'رقم التصميم', 'المنتج', 'عدد الملفات']); }
     const ids = sheet.getRange(1, 7, Math.max(1, sheet.getLastRow()), 1).getValues().map(function (r) { return String(r[0]); });
     if (ids.indexOf(String(d.adId)) >= 0) return out({ ok: true, duplicate: true }); // retries never duplicate
     const root = DriveApp.getFolderById(FOLDER_ID);
@@ -61,4 +63,12 @@ function doPost(e) {
 }
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 `;
+}
+
+/** Folder / spreadsheet id from a pasted Google link (or the bare id). */
+export function googleIdFrom(input: string, kind: 'folder' | 'sheet'): string | null {
+  const t = input.trim();
+  const m = kind === 'folder' ? t.match(/\/folders\/([\w-]{15,})/) : t.match(/\/spreadsheets\/d\/([\w-]{15,})/);
+  if (m) return m[1];
+  return /^[\w-]{15,}$/.test(t) ? t : null;
 }

@@ -11,13 +11,17 @@ import { run } from '../video/probe';
 import { findClaims } from '../qc/checks';
 import type { Persona, VoiceLang } from './voices';
 
-/** Acting + accent instructions for the TTS model. */
-export function ttsInstructions(persona: Persona, lang: VoiceLang) {
+/** Acting + accent + articulation instructions for the TTS model. */
+export function ttsInstructions(persona: Persona, lang: VoiceLang, o: { pace?: 'slow' | 'normal' | 'fast'; note?: string } = {}) {
+  const pace = o.pace === 'slow' ? 'Pace: a little slower than usual, every syllable clear.' : o.pace === 'fast' ? 'Pace: lively and quick, yet every word still clear.' : 'Pace: natural commercial pace.';
   return [
     `Voice: ${persona.acting}.`,
     `Language and accent: ${lang.prompt}. Sound like a native speaker of exactly this variety.`,
-    'Delivery: natural commercial read, clear diction, brief pauses at commas, smile in the voice where it fits. Read the text exactly as written.',
-  ].join(' ');
+    'Articulation: pronounce every word completely and correctly. For Arabic, give each letter its true sound — ع، ح، خ، غ، ق، ض، ظ، ص، ط — never anglicise or swallow them; follow the diacritics (tashkeel) where written; read English trade words written in Arabic letters as written.',
+    pace,
+    'Delivery: natural commercial read, brief pauses at commas, smile in the voice where it fits. Read the text exactly as written — do not add, drop or change words.',
+    o.note ?? '',
+  ].filter(Boolean).join(' ');
 }
 
 /** Removes anything that must never be spoken; null when the script breaks the ad rules (caller falls back to the verified copy). */
@@ -34,14 +38,14 @@ export function voiceScript(p: { headline: string; badge?: string | null; suppor
   return [...new Set(parts)].join('… ');
 }
 
-export async function openaiSpeak(apiKey: string, text: string, o: { persona: Persona; lang: VoiceLang; model?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
+export async function openaiSpeak(apiKey: string, text: string, o: { persona: Persona; lang: VoiceLang; model?: string; pace?: 'slow' | 'normal' | 'fast'; note?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
   const model = o.model ?? 'gpt-4o-mini-tts';
   let r: Response;
   try {
     r = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, voice: o.persona.voice, input: text.slice(0, 1500), instructions: ttsInstructions(o.persona, o.lang), response_format: 'wav' }),
+      body: JSON.stringify({ model, voice: o.persona.voice, input: text.slice(0, 1500), instructions: ttsInstructions(o.persona, o.lang, { pace: o.pace, note: o.note }), response_format: 'wav' }),
     });
   } catch (e) { throw new AiProviderError('NETWORK', `TTS: ${(e as Error).message}`, true); }
   if (!r.ok) {
@@ -79,3 +83,16 @@ export function fakeSpeech(text: string): Buffer {
 
 /** gpt-4o-mini-tts is billed per audio minute (~$0.015/min). */
 export const estimateTtsCost = (chars: number) => Math.round(((chars / 14) / 60) * 0.015 * 10000) / 10000 || 0.0005;
+
+/** Listen back: transcribe a generated voice-over (OpenAI speech-to-text) so its words can be checked against the script. */
+export async function openaiTranscribe(apiKey: string, audio: Buffer, language?: string): Promise<string> {
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(audio)], { type: 'audio/wav' }), 'voice.wav');
+  form.append('model', 'gpt-4o-mini-transcribe');
+  if (language && /^[a-z]{2}$/.test(language)) form.append('language', language);
+  const r = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: form, signal: AbortSignal.timeout(60_000) });
+  if (!r.ok) throw new AiProviderError('UNKNOWN', `STT HTTP ${r.status}`, r.status >= 500);
+  return String(((await r.json()) as { text?: string }).text ?? '');
+}
+/** ≈ USD for transcribing a short voice-over (gpt-4o-mini-transcribe ≈ $0.003/min). */
+export const estimateSttCost = (seconds: number) => Math.max(0.0002, Math.round((seconds / 60) * 0.003 * 10000) / 10000);

@@ -34,6 +34,10 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
           {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/request-changes`} label="طلب تعديل" variant="outline" prompt="ما التعديل المطلوب؟ (سيُنشأ تصميم جديد بنفس الإعدادات مع ملاحظتك)" promptKey="note" />}
           {canDecide && ad.qcPassed && <ActionButton url={`/api/ads/${id}/approve`} label="اعتماد" variant="success" />}
           {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && qc?.publishable && <ActionButton url={`/api/ads/${id}/publish-now`} label="نشر الآن" variant="gold" confirm="سيتم إرسال الإعلان إلى المزود لأقرب موعد آمن. متابعة؟" />}
+          {['QUALITY_REVIEW', 'APPROVED'].includes(ad.state) && !qc?.publishable && !ad.dryRun && <ActionButton url={`/api/ads/${id}/publish-now`} body={{ overrideQc: true }} label="⚠ نشر الآن (تجاوز الجودة)" variant="gold" success="أُرسل للنشر رغم ملاحظات الجودة — سُجّل باسمك"
+            confirm={`نشر هذا التصميم بدون اجتياز فحص الجودة؟\n\nالملاحظات:\n${(qc?.checks ?? []).filter((c) => !c.passed).map((c) => `• ${c.label}`).join('\n') || '• يحتاج مراجعة بشرية'}\n\nتأكد بنفسك من النص والأرقام والشعار. يُسجَّل القرار باسمك.`}
+            prompt="سبب النشر رغم الملاحظات (اختياري)" promptKey="reason" />}
+          {ad.media.some((m) => m.role === 'FINAL') && <a href={`/api/ads/${id}/export`} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50" download>تنزيل PNG</a>}
           {['QUALITY_REVIEW', 'APPROVED', 'QUEUED'].includes(ad.state) && <ActionButton url={`/api/ads/${id}/reject`} label="رفض" variant="danger" prompt="سبب الرفض (اختياري)" promptKey="note" />}
         </>} />
       {ad.errorMessage && <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">{ad.errorMessage}
@@ -71,6 +75,11 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
                 <div><dt className="text-slate-500">الفكرة</dt><dd>{ad.brief.idea}</dd></div>
                 <div><dt className="text-slate-500">الجمهور / المناسبة</dt><dd>{ad.brief.audience} / {ad.brief.occasion}</dd></div>
                 <div className="md:col-span-2"><dt className="text-slate-500">وصف المشهد (للنموذج)</dt><dd className="ltr text-xs">{ad.brief.sceneDescription}</dd></div>
+                {(((ad.brief.rawJson as { storyboard?: { beat: string; scene: string }[] } | null)?.storyboard) ?? []).length > 0 && (
+                  <div className="md:col-span-2"><dt className="text-slate-500">🎬 القصة المصورة للريلز</dt>
+                    <dd><ol className="mt-1 space-y-1">{((ad.brief.rawJson as { storyboard: { beat: string; scene: string }[] }).storyboard).map((x, i) => (
+                      <li key={i} className="flex gap-2 text-xs"><span className="shrink-0 rounded bg-navy-800 px-2 py-0.5 font-bold text-white">{i + 1}. {({ hook: 'الافتتاحية', context: 'الموقف', product: 'المنتج', benefit: 'الفائدة' } as Record<string, string>)[x.beat] ?? x.beat}</span><span className="ltr">{x.scene}</span></li>))}</ol></dd></div>
+                )}
                 <div className="md:col-span-2"><dt className="text-slate-500">النص المرافق</dt><dd className="whitespace-pre-wrap">{ad.caption}</dd></div>
                 {directionSummaryAr((ad.brief.rawJson as { direction?: Direction } | null)?.direction).map(([k, val]) => (
                   <div key={k}><dt className="text-slate-500">{k}</dt><dd>{val}</dd></div>

@@ -4,6 +4,7 @@
 # 1) pulls the latest code   2) builds the new version WHILE the current one keeps running
 # 3) only if the build succeeds: switches over and waits for the health check
 # 4) if the new version does not become healthy: rolls back to the previous image automatically.
+# 0) before pulling: waits for / checks the GitHub CI result (ci-ok) of the new version and refuses a red one ('force' skips).
 set -uo pipefail
 # run from a copy: `git pull` may replace this very file while it is running
 if [ -z "${FC_REPO:-}" ]; then
@@ -21,6 +22,41 @@ LOG=/tmp/fc-update.log
 
 step "التحديث يبدأ — النظام الحالي يبقى يعمل حتى ينجح البناء"
 OLD=$(git rev-parse --short HEAD)
+
+# ── GitHub CI guard: update only to a version whose CI check (ci-ok) is green. «bash scripts/update.sh force» skips it. ──
+ci_state() { # prints success | failure | pending | unknown  for commit $1 (public repo: no token needed)
+  local repo url
+  repo=$(git remote get-url origin 2>/dev/null | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+  [ -n "$repo" ] || { echo unknown; return; }
+  url="https://api.github.com/repos/$repo/commits/$1/check-runs?per_page=100"
+  curl -fsS -m 15 -H 'Accept: application/vnd.github+json' "$url" 2>/dev/null | python3 -c '
+import json,sys
+try: runs=json.load(sys.stdin).get("check_runs",[])
+except Exception: print("unknown"); sys.exit()
+ci=[r for r in runs if r.get("name")=="ci-ok"] or [r for r in runs if r.get("name") in ("build","docker") or str(r.get("name","")).startswith("integration")]
+if not ci: print("unknown")
+elif any(r.get("status")!="completed" for r in ci): print("pending")
+elif all(r.get("conclusion")=="success" for r in ci): print("success")
+else: print("failure")' 2>/dev/null || echo unknown
+}
+if [ "${1:-}" != "force" ] && command -v python3 >/dev/null && command -v curl >/dev/null && git fetch -q origin 2>>"$LOG"; then
+  TARGET=$(git rev-parse "@{u}" 2>/dev/null || echo "")
+  if [ -n "$TARGET" ] && [ "$TARGET" != "$(git rev-parse HEAD)" ]; then
+    step "فحص GitHub للإصدار ${TARGET:0:7} قبل التحديث..."
+    for i in $(seq 1 40); do
+      ST=$(ci_state "$TARGET")
+      [ "$ST" = pending ] || break
+      [ "$i" = 1 ] && echo "   فحص GitHub ما زال يعمل — أنتظر حتى ينتهي (حتى 20 دقيقة)..."
+      sleep 30
+    done
+    case "$ST" in
+      success) ok "فحص GitHub ناجح ✓" ;;
+      failure) fail "فحص GitHub فشل لهذا الإصدار — لم يُحدَّث شيء، النظام مستمر على $OLD."; echo "   انتظر إصلاحًا جديدًا ثم أعد المحاولة (أو للضرورة فقط: bash scripts/update.sh force)"; exit 1 ;;
+      pending) fail "فحص GitHub لم ينتهِ بعد 20 دقيقة — لم يُحدَّث شيء. أعد المحاولة لاحقًا."; exit 1 ;;
+      *) echo "   تعذّر التحقق من GitHub (لا اتصال؟) — سيستمر التحديث، والرجوع التلقائي يحمي النظام." ;;
+    esac
+  fi
+fi
 if ! git pull --ff-only >>"$LOG" 2>&1; then
   fail "فشل تنزيل التحديث (git pull). آخر سطور السجل:"; tail -15 "$LOG"; exit 1
 fi

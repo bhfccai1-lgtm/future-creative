@@ -16,6 +16,14 @@ export async function middleware(req: NextRequest) {
   const method = req.method.toUpperCase();
   const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
+  // Request size limits, checked before anything is parsed or validated (oversized bodies are a memory-exhaustion vector):
+  // JSON/text 1 MB; file uploads (logo, audio tracks, CSV imports) 60 MB.
+  if (mutating) {
+    const len = Number(req.headers.get('content-length') ?? '0');
+    const multipart = (req.headers.get('content-type') ?? '').startsWith('multipart/form-data');
+    if (len > (multipart ? 60 : 1) * 1024 * 1024) return NextResponse.json({ error: 'PAYLOAD_TOO_LARGE', message: multipart ? 'الملف أكبر من 60 ميغابايت' : 'حجم الطلب أكبر من المسموح' }, { status: 413 });
+  }
+
   // webhooks (HMAC) and integrations (bearer token) carry no cookies → no CSRF surface; they authenticate themselves
   if (mutating && !pathname.startsWith('/api/webhooks/') && !pathname.startsWith('/api/integrations/')) {
     const origin = req.headers.get('origin');

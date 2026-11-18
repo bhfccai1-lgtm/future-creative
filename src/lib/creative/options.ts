@@ -16,6 +16,9 @@ export const CONTENT_TYPES: Opt[] = [
   { value: 'behind_scenes', ar: 'من داخل المطبعة', en: 'Behind the scenes', prompt: 'behind-the-scenes in a modern clean print workshop with the finished product in focus' },
 ];
 
+/** «أعمال منجزة»: a real photo of a delivered job (owner-uploaded) — used only by the portfolio flow, never auto-picked. */
+export const REAL_WORK: Opt = { value: 'real_work', ar: 'أعمال منجزة (صورة حقيقية)', en: 'Real finished work', prompt: 'a REAL finished job the print shop delivered to a customer (the photo is the real job). The copy celebrates the finished work: print quality, finish, care and delivery. Use only facts given in the user idea — never invent client names, quantities, dates, prices or claims. Invite others to order the same' };
+
 export const MARKETS: Opt[] = [
   { value: 'bahrain_local', ar: 'السوق البحريني (مواطنون ومقيمون)', en: 'Bahrain — local market', prompt: 'the local Bahraini market (citizens and residents), Gulf Arabic cultural context' },
   { value: 'bahrain_business', ar: 'الشركات والمؤسسات في البحرين', en: 'Bahrain — businesses (B2B)', prompt: 'companies and institutions in Bahrain (B2B), professional corporate tone' },
@@ -37,25 +40,55 @@ export const SEGMENTS: Opt[] = [
   { value: 'gift_buyers', ar: 'محبو الهدايا', en: 'Gift buyers', prompt: 'people looking for meaningful gifts' },
 ];
 
-export const OCCASIONS: (Opt & { headlineAr?: string; headlineEn?: string })[] = [
+/** scope: BH = Bahrain · GCC = Gulf · GLOBAL = international · COMMUNITY = expatriate communities (Malayali / Indian / Western) */
+export type OccasionScope = 'BH' | 'GCC' | 'GLOBAL' | 'COMMUNITY';
+export const OCCASIONS: (Opt & { headlineAr?: string; headlineEn?: string; scope?: OccasionScope })[] = [
   { value: 'everyday', ar: 'بدون مناسبة (يومي)', en: 'Everyday', prompt: 'everyday, no specific occasion' },
-  { value: 'bahrain_national_day', ar: 'العيد الوطني البحريني (16 ديسمبر)', en: 'Bahrain National Day', prompt: 'Bahrain National Day (16 December) — tasteful red and white accents, pride in Bahrain', headlineAr: 'نحتفل بالعيد الوطني', headlineEn: 'Celebrating Bahrain National Day' },
-  { value: 'saudi_national_day', ar: 'اليوم الوطني السعودي (23 سبتمبر)', en: 'Saudi National Day', prompt: 'Saudi National Day (23 September) — tasteful green accents', headlineAr: 'فخر بالوطن', headlineEn: 'Celebrating Saudi National Day' },
-  { value: 'ramadan', ar: 'شهر رمضان', en: 'Ramadan', prompt: 'the holy month of Ramadan — calm, elegant, lanterns and crescent motifs, respectful tone', headlineAr: 'أجواء رمضان بلمسة إبداع', headlineEn: 'Ramadan, Beautifully Printed' },
-  { value: 'eid_fitr', ar: 'عيد الفطر', en: 'Eid al-Fitr', prompt: 'Eid al-Fitr celebration — joyful family gifting atmosphere', headlineAr: 'عيدكم مبارك', headlineEn: 'Eid Mubarak' },
-  { value: 'eid_adha', ar: 'عيد الأضحى', en: 'Eid al-Adha', prompt: 'Eid al-Adha celebration — warm family gathering atmosphere', headlineAr: 'عيد أضحى مبارك', headlineEn: 'Eid al-Adha Mubarak' },
-  { value: 'back_to_school', ar: 'العودة إلى المدارس', en: 'Back to school', prompt: 'back-to-school season', headlineAr: 'عودة مدرسية مميزة', headlineEn: 'Back to School in Style' },
-  { value: 'graduation', ar: 'التخرج', en: 'Graduation', prompt: 'graduation celebrations', headlineAr: 'لحظة تخرج لا تُنسى', headlineEn: 'A Graduation to Remember' },
-  { value: 'wedding_season', ar: 'موسم الأعراس', en: 'Wedding season', prompt: 'wedding season — elegant, luxurious, floral', headlineAr: 'تفاصيل تليق بفرحتكم', headlineEn: 'Details Worthy of Your Day' },
-  { value: 'mothers_day', ar: 'عيد الأم (21 مارس)', en: "Mother's Day", prompt: "Mother's Day (21 March in the Arab world) — tender, heartfelt gifting", headlineAr: 'هدية تليق بأمي', headlineEn: 'A Gift Worthy of Mum' },
-  { value: 'new_year', ar: 'العام الجديد', en: 'New Year', prompt: 'the new year — fresh start, planning ahead', headlineAr: 'بداية جديدة بإبداع', headlineEn: 'A Fresh Start in Print' },
+  { value: 'bahrain_national_day', scope: 'BH', ar: 'العيد الوطني البحريني (16 ديسمبر)', en: 'Bahrain National Day', prompt: 'Bahrain National Day (16 December) — tasteful red and white accents, pride in Bahrain', headlineAr: 'نحتفل بالعيد الوطني', headlineEn: 'Celebrating Bahrain National Day' },
+  { value: 'saudi_national_day', scope: 'GCC', ar: 'اليوم الوطني السعودي (23 سبتمبر)', en: 'Saudi National Day', prompt: 'Saudi National Day (23 September) — tasteful green accents', headlineAr: 'فخر بالوطن', headlineEn: 'Celebrating Saudi National Day' },
+  { value: 'ramadan', scope: 'BH', ar: 'شهر رمضان', en: 'Ramadan', prompt: 'the holy month of Ramadan — calm, elegant, lanterns and crescent motifs, respectful tone', headlineAr: 'أجواء رمضان بلمسة إبداع', headlineEn: 'Ramadan, Beautifully Printed' },
+  { value: 'eid_fitr', scope: 'BH', ar: 'عيد الفطر', en: 'Eid al-Fitr', prompt: 'Eid al-Fitr celebration — joyful family gifting atmosphere', headlineAr: 'عيدكم مبارك', headlineEn: 'Eid Mubarak' },
+  { value: 'eid_adha', scope: 'BH', ar: 'عيد الأضحى', en: 'Eid al-Adha', prompt: 'Eid al-Adha celebration — warm family gathering atmosphere', headlineAr: 'عيد أضحى مبارك', headlineEn: 'Eid al-Adha Mubarak' },
+  { value: 'back_to_school', scope: 'BH', ar: 'العودة إلى المدارس', en: 'Back to school', prompt: 'back-to-school season', headlineAr: 'عودة مدرسية مميزة', headlineEn: 'Back to School in Style' },
+  { value: 'graduation', scope: 'BH', ar: 'التخرج', en: 'Graduation', prompt: 'graduation celebrations', headlineAr: 'لحظة تخرج لا تُنسى', headlineEn: 'A Graduation to Remember' },
+  { value: 'wedding_season', scope: 'BH', ar: 'موسم الأعراس', en: 'Wedding season', prompt: 'wedding season — elegant, luxurious, floral', headlineAr: 'تفاصيل تليق بفرحتكم', headlineEn: 'Details Worthy of Your Day' },
+  { value: 'mothers_day', scope: 'GLOBAL', ar: 'عيد الأم (21 مارس)', en: "Mother's Day", prompt: "Mother's Day (21 March in the Arab world) — tender, heartfelt gifting", headlineAr: 'هدية تليق بأمي', headlineEn: 'A Gift Worthy of Mum' },
+  { value: 'new_year', scope: 'GLOBAL', ar: 'العام الجديد', en: 'New Year', prompt: 'the new year — fresh start, planning ahead', headlineAr: 'بداية جديدة بإبداع', headlineEn: 'A Fresh Start in Print' },
   { value: 'exhibitions_events', ar: 'موسم المعارض والفعاليات', en: 'Exhibitions & events', prompt: 'exhibition and conference season', headlineAr: 'جاهزون لمعرضكم القادم', headlineEn: 'Ready for Your Next Event' },
   { value: 'business_launch', ar: 'افتتاح أو إطلاق مشروع', en: 'Business launch', prompt: 'opening a new shop or launching a new business', headlineAr: 'انطلاقة تليق بمشروعك', headlineEn: 'Launch Your Business Right' },
-  { value: 'gergaoon', ar: 'القرقاعون (منتصف رمضان)', en: 'Gergaoon', prompt: 'Gergaoon — the Bahraini mid-Ramadan children\'s celebration: children in traditional dress, colourful bags of sweets and nuts, joyful neighbourhood atmosphere', headlineAr: 'قرقاعون عادت عليكم', headlineEn: 'Happy Gergaoon' },
-  { value: 'bahraini_women_day', ar: 'يوم المرأة البحرينية (1 ديسمبر)', en: 'Bahraini Women\'s Day', prompt: 'Bahraini Women\'s Day (1 December) — appreciation and pride, elegant and respectful', headlineAr: 'تحية للمرأة البحرينية', headlineEn: 'Celebrating Bahraini Women' },
-  { value: 'teachers_day', ar: 'يوم المعلم (5 أكتوبر)', en: "Teachers' Day", prompt: "World Teachers' Day (5 October) — gratitude gifts for teachers from students and parents", headlineAr: 'شكرًا معلمي', headlineEn: 'Thank You, Teacher' },
-  { value: 'onam', ar: 'مهرجان أونام', en: 'Onam', prompt: 'Onam festival celebrated by the Malayali community — floral pookalam motifs', headlineEn: 'Happy Onam' },
-  { value: 'diwali', ar: 'مهرجان ديوالي', en: 'Diwali', prompt: 'Diwali festival of lights — diyas and warm glowing light', headlineEn: 'Happy Diwali' },
+  { value: 'gergaoon', scope: 'BH', ar: 'القرقاعون (منتصف رمضان)', en: 'Gergaoon', prompt: 'Gergaoon — the Bahraini mid-Ramadan children\'s celebration: children in traditional dress, colourful bags of sweets and nuts, joyful neighbourhood atmosphere', headlineAr: 'قرقاعون عادت عليكم', headlineEn: 'Happy Gergaoon' },
+  { value: 'bahraini_women_day', scope: 'BH', ar: 'يوم المرأة البحرينية (1 ديسمبر)', en: 'Bahraini Women\'s Day', prompt: 'Bahraini Women\'s Day (1 December) — appreciation and pride, elegant and respectful', headlineAr: 'تحية للمرأة البحرينية', headlineEn: 'Celebrating Bahraini Women' },
+  { value: 'teachers_day', scope: 'GLOBAL', ar: 'يوم المعلم (5 أكتوبر)', en: "Teachers' Day", prompt: "World Teachers' Day (5 October) — gratitude gifts for teachers from students and parents", headlineAr: 'شكرًا معلمي', headlineEn: 'Thank You, Teacher' },
+  { value: 'onam', scope: 'COMMUNITY', ar: 'مهرجان أونام', en: 'Onam', prompt: 'Onam festival celebrated by the Malayali community — floral pookalam motifs', headlineEn: 'Happy Onam' },
+  { value: 'diwali', scope: 'COMMUNITY', ar: 'مهرجان ديوالي', en: 'Diwali', prompt: 'Diwali festival of lights — diyas and warm glowing light', headlineEn: 'Happy Diwali' },
+  // ── Bahrain (Hijri dates are astronomical estimates ±1–2 days) ──
+  { value: 'hijri_new_year', scope: 'BH', ar: 'رأس السنة الهجرية (1 محرم)', en: 'Islamic New Year', prompt: 'Islamic (Hijri) New Year — calm, elegant crescent and geometric Islamic motifs, a respectful fresh-start mood, no festive excess', headlineAr: 'عام هجري مبارك', headlineEn: 'Blessed Hijri New Year' },
+  { value: 'mawlid', scope: 'BH', ar: 'المولد النبوي الشريف', en: 'Prophet\'s Birthday', prompt: 'the Prophet\'s Birthday (Mawlid) — dignified, serene, soft green and gold Islamic geometric patterns and lanterns; respectful, no people depicted in a religious role', headlineAr: 'ذكرى المولد النبوي الشريف', headlineEn: 'Mawlid an-Nabi' },
+  // ── Gulf ──
+  { value: 'saudi_founding_day', scope: 'GCC', ar: 'يوم التأسيس السعودي (22 فبراير)', en: 'Saudi Founding Day', prompt: 'Saudi Founding Day (22 February) — heritage pride, Najdi architecture and traditional patterns, green and earthy tones', headlineAr: 'يوم بدينا', headlineEn: 'Founding Day' },
+  { value: 'kuwait_national_day', scope: 'GCC', ar: 'العيد الوطني الكويتي (25–26 فبراير)', en: 'Kuwait National & Liberation Days', prompt: 'Kuwait National Day and Liberation Day (25–26 February) — celebratory green, white, red and black accents, Kuwait Towers silhouette, tasteful', headlineAr: 'كل عام والكويت بخير', headlineEn: 'Happy Kuwait National Day' },
+  { value: 'oman_national_day', scope: 'GCC', ar: 'العيد الوطني العُماني (20 نوفمبر)', en: 'Oman National Day', prompt: 'Oman National Day (20 November) — red, white and green accents, Omani heritage motifs, proud and dignified', headlineAr: 'كل عام وعُمان بخير', headlineEn: 'Happy Oman National Day' },
+  { value: 'uae_national_day', scope: 'GCC', ar: 'عيد الاتحاد الإماراتي (2 ديسمبر)', en: 'UAE National Day', prompt: 'UAE National Day / Eid Al Etihad (2 December) — red, green, white and black accents, modern Emirati skyline, celebratory', headlineAr: 'عيد اتحاد سعيد', headlineEn: 'Happy UAE National Day' },
+  { value: 'qatar_national_day', scope: 'GCC', ar: 'اليوم الوطني القطري (18 ديسمبر)', en: 'Qatar National Day', prompt: 'Qatar National Day (18 December) — maroon and white accents, Doha skyline, proud and elegant', headlineAr: 'كل عام وقطر بخير', headlineEn: 'Happy Qatar National Day' },
+  // ── International ──
+  { value: 'valentines', scope: 'GLOBAL', ar: 'يوم الحب (14 فبراير)', en: "Valentine's Day", prompt: "Valentine's Day (14 February) — tasteful, elegant romantic gifting for couples, roses and soft red/blush tones, nothing suggestive", headlineAr: 'هدية تقول أحبك', headlineEn: 'A Gift that Says I Love You' },
+  { value: 'employee_appreciation', scope: 'GLOBAL', ar: 'يوم تقدير الموظف (أول جمعة من مارس)', en: 'Employee Appreciation Day', prompt: 'Employee Appreciation Day (first Friday of March) — corporate thank-you gifts for teams, branded mugs, notebooks and certificates, professional and warm', headlineAr: 'شكرًا لفريقك', headlineEn: 'Thank Your Team' },
+  { value: 'womens_day', scope: 'GLOBAL', ar: 'يوم المرأة العالمي (8 مارس)', en: "International Women's Day", prompt: "International Women's Day (8 March) — empowering, elegant, appreciation of women at work and home, purple and gold accents", headlineAr: 'تقدير يليق بها', headlineEn: 'Celebrate Her' },
+  { value: 'world_book_day', scope: 'GLOBAL', ar: 'اليوم العالمي للكتاب (23 أبريل)', en: 'World Book Day', prompt: 'World Book Day (23 April) — books, bookmarks, printed notebooks and reading corners; celebrate print and reading', headlineAr: 'للقراءة والطباعة حكاية', headlineEn: 'Celebrate Books & Print' },
+  { value: 'labour_day', scope: 'GLOBAL', ar: 'يوم العمال (1 مايو)', en: 'Labour Day', prompt: 'Labour Day (1 May) — appreciation of workers and teams, corporate thank-you gifts, respectful and warm', headlineAr: 'شكرًا لكل يد تعمل', headlineEn: 'Thank You, Workers' },
+  { value: 'nurses_day', scope: 'GLOBAL', ar: 'يوم التمريض العالمي (12 مايو)', en: "International Nurses Day", prompt: "International Nurses Day (12 May) — gratitude gifts for nurses and medical teams, clean white and soft blue, caring and respectful", headlineAr: 'شكرًا لملائكة الرحمة', headlineEn: 'Thank You, Nurses' },
+  { value: 'fathers_day', scope: 'GLOBAL', ar: 'يوم الأب (ثالث أحد من يونيو)', en: "Father's Day", prompt: "Father's Day (third Sunday of June) — heartfelt personalised gifts for dad, warm and classic, navy and wood tones", headlineAr: 'هدية تليق بأبي', headlineEn: 'A Gift Worthy of Dad' },
+  { value: 'friendship_day', scope: 'GLOBAL', ar: 'يوم الصداقة العالمي (30 يوليو)', en: 'International Friendship Day', prompt: 'International Day of Friendship (30 July) — matching gifts for best friends, fun, colourful and heartfelt', headlineAr: 'لصديق العمر', headlineEn: 'For Your Best Friend' },
+  { value: 'photography_day', scope: 'GLOBAL', ar: 'يوم التصوير العالمي (19 أغسطس)', en: 'World Photography Day', prompt: 'World Photography Day (19 August) — turning photos into prints, canvases, frames, albums and photo mugs; memories in print', headlineAr: 'صورك تستاهل تنطبع', headlineEn: 'Your Photos, Printed' },
+  { value: 'coffee_day', scope: 'GLOBAL', ar: 'اليوم العالمي للقهوة (1 أكتوبر)', en: 'International Coffee Day', prompt: 'International Coffee Day (1 October) — printed coffee mugs, café branding, cups and sleeves, cosy warm coffee scenes with steam', headlineAr: 'قهوتك أحلى بكوبك', headlineEn: 'Coffee Tastes Better in Your Mug' },
+  { value: 'boss_day', scope: 'GLOBAL', ar: 'يوم المدير (16 أكتوبر)', en: "Boss's Day", prompt: "Boss's Day (16 October) — elegant appreciation gifts for managers, executive desk items, premium and tasteful", headlineAr: 'تقدير يليق بقائدك', headlineEn: 'Appreciate Your Leader' },
+  { value: 'world_childrens_day', scope: 'GLOBAL', ar: 'يوم الطفل العالمي (20 نوفمبر)', en: "World Children's Day", prompt: "World Children's Day (20 November) — joyful children's prints, name stickers, school items and playful gifts, bright and cheerful", headlineAr: 'فرحة أطفالنا', headlineEn: 'Celebrate Our Children' },
+  { value: 'arabic_language_day', scope: 'GLOBAL', ar: 'اليوم العالمي للغة العربية (18 ديسمبر)', en: 'World Arabic Language Day', prompt: 'World Arabic Language Day (18 December) — beautiful Arabic calligraphy art prints, letters as decoration, elegant ink and gold', headlineAr: 'لغتنا جمال', headlineEn: 'The Beauty of Arabic' },
+  // ── Communities in Bahrain ──
+  { value: 'vishu', scope: 'COMMUNITY', ar: 'مهرجان فيشو (14 أبريل)', en: 'Vishu', prompt: 'Vishu, the Malayali new year (around 14 April) — golden konna flowers, Vishukkani arrangement, warm and festive', headlineEn: 'Happy Vishu' },
+  { value: 'india_independence', scope: 'COMMUNITY', ar: 'يوم استقلال الهند (15 أغسطس)', en: 'Indian Independence Day', prompt: 'Indian Independence Day (15 August) — saffron, white and green accents, proud community celebration, tasteful', headlineEn: 'Happy Independence Day' },
+  { value: 'india_republic', scope: 'COMMUNITY', ar: 'يوم الجمهورية الهندي (26 يناير)', en: 'Indian Republic Day', prompt: 'Indian Republic Day (26 January) — tricolour accents, community pride, tasteful', headlineEn: 'Happy Republic Day' },
+  { value: 'christmas', scope: 'COMMUNITY', ar: 'عيد الميلاد (25 ديسمبر)', en: 'Christmas', prompt: 'Christmas (25 December) for the expatriate community — warm gifting, red and gold, festive and elegant', headlineEn: 'Merry Christmas' },
 ];
 
 /** Scene composition — drives the AI image prompt. */
@@ -262,6 +295,8 @@ export interface Direction {
   renderMode?: 'layered' | 'ai_full' | 'auto'; customPrompt?: string; autoFormat?: boolean;
   /** campaign: auto-pick products only from this category */
   categoryId?: string;
+  /** campaign multi-choice lists — one is picked at random per design */
+  categoryIds?: string[]; productIds?: string[]; formats?: ('IMAGE_STORY' | 'IMAGE_FEED' | 'IMAGE_SQUARE' | 'REEL_VIDEO' | 'IMAGE_CAROUSEL')[]; contentTypes?: string[];
   /** resolved art recipe (system-picked) */
   art?: Art;
   channels?: Channel[];
@@ -270,6 +305,8 @@ export interface Direction {
   reelStyle?: 'standard' | 'pro'; reelDuration?: number; audio?: AudioType; audioQuery?: string;
   /** Reel engine for this design (default from AI settings): ffmpeg = motion from stills, veo = Gemini AI video. */
   videoEngine?: 'ffmpeg' | 'veo';
+  /** «أعمال منجزة»: storage key of the owner's real photo — used as the scene as-is (no AI image), layered text only. */
+  realPhotoKey?: string;
   /** Which fields the planner filled automatically (for analytics / transparency). */
   autoPicked?: string[];
 }
@@ -281,7 +318,7 @@ export const findOccasion = (v?: string) => (v ? OCCASIONS.find((o) => o.value =
 export function directionForPrompt(d?: Direction) {
   if (!d) return undefined;
   const out: Record<string, string> = {};
-  const ct = find(CONTENT_TYPES, d.contentType); if (ct) out.contentType = ct.prompt;
+  const ct = find([...CONTENT_TYPES, REAL_WORK], d.contentType); if (ct) out.contentType = ct.prompt;
   const mk = find(MARKETS, d.market); if (mk) out.marketAndAudience = mk.prompt;
   const sg = find(SEGMENTS, d.segment); if (sg) out.targetSegment = sg.prompt;
   const oc = findOccasion(d.occasion); if (oc) out.occasion = oc.prompt;

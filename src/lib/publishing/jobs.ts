@@ -11,6 +11,7 @@ import { emitEvent } from '../integrations/events';
 import { bundleSha, publishableMedia } from './media';
 import { targetNetworks } from './publisher';
 import { lockAccount, spacedTime } from './spacing';
+import { hasQcOverride, type QcOverride } from './qc-override';
 
 /** SHA-256 recorded at render time for the asset that will actually be published (video for Reels). */
 export async function primaryMediaSha(adId: string) {
@@ -30,7 +31,7 @@ export async function moveAd(adId: string, from: AdState, to: AdState, data: Rec
 export async function approveAdvertisement(adId: string, user: { id: string; email: string }, note?: string) {
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId } });
   if (ad.state !== 'QUALITY_REVIEW') throw new AppError('BAD_STATE', `لا يمكن اعتماد إعلان في الحالة ${ad.state}.`, 409);
-  if (!ad.qcPassed) throw new AppError('QC_FAILED', 'لا يمكن اعتماد إعلان لم يجتز فحص الجودة. أعد التوليد أو ارفضه.', 409);
+  if (!ad.qcPassed && !hasQcOverride(ad)) throw new AppError('QC_FAILED', 'لا يمكن اعتماد إعلان لم يجتز فحص الجودة. أعد التوليد أو ارفضه.', 409);
   const mediaSha256 = await primaryMediaSha(adId);
   if (!(await moveAd(adId, 'QUALITY_REVIEW', 'APPROVED'))) throw new AppError('CONFLICT', 'تغيرت حالة الإعلان، حدّث الصفحة.', 409);
   // approval is bound to the exact bytes the human saw (SHA-256); publisher refuses anything else
@@ -90,7 +91,7 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId }, include: { account: { include: { connection: true } } } });
   const qc = ad.qcReport as unknown as QcReport | null;
   if (ad.dryRun) throw new AppError('DRY_RUN', 'هذا الإعلان معاينة تجريبية (Dry-run) ولا يمكن نشره. فعّل OpenAI وأعد التوليد.', 409);
-  if (!qc?.publishable) throw new AppError('QC_FAILED', 'الإعلان غير صالح للنشر وفق فحص الجودة.', 409);
+  if (!qc?.publishable && !hasQcOverride(ad)) throw new AppError('QC_FAILED', 'الإعلان غير صالح للنشر وفق فحص الجودة.', 409);
   if (ad.account.paused) throw new AppError('ACCOUNT_PAUSED', `الحساب موقوف مؤقتًا${ad.account.pausedReason ? ` (${ad.account.pausedReason})` : ''} — ألغِ الإيقاف أولًا.`, 409);
   const conn = ad.account.connection;
   if (!conn || conn.status !== 'CONNECTED' || !conn.canPublish || !conn.providerBrandId) {
@@ -132,15 +133,29 @@ export async function createPublicationJob(adId: string, scheduledFor: Date, act
   return job;
 }
 
-/** "نشر الآن": approve (if pending and QC-passed) and queue for the earliest safe time. */
-export async function publishNow(adId: string, user: { id: string; email: string }) {
+/**
+ * "نشر الآن": approve (if pending) and queue for the earliest safe time.
+ * With `overrideQc` a person publishes despite failed quality checks — recorded on the ad and in the audit log.
+ * Dry-run previews, the kill switch, a paused/unconnected account and file integrity are never overridden.
+ */
+export async function publishNow(adId: string, user: { id: string; email: string }, opts: { overrideQc?: boolean; reason?: string | null } = {}) {
   const s = await getSettings();
   if (s.killSwitch) throw new KillSwitchError();
   const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId } });
-  if (ad.state === 'QUALITY_REVIEW') await approveAdvertisement(adId, user, 'publish-now');
+  const qc = ad.qcReport as unknown as QcReport | null;
+  if (opts.overrideQc && ad.dryRun) throw new AppError('DRY_RUN', 'هذا الإعلان معاينة تجريبية (Dry-run) ولا يمكن نشره حتى مع تجاوز الجودة. فعّل OpenAI وأعد التوليد.', 409);
+  if (opts.overrideQc && !qc?.publishable && !hasQcOverride(ad) && ['QUALITY_REVIEW', 'APPROVED'].includes(ad.state)) {
+    await primaryMediaSha(adId); // final files must exist
+    const reason = opts.reason?.trim().slice(0, 500) || null;
+    const failed = (qc?.checks ?? []).filter((c) => !c.passed).map((c) => c.label);
+    const qcOverride: QcOverride = { by: user.email, at: new Date().toISOString(), reason, failed };
+    await prisma.advertisement.update({ where: { id: adId }, data: { options: { ...((ad.options ?? {}) as object), qcOverride } } });
+    await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.qc_override', targetType: 'advertisement', targetId: adId, details: { reason, failed } });
+  }
+  if (ad.state === 'QUALITY_REVIEW') await approveAdvertisement(adId, user, opts.overrideQc ? 'publish-now (QC override)' : 'publish-now');
   const fresh = await prisma.advertisement.findUniqueOrThrow({ where: { id: adId } });
   if (fresh.state === 'QUEUED') return prisma.publicationJob.findFirstOrThrow({ where: { advertisementId: adId } });
   if (fresh.state !== 'APPROVED') throw new AppError('BAD_STATE', `لا يمكن نشر إعلان في الحالة ${fresh.state}.`, 409);
-  await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.publish_now', targetType: 'advertisement', targetId: adId });
+  await audit({ actorId: user.id, actorLabel: user.email, action: 'ad.publish_now', targetType: 'advertisement', targetId: adId, details: opts.overrideQc ? { qcOverride: true } : undefined });
   return createPublicationJob(adId, new Date(), user.email);
 }

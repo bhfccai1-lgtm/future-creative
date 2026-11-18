@@ -1,0 +1,28 @@
+# GitHub Release for every version tag (vX.Y.Z): the notes are that version's section of CHANGELOG.md.
+#   git tag v9.0.0 && git push origin v9.0.0   — or on GitHub: Releases → Draft a new release → tag v9.0.0 → Publish
+name: Release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notes from CHANGELOG.md
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          awk -v v="$V" '$0 ~ "^## "v"( |$)" {on=1; next} on && /^## / {exit} on {print}' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section «## $V» — add it before tagging"; exit 1; }
+          grep -q "\"version\": \"$V\"" package.json || { echo "package.json version is not $V"; exit 1; }
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="$GITHUB_REF_NAME — $(sed -n "s/^## ${GITHUB_REF_NAME#v} — \(.*\)$/\1/p" CHANGELOG.md | head -1)"
+          # created from the GitHub website («Draft a new release»)? then just fill in the title and notes
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then gh release edit "$GITHUB_REF_NAME" --title "$TITLE" --notes-file notes.md
+          else gh release create "$GITHUB_REF_NAME" --title "$TITLE" --notes-file notes.md --verify-tag; fi

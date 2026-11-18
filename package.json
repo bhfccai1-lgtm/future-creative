@@ -1,6 +1,6 @@
 {
   "name": "future-creative-ai-publishing",
-  "version": "1.0.0",
+  "version": "9.0.0",
   "private": true,
   "description": "FUTURE CREATIVE AI PUBLISHING SYSTEM — مطبعة إبداع المستقبل",
   "scripts": {
@@ -24,7 +24,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1164.0",
+    "@aws-sdk/client-s3": "^3.1169.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.81.5",
@@ -33,10 +33,10 @@
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
     "ioredis": "^5.11.1",
-    "jose": "^6.2.15",
-    "lucide-react": "^1.70.0",
+    "jose": "^6.2.17",
+    "lucide-react": "^1.73.0",
     "next": "^15.5.29",
-    "openai": "^7.53.0",
+    "openai": "^7.57.0",
     "opentype.js": "^2.0.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -57,7 +57,7 @@
     "autoprefixer": "^10.6.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.29",
-    "postcss": "^8.5.32",
+    "postcss": "^8.5.33",
     "prisma": "^6.19.3",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.23.15",

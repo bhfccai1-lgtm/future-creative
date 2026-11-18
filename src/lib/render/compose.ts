@@ -76,7 +76,7 @@ async function clip(png: Buffer, w: number, h: number) {
  * The AI never draws text, numbers or the logo.
  */
 export async function composeAdvertisement(input: ComposeInput): Promise<ComposeResult> {
-  if (input.templateKey === AI_POSTER_KEY && FORMAT_SIZE[input.format].h === 1920) return composeAiPoster(input);
+  if (input.templateKey === AI_POSTER_KEY) return composeAiPoster(input); // every format (2:3 or 1:1 design, never cropped)
   if (input.templateKey === POSTER_KEY && FORMAT_SIZE[input.format].h === 1920) return composePoster(input);
   const { w: W, h: H } = FORMAT_SIZE[input.format];
   const t = getTemplate(input.templateKey);
@@ -153,7 +153,7 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
  * Exported so pro reels can build extra scenes with exactly the same layout.
  */
 export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, templateKey: string | null | undefined, contactsCount: number, themeKey: ThemeKey = 'navy_gold', featureCount = 4): Promise<Buffer> {
-  if (templateKey === AI_POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildAiPosterBackground(sceneBuf);
+  if (templateKey === AI_POSTER_KEY) return buildAiPosterBackground(sceneBuf, FORMAT_SIZE[format].h);
   if (templateKey === POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildPosterBackground(sceneBuf, featureCount);
   const { w: W, h: H } = FORMAT_SIZE[format];
   const t = getTemplate(templateKey);

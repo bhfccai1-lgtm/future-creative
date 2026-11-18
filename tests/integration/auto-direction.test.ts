@@ -21,7 +21,7 @@ describe('«تلقائي» format / design style / design method', () => {
       const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { designStyle: 'auto', renderMode: 'auto' } });
       const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { designStyle: string; direction: { renderMode: string; autoPicked: string[] } };
       expect(o.designStyle).not.toBe('auto');
-      expect(o.direction.renderMode).toBe('layered'); // non-vertical format → verified system text
+      expect(o.direction.renderMode).toBe('ai_full'); // every format → full AI poster (owner request)
       expect(o.direction.autoPicked).toEqual(expect.arrayContaining(['designStyle', 'renderMode']));
       styles.push(o.designStyle);
     }
@@ -70,7 +70,7 @@ describe('«تلقائي» format / design style / design method', () => {
     expect(art.composition).toBe('macro_detail');
     expect(['85mm', '50mm']).toContain(art.lens);
   });
-  it('production default for automatic designs: signature style; «auto» method = full AI poster for stories on approval accounts, layered on autonomous ones; colour by category', async () => {
+  it('production default for automatic designs: signature style; «auto» method = full AI poster everywhere, layered on autonomous accounts while full-AI designs still need approval; colour by category', async () => {
     const { accounts } = await seedBase({ autoRenderMode: 'auto' });
     const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler', format: 'IMAGE_STORY' });
     const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { direction: { renderMode: string; designStyle: string } };

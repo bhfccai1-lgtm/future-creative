@@ -1,5 +1,30 @@
 # Changelog
 
+## 9.0.0 — 2026-11-18 (sales, growth program, real-work posts, professional GitHub)
+Everything since 8.19.0. Migrations are additive and run automatically on update.
+
+### Sales and customers
+- **«العملاء والطلبات»** (`/leads`): comments that ask to buy or ask the price become leads automatically. Phone, WhatsApp and branch-visit customers are added by hand, with the account that brought them. Pipeline New → Contacted → Quote sent → Ordered / Not completed, with follow-up dates, order value and lost reason. Migration `20261118090000_leads`.
+- **Sales playbook:** the next best step for every customer, with a ready WhatsApp message (Bahraini Arabic, or English when the customer wrote English): first reply, quote, follow-ups on day 2 and 5, thanks, past-customer offer, re-engage. A person sends it; the step is logged.
+- **Quotes:** the owner types items and prices (the system never prices). Numbered quotes, validity and terms from settings. A printable branded page (`/q/[id]`) to save as PDF.
+- Monthly sales target with pace, open-quote pipeline, past customers due for a new offer, and a daily follow-up reminder. Migration `20261118120000_sales`.
+
+### Growth and analytics
+- **Analytics** with real per-account Metricool numbers and rule-based advice.
+- **Smart posting plan:** rhythm and format mix per account from real reach.
+- **30-day growth program** (`/growth`): diagnosis, modest targets, four weekly phases followed by the designer, progress and weekly notes.
+
+### Content
+- **«أعمال منجزة»** (`/portfolio`): branded posts from real photos of delivered jobs (no AI image, client named only with consent).
+- Banned phrases, publish-now with a recorded QC override, Reels for reach (burned-in captions, seamless loop), 25 new occasions, voice-over pronunciation, reference design per format, comments triage with safe drafts, campaign multi-choice.
+- Production pipeline V6: concept rubric, vision layout inspection, verified-text fallback, foreign-text guard, PNG export.
+
+### Engineering
+- **CI:** the integration suite runs on 3 parallel runners; one summary check `ci-ok`.
+- **Safe updates:** `scripts/update.sh` waits for the GitHub `ci-ok` check of the new version and refuses a red one (`force` skips it).
+- **Releases:** a GitHub Release for every `vX.Y.Z` tag, with notes from this file.
+- Arabic issue forms (bug, feature, design problem); private security reporting link.
+
 ## 8.19.0 — 2026-11-12 (automatic Google Business Profile)
 - New per-account settings: `gbpAuto` and `gbpPerWeek` (default 2), shown as a section in the account form.
 - Automatic designs add the Google channel by themselves when all of these hold:

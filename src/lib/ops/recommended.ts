@@ -39,7 +39,7 @@ export async function applyRecommended(intervalHours = 7) {
   for (const r of plan) {
     const a = await prisma.socialAccount.findUniqueOrThrow({ where: { id: r.id } });
     await prisma.socialAccount.update({ where: { id: r.id }, data: {
-      publishIntervalMinutes: intervalHours * 60, maxDailyAds: Math.max(1, Math.ceil(24 / intervalHours)), formatStrategy: 'GROWTH_MIX',
+      publishIntervalMinutes: intervalHours * 60, maxDailyAds: Math.max(10, Math.ceil(24 / intervalHours)), formatStrategy: 'GROWTH_MIX',
       ...(a.nextPublishAt && a.nextPublishAt.getTime() > Date.now() + intervalHours * 3600_000 ? { nextPublishAt: new Date(Date.now() + intervalHours * 3600_000) } : {}),
       ...(r.categories.length ? { allowedCategoryIds: r.categories.map((c) => cats.get(c)!).filter(Boolean) } : {}),
     } });

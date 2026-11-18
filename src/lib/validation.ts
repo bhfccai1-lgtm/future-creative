@@ -19,7 +19,7 @@ export const AccountInput = z.object({
   publishWindowEnd: z.string().regex(/^\d{2}:\d{2}$/),
   timezone: z.string().default('Asia/Bahrain'),
   reelDurationSec: z.number().int().min(6).max(60).default(10),
-  maxDailyAds: z.number().int().min(1).max(48).default(4),
+  maxDailyAds: z.number().int().min(1).max(48).default(10),
   formatStrategy: z.enum(['FIXED', 'GROWTH_MIX']).default('FIXED'),
   formatMix: z.record(z.enum(['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE']), z.number().int().min(0).max(100)).optional(),
 });
@@ -50,6 +50,11 @@ export const DirectionSchema = z.object({
   /** campaign: vary the format per post (growth mix) regardless of the account's fixed format */
   autoFormat: z.boolean().optional(),
   categoryId: z.string().max(64).optional(),
+  /** campaign multi-choice: each design picks ONE of these at random (empty = automatic as before) */
+  categoryIds: z.array(z.string().max(64)).max(60).optional(),
+  productIds: z.array(z.string().max(64)).max(300).optional(),
+  formats: z.array(z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO', 'IMAGE_CAROUSEL'])).max(5).optional(),
+  contentTypes: z.array(z.string().max(60)).max(30).optional(),
   customPrompt: z.string().max(3000).optional(),
   channels: z.array(z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'pinterest', 'linkedin', 'twitter', 'gmb'])).max(9).optional(),
   reelStyle: z.enum(['standard', 'pro']).optional(),

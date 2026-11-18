@@ -37,3 +37,14 @@ export const POST = api('settings:integrations', async (req) => {
   if (!r.ok || !j?.ok) throw new AppError('SCRIPT', !j ? 'السكربت لم يرجع JSON — تأكد أن النشر «Web app» و«Who has access: Anyone».' : `السكربت رد بخطأ: ${j.error ?? r.status}`, 502);
   return NextResponse.json({ ok: true });
 });
+
+/** The ready-to-paste Apps Script, with the owner's folder + sheet ids and this system's host filled in. */
+export const GET = api('settings:integrations', async (req) => {
+  const { appsScriptSource, googleIdFrom } = await import('@/lib/integrations/google-archive');
+  const q = new URL(req.url).searchParams;
+  const folderId = googleIdFrom(q.get('folder') ?? '', 'folder'), sheetId = googleIdFrom(q.get('sheet') ?? '', 'sheet');
+  if (!folderId) throw new AppError('VALIDATION', 'رابط مجلد Drive غير صحيح — انسخه من شريط العنوان وهو داخل المجلد (…/folders/…).', 422);
+  if (!sheetId) throw new AppError('VALIDATION', 'رابط جدول Sheets غير صحيح — انسخه من شريط العنوان (…/spreadsheets/d/…).', 422);
+  const host = process.env.DOMAIN || new URL(req.url).host;
+  return NextResponse.json({ script: appsScriptSource({ folderId, sheetId, host }) });
+});

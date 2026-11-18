@@ -1,0 +1,16 @@
+name: ✨ طلب تطوير
+description: فكرة أو ميزة جديدة للنظام
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes: { label: ماذا تريد أن تحقق؟, placeholder: "مثال: أعرف أي حساب يجلب طلبات أكثر" }
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes: { label: كيف تتخيلها؟, description: اختياري — وصف أو صورة لتصميم مشابه }
+  - type: dropdown
+    id: area
+    attributes:
+      label: القسم
+      options: [التصاميم والصور, الريلز والفيديو, النشر والجدولة, التحليلات والنمو, التعليقات والعملاء والمبيعات, الإعدادات, أخرى]

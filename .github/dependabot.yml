@@ -20,9 +20,19 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: react-dom
         update-types: ['version-update:semver-major']
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      - dependency-name: zod # v4 needs a planned migration (see SECURITY.md)
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/*'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
   - package-ecosystem: docker
     directory: /
     schedule: { interval: monthly }
+    ignore:
+      # stay on Node LTS (22); odd majors are short-lived
+      - dependency-name: node
+        update-types: ['version-update:semver-major']

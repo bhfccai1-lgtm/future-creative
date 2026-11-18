@@ -110,19 +110,19 @@ model Role {
 }
 
 model User {
-  id             String     @id @default(cuid())
-  email          String     @unique
+  id             String            @id @default(cuid())
+  email          String            @unique
   name           String
   passwordHash   String
   roleId         String
-  role           Role       @relation(fields: [roleId], references: [id])
-  active         Boolean    @default(true)
-  failedLogins   Int        @default(0)
+  role           Role              @relation(fields: [roleId], references: [id])
+  active         Boolean           @default(true)
+  failedLogins   Int               @default(0)
   lockedUntil    DateTime?
   lastLoginAt    DateTime?
-  sessionVersion Int        @default(0) // bump to revoke all sessions
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  sessionVersion Int               @default(0) // bump to revoke all sessions
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
   auditLogs      AuditLog[]
   approvals      ApprovalRequest[] @relation("decider")
 
@@ -131,40 +131,40 @@ model User {
 
 // ───────────────────────── Business & brand ─────────────────────────
 model Business {
-  id          String          @id @default(cuid())
-  nameAr      String
-  nameEn      String
-  defaultCtaAr String         @default("اطلب الآن")
-  defaultCtaEn String         @default("Order Now")
-  defaultCtaMl String         @default("ഇപ്പോൾ ഓർഡർ ചെയ്യൂ")
-  timezone    String          @default("Asia/Bahrain")
-  currency    String          @default("BHD")
-  locations   Json // [{key:"saar", nameAr:"سار", nameEn:"Saar", nameMl:"..", phone:"33316319"}]
-  brandAssets BrandAsset[]
-  accounts    SocialAccount[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id           String          @id @default(cuid())
+  nameAr       String
+  nameEn       String
+  defaultCtaAr String          @default("اطلب الآن")
+  defaultCtaEn String          @default("Order Now")
+  defaultCtaMl String          @default("ഇപ്പോൾ ഓർഡർ ചെയ്യൂ")
+  timezone     String          @default("Asia/Bahrain")
+  currency     String          @default("BHD")
+  locations    Json // [{key:"saar", nameAr:"سار", nameEn:"Saar", nameMl:"..", phone:"33316319"}]
+  brandAssets  BrandAsset[]
+  accounts     SocialAccount[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   @@map("businesses")
 }
 
 model BrandAsset {
-  id          String    @id @default(cuid())
-  businessId  String
-  business    Business  @relation(fields: [businessId], references: [id])
-  kind        String // LOGO_PRIMARY | LOGO_LIGHT | ...
-  storageKey  String
-  sha256      String
-  width       Int
-  height      Int
-  hasAlpha    Boolean
-  mimeType    String
-  approved    Boolean   @default(false)
-  approvedAt  DateTime?
-  approvedBy  String?
-  active      Boolean   @default(false) // exactly one active approved LOGO_PRIMARY
-  uploadedBy  String?
-  createdAt   DateTime  @default(now())
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id])
+  kind       String // LOGO_PRIMARY | LOGO_LIGHT | ...
+  storageKey String
+  sha256     String
+  width      Int
+  height     Int
+  hasAlpha   Boolean
+  mimeType   String
+  approved   Boolean   @default(false)
+  approvedAt DateTime?
+  approvedBy String?
+  active     Boolean   @default(false) // exactly one active approved LOGO_PRIMARY
+  uploadedBy String?
+  createdAt  DateTime  @default(now())
 
   @@index([businessId, kind, active])
   @@map("brand_assets")
@@ -172,75 +172,77 @@ model BrandAsset {
 
 // ───────────────────────── Social accounts ─────────────────────────
 model SocialAccount {
-  id                    String           @id @default(cuid())
-  businessId            String
-  business              Business         @relation(fields: [businessId], references: [id])
-  name                  String
-  platform              SocialPlatform
+  id                     String                @id @default(cuid())
+  businessId             String
+  business               Business              @relation(fields: [businessId], references: [id])
+  name                   String
+  platform               SocialPlatform
   /// automatic Google Business Profile updates (when GBP is linked to the brand in Metricool)
-  gbpAuto               Boolean          @default(false)
-  gbpPerWeek            Int              @default(2)
+  gbpAuto                Boolean               @default(false)
+  gbpPerWeek             Int                   @default(2)
   /// networks linked on the Metricool brand that every compatible post also goes to (stories: Instagram/Facebook only)
-  autoChannels      SocialPlatform[] @default([])
+  autoChannels           SocialPlatform[]      @default([])
   /// Pinterest board (numeric id or exact name) — Pinterest pins need one
-  pinterestBoard    String?
+  pinterestBoard         String?
   /// accounts that share this account's new posts in their story (transparent same-brand cross-promotion)
-  promoteToIds          String[]         @default([])
-  handle                String?
-  externalId            String? // provider brand/blog id or platform account id
-  language              Language         @default(ar)
-  businessCategory      String?
-  allowedProductIds     String[]
-  allowedCategoryIds    String[]         @default([]) // whole categories allowed (scales to hundreds of products)
-  publishFormat         MediaFormat      @default(IMAGE_STORY)
-  publishIntervalMinutes Int             @default(420) // V8: every 7 hours per account by default
-  publishWindowStart    String           @default("09:00") // local HH:mm
-  publishWindowEnd      String           @default("22:00")
-  timezone              String           @default("Asia/Bahrain")
-  reelDurationSec       Int              @default(10) // measured avg watch time on these accounts: 3–9 s
+  promoteToIds           String[]              @default([])
+  handle                 String?
+  externalId             String? // provider brand/blog id or platform account id
+  language               Language              @default(ar)
+  businessCategory       String?
+  allowedProductIds      String[]
+  allowedCategoryIds     String[]              @default([]) // whole categories allowed (scales to hundreds of products)
+  publishFormat          MediaFormat           @default(IMAGE_STORY)
+  publishIntervalMinutes Int                   @default(420) // V8: every 7 hours per account by default
+  publishWindowStart     String                @default("09:00") // local HH:mm
+  publishWindowEnd       String                @default("22:00")
+  timezone               String                @default("Asia/Bahrain")
+  reelDurationSec        Int                   @default(10) // measured avg watch time on these accounts: 3–9 s
   /// FIXED = always publishFormat · GROWTH_MIX = scheduler rotates formats toward formatMix (default 60% Reels / 30% feed / 10% stories)
-  formatStrategy        String           @default("FIXED")
-  formatMix             Json?
-  autoPublishEnabled    Boolean          @default(false) // per-account switch
-  autonomousAuthorized  Boolean          @default(false) // admin explicitly authorised autonomous publishing
+  formatStrategy         String                @default("FIXED")
+  formatMix              Json?
+  autoPublishEnabled     Boolean               @default(false) // per-account switch
+  autonomousAuthorized   Boolean               @default(false) // admin explicitly authorised autonomous publishing
   autonomousAuthorizedAt DateTime?
   autonomousAuthorizedBy String?
-  nextPublishAt         DateTime?
-  lastPublishedAt       DateTime?
-  maxDailyAds           Int              @default(4)
-  paused                Boolean          @default(false) // V8: per-account emergency pause (blocks generation AND submission)
-  pausedReason          String?
-  pausedAt              DateTime?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-  connection            SocialConnection?
-  advertisements        Advertisement[]
-  fingerprints          ContentFingerprint[]
-  schedules             PublicationSchedule[]
-  jobs                  PublicationJob[]
+  nextPublishAt          DateTime?
+  lastPublishedAt        DateTime?
+  maxDailyAds            Int                   @default(10)
+  paused                 Boolean               @default(false) // V8: per-account emergency pause (blocks generation AND submission)
+  pausedReason           String?
+  pausedAt               DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  connection             SocialConnection?
+  advertisements         Advertisement[]
+  fingerprints           ContentFingerprint[]
+  schedules              PublicationSchedule[]
+  jobs                   PublicationJob[]
+  ideas                  Idea[]
+  comments               SocialComment[]
+  leads                  Lead[]
 
   @@index([autoPublishEnabled, nextPublishAt])
   @@map("social_accounts")
-  ideas             Idea[]
 }
 
 model SocialConnection {
-  id                 String           @id @default(cuid())
-  accountId          String           @unique
-  account            SocialAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  provider           String // "metricool" | "meta" | ...
-  providerBrandId    String? // Metricool blogId
-  providerNetwork    String? // network key used by provider (instagram, facebook, ...)
-  status             ConnectionStatus @default(NOT_CONNECTED)
-  encryptedToken     String? // AES-256-GCM, only for direct OAuth adapters
-  tokenExpiresAt     DateTime?
-  scopes             String[]
-  canPublish         Boolean          @default(false)
-  lastVerifiedAt     DateTime?
-  lastError          String?
-  providerSnapshot   Json? // raw (non-secret) provider confirmation
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  id               String           @id @default(cuid())
+  accountId        String           @unique
+  account          SocialAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  provider         String // "metricool" | "meta" | ...
+  providerBrandId  String? // Metricool blogId
+  providerNetwork  String? // network key used by provider (instagram, facebook, ...)
+  status           ConnectionStatus @default(NOT_CONNECTED)
+  encryptedToken   String? // AES-256-GCM, only for direct OAuth adapters
+  tokenExpiresAt   DateTime?
+  scopes           String[]
+  canPublish       Boolean          @default(false)
+  lastVerifiedAt   DateTime?
+  lastError        String?
+  providerSnapshot Json? // raw (non-secret) provider confirmation
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@map("social_connections")
 }
@@ -259,104 +261,106 @@ model ProductCategory {
 }
 
 model Product {
-  id                String          @id @default(cuid())
-  slug              String          @unique
-  categoryId        String
-  category          ProductCategory @relation(fields: [categoryId], references: [id])
-  name              String
-  titleAr           String
-  titleEn           String
-  titleMl           String?
-  targetAudience    String[]
-  occasions         String[]
-  visualGuidelines  String
+  id                  String          @id @default(cuid())
+  slug                String          @unique
+  categoryId          String
+  category            ProductCategory @relation(fields: [categoryId], references: [id])
+  name                String
+  titleAr             String
+  titleEn             String
+  titleMl             String?
+  targetAudience      String[]
+  occasions           String[]
+  visualGuidelines    String
   recommendedMessages Json // {ar:[...], en:[...], ml:[...]}
   relevantAccountTags String[]
-  active            Boolean         @default(true)
-  performanceScore  Float           @default(0) // rolling, updated from verified results
-  priceFrom         Float? // starting price in the business currency — only used by the WhatsApp/Meta catalogue
-  catalogDescription String? // customer-facing description for the catalogue / public product page
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  briefs            CreativeBrief[]
-  advertisements    Advertisement[]
+  active              Boolean         @default(true)
+  performanceScore    Float           @default(0) // rolling, updated from verified results
+  priceFrom           Float? // starting price in the business currency — only used by the WhatsApp/Meta catalogue
+  photoKey            String? // real product photo — reference for the AI (the product is drawn as it really is)
+  catalogDescription  String? // customer-facing description for the catalogue / public product page
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  briefs              CreativeBrief[]
+  advertisements      Advertisement[]
+  ideas               Idea[]
 
   @@index([active])
   @@index([categoryId, active])
   @@map("products")
-  ideas             Idea[]
+  leads Lead[]
 }
 
 // ───────────────────────── Creative ─────────────────────────
 model CreativeBrief {
-  id            String   @id @default(cuid())
-  accountId     String
-  productId     String
-  product       Product  @relation(fields: [productId], references: [id])
-  language      Language
-  ideaKey       String // normalised concept key
-  idea          String
-  audience      String
-  occasion      String
+  id               String          @id @default(cuid())
+  accountId        String
+  productId        String
+  product          Product         @relation(fields: [productId], references: [id])
+  language         Language
+  ideaKey          String // normalised concept key
+  idea             String
+  audience         String
+  occasion         String
   sceneDescription String
-  headline      String
-  supportingCopy String?
-  cta           String
-  caption       String
-  hashtags      String[]
-  styleNotes    String?
-  rawJson       Json
-  provider      String // openai | dry-run
-  createdAt     DateTime @default(now())
-  advertisements Advertisement[]
+  headline         String
+  supportingCopy   String?
+  cta              String
+  caption          String
+  hashtags         String[]
+  styleNotes       String?
+  rawJson          Json
+  provider         String // openai | dry-run
+  createdAt        DateTime        @default(now())
+  advertisements   Advertisement[]
 
   @@index([accountId, createdAt])
   @@map("creative_briefs")
 }
 
 model DesignTemplate {
-  id          String   @id @default(cuid())
-  key         String   @unique
-  name        String
-  format      MediaFormat
-  layout      Json // layer geometry
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id        String      @id @default(cuid())
+  key       String      @unique
+  name      String
+  format    MediaFormat
+  layout    Json // layer geometry
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
 
   @@map("design_templates")
 }
 
 model Advertisement {
-  id             String         @id @default(cuid())
-  accountId      String
-  account        SocialAccount  @relation(fields: [accountId], references: [id])
-  productId      String
-  product        Product        @relation(fields: [productId], references: [id])
-  briefId        String?
-  brief          CreativeBrief? @relation(fields: [briefId], references: [id])
-  templateKey    String?
-  format         MediaFormat
-  language       Language
-  state          AdState        @default(DRAFT)
-  dryRun         Boolean        @default(false) // produced without real AI — never publishable
-  channels       SocialPlatform[] // publishing networks (empty = the account's own platform)
-  options        Json? // design type/style, reel style/duration, audio …
-  headline       String?
-  caption        String?
-  logoSha256     String?
-  qcReport       Json?
-  qcPassed       Boolean        @default(false)
-  layerManifest  Json? // what was rendered in which box (for QC & audit)
-  errorMessage   String?
-  scheduleId     String?        @unique
-  schedule       PublicationSchedule? @relation(fields: [scheduleId], references: [id])
-  createdBy      String? // userId or "scheduler"
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  media          MediaAsset[]
-  approvals      ApprovalRequest[]
-  jobs           PublicationJob[]
-  fingerprints   ContentFingerprint[]
+  id            String               @id @default(cuid())
+  accountId     String
+  account       SocialAccount        @relation(fields: [accountId], references: [id])
+  productId     String
+  product       Product              @relation(fields: [productId], references: [id])
+  briefId       String?
+  brief         CreativeBrief?       @relation(fields: [briefId], references: [id])
+  templateKey   String?
+  format        MediaFormat
+  language      Language
+  state         AdState              @default(DRAFT)
+  dryRun        Boolean              @default(false) // produced without real AI — never publishable
+  channels      SocialPlatform[] // publishing networks (empty = the account's own platform)
+  options       Json? // design type/style, reel style/duration, audio …
+  headline      String?
+  caption       String?
+  logoSha256    String?
+  qcReport      Json?
+  qcPassed      Boolean              @default(false)
+  layerManifest Json? // what was rendered in which box (for QC & audit)
+  errorMessage  String?
+  scheduleId    String?              @unique
+  schedule      PublicationSchedule? @relation(fields: [scheduleId], references: [id])
+  createdBy     String? // userId or "scheduler"
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  media         MediaAsset[]
+  approvals     ApprovalRequest[]
+  jobs          PublicationJob[]
+  fingerprints  ContentFingerprint[]
 
   @@index([accountId, createdAt])
   @@index([state])
@@ -365,31 +369,31 @@ model Advertisement {
 
 /// Music the owner uploaded and is licensed to use (e.g. bought stock music, YouTube Audio Library, Pixabay). Rotated per reel.
 model AudioTrack {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
-  mood        String   @default("upbeat") // upbeat | calm | luxury | festive | corporate
-  storageKey  String   @unique
+  mood        String    @default("upbeat") // upbeat | calm | luxury | festive | corporate
+  storageKey  String    @unique
   mimeType    String
   durationSec Float
-  startSec    Float    @default(0) // where the usable part starts (e.g. skip a slow intro)
+  startSec    Float     @default(0) // where the usable part starts (e.g. skip a slow intro)
   bpm         Int?
   licenseNote String
-  active      Boolean  @default(true)
-  uses        Int      @default(0)
+  active      Boolean   @default(true)
+  uses        Int       @default(0)
   lastUsedAt  DateTime?
   createdBy   String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([active, mood])
   @@map("audio_tracks")
 }
 
 model MediaAsset {
-  id              String        @id @default(cuid())
+  id              String         @id @default(cuid())
   advertisementId String?
   advertisement   Advertisement? @relation(fields: [advertisementId], references: [id], onDelete: Cascade)
   role            String // SCENE | FINAL | VIDEO | THUMBNAIL | LAYER
-  storageKey      String        @unique
+  storageKey      String         @unique
   mimeType        String
   width           Int?
   height          Int?
@@ -398,7 +402,7 @@ model MediaAsset {
   sha256          String
   phash           String?
   meta            Json?
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime       @default(now())
 
   @@index([sha256])
   @@map("media_assets")
@@ -421,17 +425,17 @@ model ContentFingerprint {
 
 // ───────────────────────── Scheduling & publishing ─────────────────────────
 model PublicationSchedule {
-  id          String        @id @default(cuid())
-  accountId   String
-  account     SocialAccount @relation(fields: [accountId], references: [id])
-  campaignId  String?
-  campaign    Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  slotAt      DateTime // publish time slot (UTC)
-  status      String        @default("PLANNED") // PLANNED | GENERATING | READY | DONE | SKIPPED | FAILED
-  reason      String?
+  id            String         @id @default(cuid())
+  accountId     String
+  account       SocialAccount  @relation(fields: [accountId], references: [id])
+  campaignId    String?
+  campaign      Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  slotAt        DateTime // publish time slot (UTC)
+  status        String         @default("PLANNED") // PLANNED | GENERATING | READY | DONE | SKIPPED | FAILED
+  reason        String?
   advertisement Advertisement?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@unique([accountId, slotAt]) // one slot per account per time — idempotent scheduler
   @@index([slotAt, status])
@@ -440,27 +444,27 @@ model PublicationSchedule {
 
 /// Recurring or one-off campaign: a NEW design is generated for every slot (never a repost).
 model Campaign {
-  id           String       @id @default(cuid())
+  id           String                @id @default(cuid())
   name         String
   accountIds   String[]
   productId    String? // null = AI picks per account
   format       MediaFormat?
   language     Language?
   direction    Json? // content type, market, segment, occasion, idea
-  scheduleType String       @default("RECURRING") // ONCE | RECURRING
-  everyHours   Int          @default(24)
+  scheduleType String                @default("RECURRING") // ONCE | RECURRING
+  everyHours   Int                   @default(24)
   daysOfWeek   Int[] // 0=Sun … 6=Sat (Asia/Bahrain); empty = every day
-  timeMode     String       @default("BEST") // BEST | FIXED
+  timeMode     String                @default("BEST") // BEST | FIXED
   startAt      DateTime // first slot (FIXED / ONCE) or start date (BEST)
   endAt        DateTime?
   maxRuns      Int?
-  active       Boolean      @default(true)
+  active       Boolean               @default(true)
   nextRunAt    DateTime?
   lastRunAt    DateTime?
-  runs         Int          @default(0)
+  runs         Int                   @default(0)
   createdBy    String
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
   schedules    PublicationSchedule[]
 
   @@index([active, nextRunAt])
@@ -468,26 +472,26 @@ model Campaign {
 }
 
 model PublicationJob {
-  id              String         @id @default(cuid())
-  idempotencyKey  String         @unique
+  id              String               @id @default(cuid())
+  idempotencyKey  String               @unique
   advertisementId String
-  advertisement   Advertisement  @relation(fields: [advertisementId], references: [id])
+  advertisement   Advertisement        @relation(fields: [advertisementId], references: [id])
   accountId       String
-  account         SocialAccount  @relation(fields: [accountId], references: [id])
+  account         SocialAccount        @relation(fields: [accountId], references: [id])
   provider        String
-  state           AdState        @default(QUEUED)
+  state           AdState              @default(QUEUED)
   scheduledFor    DateTime
   /// Networks this job sends to (empty = legacy: the ad's channels). Google Business Profile gets its own job (different text rules).
-  networks        SocialPlatform[] @default([])
+  networks        SocialPlatform[]     @default([])
   /// false = satellite job (e.g. Google Business Profile copy): never changes the advertisement's state
-  primary         Boolean        @default(true)
+  primary         Boolean              @default(true)
   lockedBy        String?
   lockedAt        DateTime?
-  attemptCount    Int            @default(0)
+  attemptCount    Int                  @default(0)
   nextCheckAt     DateTime?
   lastError       String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
   attempts        PublicationAttempt[]
   result          PublicationResult?
 
@@ -496,37 +500,37 @@ model PublicationJob {
 }
 
 model PublicationAttempt {
-  id             String         @id @default(cuid())
-  jobId          String
-  job            PublicationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  attemptNo      Int
-  outcome        AttemptOutcome?
-  httpStatus     Int?
-  requestSummary Json?
+  id              String          @id @default(cuid())
+  jobId           String
+  job             PublicationJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  attemptNo       Int
+  outcome         AttemptOutcome?
+  httpStatus      Int?
+  requestSummary  Json?
   responseSummary Json?
-  error          String?
-  startedAt      DateTime       @default(now())
-  finishedAt     DateTime?
+  error           String?
+  startedAt       DateTime        @default(now())
+  finishedAt      DateTime?
 
   @@unique([jobId, attemptNo])
   @@map("publication_attempts")
 }
 
 model PublicationResult {
-  id              String         @id @default(cuid())
-  jobId           String         @unique
-  job             PublicationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  providerPostId  String?
-  providerStatus  String?
-  publicUrl       String?
-  verifiedAt      DateTime? // only set when provider confirmed PUBLISHED
-  metrics         Json?
-  engagementScore Float?
+  id               String         @id @default(cuid())
+  jobId            String         @unique
+  job              PublicationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  providerPostId   String?
+  providerStatus   String?
+  publicUrl        String?
+  verifiedAt       DateTime? // only set when provider confirmed PUBLISHED
+  metrics          Json?
+  engagementScore  Float?
   metricsFetchedAt DateTime? // V8: last authorised analytics import from the provider
-  metricsSource   String? // "metricool" | "manual"
-  rawResponse     Json?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  metricsSource    String? // "metricool" | "manual"
+  rawResponse      Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@map("publication_results")
 }
@@ -689,4 +693,70 @@ model Idea {
 
   @@index([accountId, status])
   @@map("ideas")
+}
+
+/// «التعليقات»: comments on our Instagram posts (official Graph API or pasted by the owner), analysed by AI.
+/// Replies are drafts until a human sends them — nothing is posted automatically.
+model SocialComment {
+  id             String        @id @default(cuid())
+  accountId      String
+  account        SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  externalId     String?       @unique // Instagram comment id (Graph API); null for pasted comments
+  mediaId        String?
+  permalink      String?
+  username       String?
+  text           String
+  postedAt       DateTime?
+  source         String        @default("manual") // manual | graph
+  category       String? // order | price | info | praise | complaint | spam | other
+  sentiment      String? // positive | neutral | negative
+  urgent         Boolean       @default(false)
+  language       String?
+  summary        String?
+  suggestedReply String?
+  status         String        @default("NEW") // NEW | REPLIED | IGNORED
+  repliedText    String?
+  repliedAt      DateTime?
+  repliedBy      String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([accountId, status])
+  @@index([status, urgent, createdAt])
+  @@map("social_comments")
+}
+
+/// «العملاء والطلبات»: inquiries from comments (automatic) or added by hand (phone, WhatsApp, branch visit),
+/// followed until won or lost. Values are what the owner records — nothing is estimated.
+model Lead {
+  id             String         @id @default(cuid())
+  accountId      String? // the account that brought the customer (attribution)
+  account        SocialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  commentId      String?        @unique
+  source         String         @default("manual") // comment | whatsapp | phone | walkin | dm | other
+  name           String?
+  contact        String?
+  need           String
+  productId      String?
+  product        Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  status         String         @default("NEW") // NEW | CONTACTED | QUOTED | WON | LOST
+  valueBhd       Float?
+  lostReason     String?
+  nextFollowUpAt DateTime?
+  notes          String?
+  createdBy      String?
+  firstContactAt DateTime?
+  wonAt          DateTime?
+  closedAt       DateTime?
+  /// quote built in the system: { no, items:[{desc,qty,unit}], discount, notes, validUntil, at } — prices typed by the owner
+  quote          Json?
+  quoteNo        Int?           @unique
+  /// messages sent from the sales scripts: [{ key, at, by }]
+  touches        Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([status, nextFollowUpAt])
+  @@index([accountId, createdAt])
+  @@map("leads")
 }

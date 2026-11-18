@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🔒 ثغرة أمنية
+    url: https://github.com/bhfccai1-lgtm/future-creative/security/advisories/new
+    about: أبلغ عن الثغرات بشكل خاص — لا تفتحها كمشكلة عامة (انظر SECURITY.md)

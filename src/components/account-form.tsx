@@ -11,7 +11,7 @@ type Account = {
   publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string; gbpAuto?: boolean; gbpPerWeek?: number; autoChannels?: string[]; pinterestBoard?: string | null;
 };
 
-const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], allowedCategoryIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 4, formatStrategy: 'GROWTH_MIX' };
+const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], allowedCategoryIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 10, formatStrategy: 'GROWTH_MIX' };
 
 const NET_AR: Record<string, string> = { instagram: 'إنستغرام', facebook: 'فيسبوك', tiktok: 'تيك توك', threads: 'ثريدز', youtube: 'يوتيوب Shorts', pinterest: 'بنترست', linkedin: 'لينكدإن', twitter: 'X' };
 const NET_NOTE: Record<string, string> = { youtube: 'الريلز فقط', tiktok: 'ريلز وصور', pinterest: 'صور وريلز + رابط صفحة المنتج', linkedin: 'جمهور الشركات', twitter: 'نص قصير خاص', threads: 'نص قصير خاص', facebook: 'منشور/ريلز/ستوري' };
@@ -53,7 +53,7 @@ export function AccountForm({ account, products, categories = [], linked = [] }:
         </select>
         <p className="mt-1 text-xs text-slate-500">بيانات حساباتك: الريلز وصلت 5–7 أضعاف وصول الصور، والستوري لا تجلب متابعين جددًا.</p></div>
       <div><label className="label">النشر كل</label>
-        <select className="input" value={a.publishIntervalMinutes} onChange={(e) => { const m = Number(e.target.value); setA((x) => ({ ...x, publishIntervalMinutes: m, maxDailyAds: Math.max(1, Math.ceil(1440 / m)) })); }}>
+        <select className="input" value={a.publishIntervalMinutes} onChange={(e) => { const m = Number(e.target.value); setA((x) => ({ ...x, publishIntervalMinutes: m, maxDailyAds: Math.max(10, x.maxDailyAds, Math.ceil(1440 / m)) })); }}>
           {[...new Set([3, 4, 5, 6, 7, 8, 9, 12, 24, 48].map((h) => h * 60).concat(a.publishIntervalMinutes))].sort((x, y) => x - y).map((m) => <option key={m} value={m}>{m % 60 ? `${m} دقيقة` : `${m / 60} ساعات`}</option>)}
         </select></div>
       <div><label className="label">بداية نافذة النشر</label><input type="time" className="input ltr" value={a.publishWindowStart} onChange={(e) => set('publishWindowStart', e.target.value)} /></div>

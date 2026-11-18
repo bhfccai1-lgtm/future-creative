@@ -15,13 +15,15 @@ export const CreativeBriefSchema = z.object({
   styleNotes: z.string().max(400),
   /** Carousel only: 3–4 teaching/benefit slides; empty for other formats. */
   slides: z.array(z.object({ title: z.string().max(60), body: z.string().max(220) })).max(5).default([]),
+  /** Reel only: the shot-by-shot story (hook → context → product → benefit); empty for other formats. */
+  storyboard: z.array(z.object({ beat: z.enum(['hook', 'context', 'product', 'benefit']), scene: z.string().max(600) })).max(4).default([]),
 });
 export type CreativeBriefOut = z.infer<typeof CreativeBriefSchema>;
 
 /** JSON schema for OpenAI structured outputs (strict mode — all fields required). */
 export const CreativeBriefJsonSchema = {
   type: 'object', additionalProperties: false,
-  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'badge', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes', 'slides'],
+  required: ['idea', 'ideaKey', 'audience', 'occasion', 'sceneDescription', 'headline', 'badge', 'supportingCopy', 'cta', 'caption', 'hashtags', 'styleNotes', 'slides', 'storyboard'],
   properties: {
     idea: { type: 'string', description: 'One-sentence advertising concept, in English' },
     ideaKey: { type: 'string', description: 'short kebab-case English key summarising the concept angle, e.g. "mug-morning-ritual-gift"' },
@@ -36,6 +38,7 @@ export const CreativeBriefJsonSchema = {
     hashtags: { type: 'array', items: { type: 'string' }, description: '8-12 hashtags, each starting with #: local reach + niche product + occasion + 1-2 English' },
     styleNotes: { type: 'string' },
     slides: { type: 'array', description: 'ONLY when format is IMAGE_CAROUSEL: 3-4 swipeable slides in the target language that teach or help (ideas, use-cases, how to choose, how to order) — title max 5 words, body max 20 words, no prices/times/promises/phone numbers. For every other format return [].', items: { type: 'object', additionalProperties: false, required: ['title', 'body'], properties: { title: { type: 'string' }, body: { type: 'string' } } } },
+    storyboard: { type: 'array', description: 'ONLY when format is REEL_VIDEO: 3-4 shots IN ORDER — hook (the scroll-stopping first frame), context (the moment/person it is for), product (the SAME product being used or revealed, close detail), benefit (the result/emotion). Each scene is an English photo brief of the same hero product with its own setting/angle; no text, letters, logos or people\'s faces as the focus. For every other format return [].', items: { type: 'object', additionalProperties: false, required: ['beat', 'scene'], properties: { beat: { type: 'string', enum: ['hook', 'context', 'product', 'benefit'] }, scene: { type: 'string' } } } },
   },
 } as const;
 
@@ -53,6 +56,8 @@ export interface BriefRequest {
   occasionKey?: string;
   /** Target format (IMAGE_CAROUSEL needs slides). */
   format?: string;
+  /** The owner's own words: standing guidance + reasons they gave when rejecting designs. */
+  ownerFeedback?: string[];
   /** Idea bank context: what worked on this account, upcoming occasions, angles to cover. */
   ideaContext?: { winners?: string[]; upcoming?: string[]; angles?: string[] };
 }
@@ -73,6 +78,8 @@ export interface VoiceoverRequest {
   language: string; persona: string; seconds: number; maxWords: number;
   copy: { headline: string; badge?: string | null; support?: string | null; cta?: string | null; caption?: string | null };
   product: { titleEn: string; titleAr: string };
+  /** the reel's shots in order (beat: scene) — the voice-over follows them */
+  storyboard?: string[];
 }
 
 export interface AiProvider {
@@ -81,14 +88,26 @@ export interface AiProvider {
   generateBrief(req: BriefRequest, model: string): Promise<{ brief: CreativeBriefOut; usage: TextUsage; model: string }>;
   /** Optional vision transcription of text drawn in an image (used to review full-AI posters). */
   readText?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
+  /** one vision pass over a drawn poster: the exact text it shows + a layout inspection against the reserved zones */
+  inspectPoster?(png: Buffer, model: string, zones: { bottomPct: number; productHint: string }): Promise<{ text: string; layout: { productVisible: boolean; bottomClear: boolean; issues: string[] }; usage: TextUsage; model: string }>;
+  /** comment triage + reply drafts (one call per batch); replies are validated by the system before anyone can send them */
+  analyzeComments?(req: CommentAnalysisRequest, model: string): Promise<{ items: CommentAnalysis[]; usage: TextUsage; model: string }>;
+  /** the visual STYLE of a reference design as words (no texts, products, people or brands) */
+  describeStyle?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
   suggestIdeas(req: BriefRequest, model: string, count: number): Promise<{ ideas: IdeaSuggestion[]; usage: TextUsage; model: string }>;
   /** Optional: writes a spoken voice-over script in a given dialect/language for a persona. */
   writeVoiceover?(req: VoiceoverRequest, model: string): Promise<{ script: string; usage: TextUsage; model: string }>;
   /** Optional art-director: scores candidate images (JPEG) for the brief and returns the index of the best one. */
   judgeImages?(images: Buffer[], brief: string, model: string): Promise<{ best: number; scores: number[]; reason: string; usage: TextUsage; model: string }>;
-  generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string }): Promise<ImageResult>;
+  generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string; references?: Buffer[] }): Promise<ImageResult>;
 }
 
 export class AiProviderError extends Error {
   constructor(public code: 'AUTH' | 'BILLING' | 'RATE_LIMIT' | 'CONTENT_POLICY' | 'BAD_OUTPUT' | 'NETWORK' | 'UNKNOWN', message: string, public retryable: boolean) { super(message); }
 }
+
+export interface CommentAnalysisRequest {
+  business: string; phones: { label: string; phone: string }[]; cta: string;
+  comments: { id: string; text: string; username?: string | null; account: string; post?: string | null }[];
+}
+export interface CommentAnalysis { id: string; category: string; sentiment: string; urgent: boolean; language: string; summary: string; reply: string }

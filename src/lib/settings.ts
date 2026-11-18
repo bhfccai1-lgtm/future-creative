@@ -22,6 +22,8 @@ export const SettingsSchema = z.object({
   }).default({}),
   killSwitchReason: z.string().nullable().default(null),
   /** Idea bank: weekly rated ideas per active account; approved ideas feed automatic generation. */
+  /** occasions the owner switched off — never picked automatically, hidden from the calendar suggestions */
+  disabledOccasions: z.array(z.string().max(60)).max(100).default([]),
   ideas: z.object({
     weekly: z.boolean().default(true),
     perAccount: z.number().int().min(1).max(6).default(5),
@@ -78,10 +80,30 @@ export const SettingsSchema = z.object({
     /** Automatic designs (schedule, campaigns, n8n) that don't choose: design method and style. 'auto' method = full AI poster for vertical formats on approval-mode accounts, verified layers for autonomous ones. */
     autoRenderMode: z.enum(['auto', 'layered', 'ai_full']).default('auto'),
     autoDesignStyle: z.string().max(40).default('fc_signature'),
+    /** owner's standing guidance for every design (taste), e.g. «ألوان فاتحة، بدون وجوه أشخاص» */
+    ownerGuidance: z.string().max(600).default(''),
+    /** phrases that must never appear in any idea/headline/caption/drawn text (a slogan that keeps leaking) */
+    bannedPhrases: z.array(z.string().max(80)).max(30).default(['إذا ما صحتني القهوة']),
+    /** reference design (storage key): every full-AI poster follows its style/quality level, never its texts */
+    styleReferenceKey: z.string().max(200).nullable().default(null),
+    /** the reference design's style in words (made once at upload) — this text, never the image, guides each poster */
+    styleReferenceBrief: z.string().max(1500).default(''),
+    /** a reference design per format group (vertical = story & reel, feed, square, carousel); falls back to the general one */
+    styleRefsByFormat: z.record(z.enum(['vertical', 'feed', 'square', 'carousel']), z.object({ key: z.string().max(200).nullable().default(null), brief: z.string().max(1500).default('') })).default({}),
+    /** send the real product photo + reference design to the image model (images.edit) */
+    useReferences: z.boolean().default(true),
     /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */
     creativeConcepts: z.boolean().default(true),
+    /** full-AI posters: re-draw up to N times when the machine-read text is misspelled/missing (each retry = 1 image + 1 read) */
+    aiFullTextRetries: z.number().int().min(0).max(3).default(2),
     /** art director: generate N candidate images and keep the best (vision-scored). 1 = off. Each extra candidate costs one image. */
     bestOf: z.number().int().min(1).max(3).default(1),
+    /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */
+    conceptTournament: z.boolean().default(true),
+    /** FreeLLMAPI (self-hosted, free provider tiers) — used ONLY for idea suggestions; copy, poster and text checks stay on OpenAI */
+    freeLlm: z.object({ enabled: z.boolean().default(false), model: z.string().max(120).default('auto') }).default({}),
+    /** full-AI text still wrong after the re-draws → re-render the design with system-typeset (verified) Arabic text */
+    verifiedTextFallback: z.boolean().default(true),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),
@@ -104,6 +126,14 @@ export const SettingsSchema = z.object({
       sfx: z.boolean().default(true),
       musicVolume: z.number().min(0.1).max(1).default(0.35),
       defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']).default('upbeat'),
+      /** reading pace of the voice-over */
+      pace: z.enum(['slow', 'normal', 'fast']).default('normal'),
+      /** listen back to the generated voice (transcription) and re-take once when words were not clear */
+      verifyPronunciation: z.boolean().default(true),
+      /** burned-in captions of the voice-over on reels (muted viewing) */
+      captions: z.boolean().default(true),
+      /** owner's pronunciation dictionary: written form → how it must be read (diacritics / Arabic spelling) */
+      lexicon: z.array(z.object({ from: z.string().min(1).max(60), to: z.string().min(1).max(80) })).max(150).default([]),
     }).default({}),
     // USD estimates — editable because provider pricing changes. Verify against current OpenAI pricing.
     pricing: z.object({
@@ -165,6 +195,13 @@ export const SettingsSchema = z.object({
       accountIds: z.array(z.string()).default([]),
     }).default({}),
   }).default({}),
+  /** «المبيعات»: monthly target, quote defaults, reactivation of past customers. Prices are always typed by a person. */
+  sales: z.object({
+    monthlyTargetBhd: z.number().min(0).max(10_000_000).default(0),
+    quoteValidityDays: z.number().int().min(1).max(90).default(7),
+    quoteTerms: z.string().max(600).default('العرض صالح حتى التاريخ المذكور. يبدأ التنفيذ بعد اعتماد التصميم النهائي من العميل.'),
+    reactivationDays: z.number().int().min(14).max(365).default(60),
+  }).default({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
@@ -196,7 +233,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

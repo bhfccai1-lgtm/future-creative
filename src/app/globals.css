@@ -3,6 +3,8 @@
 @tailwind utilities;
 
 :root { color-scheme: light; }
+/* fieldsets default to min-width: min-content — long content would push forms wider than a phone screen */
+fieldset { min-width: 0; }
 body { @apply bg-slate-50 text-slate-900 antialiased; overflow-x: clip; -webkit-tap-highlight-color: transparent; }
 .ltr { direction: ltr; unicode-bidi: isolate; }
 .card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm; }

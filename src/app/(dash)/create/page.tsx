@@ -18,7 +18,7 @@ export default async function CreatePage({ searchParams }: { searchParams: Promi
   ]);
   return (
     <>
-      <PageHeader title="إنشاء تصميم جديد" subtitle="يولد الذكاء الاصطناعي الفكرة والمشهد والنص، ثم يركّب النظام الشعار الأصلي والأرقام والعبارة كطبقات ثابتة." />
+      <PageHeader title="إنشاء تصميم جديد" subtitle="يرسم الذكاء الاصطناعي الملصق كاملًا (العناوين، الشارة الذهبية، المزايا، الزخارف، المنتج) ويُدقَّق نصه آليًا، ثم يضيف النظام الشعار الأصلي وزر الطلب وأرقام الفرعين." />
       {!logo && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">لا يوجد شعار رسمي معتمد — التوليد محظور حتى رفع الشعار الأصلي واعتماده من «إعدادات الهوية».</div>}
       {s.ai.dryRun && <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">وضع التجربة مفعّل: يُنشأ مشهد إجرائي محلي دون استدعاء OpenAI ودون تكلفة. هذه المعاينات <b>غير قابلة للنشر</b>.</div>}
       <p className="mb-4 text-sm text-slate-600">تريد تكرار الإعلان بتصميم جديد كل عدة ساعات أو في تاريخ ووقت محدد؟ استخدم <Link className="font-bold text-navy-700 underline" href="/campaigns">الحملات المتكررة</Link>.</p>

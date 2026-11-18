@@ -8,6 +8,7 @@ import { ActionButton } from '@/components/action-button';
 import { IdeasSettings } from '@/components/ideas-settings';
 import { IDEA_ANGLES } from '@/lib/creative/options';
 import { ideaContext } from '@/lib/ideas/bank';
+import { tasteProfile } from '@/lib/creative/taste';
 
 export const dynamic = 'force-dynamic';
 const STATUS_AR: Record<IdeaStatus, string> = { NEW: 'جديدة', APPROVED: 'معتمدة', USED: 'استُخدمت', REJECTED: 'مرفوضة' };
@@ -24,11 +25,26 @@ export default async function IdeasPage({ searchParams }: { searchParams: Promis
   const counts = account ? await prisma.idea.groupBy({ by: ['status'], where: { accountId: account.id }, _count: true }) : [];
   const ideas = account ? await prisma.idea.findMany({ where: { accountId: account.id, status }, include: { product: { select: { titleAr: true } } }, orderBy: [{ score: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }], take: 60 }) : [];
   const ctx = account ? await ideaContext(account) : null;
+  const taste = await tasteProfile();
   const q = (o: { account?: string; status?: string }) => `/ideas?account=${o.account ?? account?.id ?? ''}&status=${o.status ?? status}`;
   return (
     <>
       <PageHeader title="💡 بنك الأفكار" subtitle="أفكار مقيّمة لكل حساب من 12 زاوية إعلانية مجربة، مبنية على ما نجح فعلًا في حسابك والمناسبات القادمة. الأفكار المعتمدة يستخدمها النشر الآلي تلقائيًا — كل فكرة مرة واحدة." />
       <Card title="الإعدادات" className="mb-6"><IdeasSettings initial={s.ideas} /></Card>
+      <Card collapsible title={`🎯 ذوقك كما تعلّمه النظام (${taste.decisions} قرار خلال 90 يومًا)`} className="mb-6">
+        {taste.decisions === 0 ? <p className="text-sm text-slate-500">لم تتخذ قرارات موافقة أو رفض بعد. كل «اعتماد» و«رفض» (مع السبب) يعلّم النظام ذوقك.</p> : (
+          <div className="space-y-3 text-sm">
+            {taste.feedback.length > 0 && <div><div className="mb-1 font-bold text-navy-800">ملاحظاتك التي يتبعها المصمم:</div><ul className="list-inside list-disc text-slate-700">{taste.feedback.map((f) => <li key={f}>{f}</li>)}</ul></div>}
+            {(['concept', 'designStyle'] as const).map((k) => taste.stats[k].length > 0 && (
+              <div key={k}><div className="mb-1 font-bold text-navy-800">{k === 'concept' ? 'الأفكار البصرية' : 'أساليب التصميم'}:</div>
+                <div className="flex flex-wrap gap-1">{taste.stats[k].map((x) => (
+                  <Badge key={x.value} tone={taste.blocked[k].includes(x.value) ? 'red' : taste.liked[k].includes(x.value) ? 'green' : 'slate'}>
+                    {taste.blocked[k].includes(x.value) ? '✗ ' : taste.liked[k].includes(x.value) ? '♥ ' : ''}{x.label} · {x.approved}✓ {x.rejected}✗
+                  </Badge>))}</div></div>))}
+            <p className="text-xs text-slate-500">♥ تحبه (≥75% موافقة) · ✗ خرج من التناوب (رُفض مرارًا: ≤35% موافقة من 3 قرارات فأكثر) · الأفكار والعناوين المرفوضة لا تُقترح مرة أخرى. لتغيير التوجيه الدائم: إعدادات الذكاء الاصطناعي ← استوديو الإبداع.</p>
+          </div>
+        )}
+      </Card>
       {account && (
         <>
           <div className="mb-4 flex flex-wrap gap-1">

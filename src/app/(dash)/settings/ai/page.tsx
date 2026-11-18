@@ -3,6 +3,7 @@ import { getSettings, secretStatus } from '@/lib/settings';
 import { estimateAdCost, monthToDateSpend } from '@/lib/ai/cost';
 import { Card, PageHeader, Stat } from '@/components/ui';
 import { AiSettingsForm } from '@/components/ai-settings-form';
+import { FreeLlmSettings } from '@/components/freellm-settings';
 import { GeminiForm } from '@/components/gemini-form';
 import { AudioSettings } from '@/components/audio-settings';
 import { prisma } from '@/lib/db';
@@ -21,6 +22,7 @@ export default async function AiSettingsPage() {
         <Stat label="التكلفة التقديرية لكل إعلان" value={<span className="ltr">${estimateAdCost(s).toFixed(3)}</span>} hint="موجز نصي + صورة مشهد واحدة" />
       </div>
       <Card><AiSettingsForm ai={s.ai} keyStatus={key} /></Card>
+      <Card title="FreeLLMAPI — أفكار مجانية (اختياري)" className="mt-6"><FreeLlmSettings domain={process.env.DOMAIN} /></Card>
       <Card title="Gemini Veo — إنتاج فيديو الريلز بالذكاء الاصطناعي" className="mt-6"><GeminiForm video={s.ai.video} keyStatus={await secretStatus('GEMINI_API_KEY')} /></Card>
       <Card title="صوت الريلز — موسيقى مرخّصة، تعليق صوتي، مؤثرات" className="mt-6"><AudioSettings audio={s.ai.audio} tracks={(await prisma.audioTrack.findMany({ orderBy: { createdAt: 'desc' } })).map((t) => ({ id: t.id, name: t.name, mood: t.mood, durationSec: t.durationSec, startSec: t.startSec, licenseNote: t.licenseNote, active: t.active, uses: t.uses }))} /></Card>
     </>
