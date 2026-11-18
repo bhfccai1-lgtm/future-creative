@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { baitPhrases, stripBait } from '../growth/algorithm';
 import { pickFromWeek, programContentTypes } from '../growth/program';
 import { findBanned, stripBanned } from '../creative/banned';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
@@ -234,6 +235,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       else { avoidIdeas.unshift(r.brief.ideaKey, r.brief.idea); avoidHeadlines.unshift(r.brief.headline); }
     }
     if (!brief) throw new AppError('NO_UNIQUE_IDEA', 'تعذر إيجاد فكرة إعلانية غير مكررة خلال فترة المنع لهذا الحساب.', 409);
+    // engagement bait («منشن صديقك», «اكتب نعم», «like if»…) is demoted by Instagram → removed before anything is saved
+    if (baitPhrases(brief.caption).length) brief = { ...brief, caption: stripBait(brief.caption) };
     // STEP 07 auto-fix: a caption without a call to action gets the official one + the verified branch numbers
     if (captionIssues(brief.caption, { cta: ctaFor(business, lang), hashtags: brief.hashtags }).some((x) => x.includes('دعوة'))) {
       brief = { ...brief, caption: `${brief.caption.trim()}\n\n${ctaFor(business, lang)} 📞 ${contactLines(business, lang).map((c) => `${c.label} ${c.phone}`).join(' · ')}` };

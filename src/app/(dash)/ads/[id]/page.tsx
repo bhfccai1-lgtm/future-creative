@@ -5,6 +5,8 @@ import { Card, PageHeader, Badge } from '@/components/ui';
 import { StateBadge, FORMAT_AR, LANG_AR } from '@/components/state-badge';
 import { ActionButton } from '@/components/action-button';
 import { DeleteAdButton } from '@/components/delete-ad-button';
+import { algoInputFromAd, algorithmScore } from '@/lib/growth/algorithm';
+import { peakHoursFor } from '@/lib/growth/peak-hours';
 import { fmtLocal } from '@/lib/time';
 import { qcVerdict, QC_VERDICT_AR, type QcReport } from '@/lib/qc';
 import Link from 'next/link';
@@ -64,6 +66,7 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
           {video && <p className="text-xs text-slate-500 ltr">MP4 · {video.width}×{video.height} · {video.durationSec?.toFixed(1)}s · {(video.bytes / 1e6).toFixed(1)}MB</p>}
         </div>
         <div className="space-y-6">
+          <AlgorithmCard algo={algorithmScore(algoInputFromAd(ad, (await peakHoursFor(ad.account).catch(() => null))?.hours))} />
           <Card title={`فحص الجودة ${qc ? (qc.passed ? '— ناجح' : '— فشل') : ''}`}>
             {qc ? (
               <ul className="space-y-1 text-sm">
@@ -115,5 +118,25 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
         </div>
       </div>
     </>
+  );
+}
+
+const GRADE: Record<string, string> = { A: 'bg-emerald-600', B: 'bg-sky-600', C: 'bg-amber-500', D: 'bg-red-600' };
+function AlgorithmCard({ algo }: { algo: ReturnType<typeof algorithmScore> }) {
+  const todo = algo.signals.filter((x) => !x.ok);
+  return (
+    <Card title="📈 مؤشر الخوارزمية — جاهزية التصميم للوصول" collapsible>
+      <div className="mb-3 flex items-center gap-3">
+        <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-2xl font-extrabold text-white ${GRADE[algo.grade]}`}>{algo.score}</div>
+        <p className="text-sm leading-6 text-slate-600">مبني على إشارات أعلنتها إنستغرام: مدة المشاهدة وأول ثانيتين، الإرسال لصديق والحفظ، الأصالة، البحث بالكلمات، والوقت. {todo.length ? `${todo.length} تحسين ممكن:` : 'جاهز ✓'}</p>
+      </div>
+      <ul className="space-y-1.5 text-sm">{algo.signals.map((x) => (
+        <li key={x.id} className={x.ok ? 'text-slate-700' : 'text-amber-800'}>
+          {x.ok ? '✅' : '⚠️'} {x.label} <span className="text-xs text-slate-400">({x.points}/{x.max})</span>
+          {x.tip && <div className="mr-6 text-xs text-slate-600">💡 {x.tip}</div>}
+        </li>
+      ))}</ul>
+      <p className="mt-3 text-[11px] text-slate-500">مؤشر جاهزية وليس توقعًا للوصول. لا يُستخدم أي تفاعل وهمي أو حيل — إنستغرام يعاقب عليها.</p>
+    </Card>
   );
 }

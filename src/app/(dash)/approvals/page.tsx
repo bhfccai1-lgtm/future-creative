@@ -5,6 +5,7 @@ import { PageHeader, Badge, Empty } from '@/components/ui';
 import { ActionButton } from '@/components/action-button';
 import { fmtLocal } from '@/lib/time';
 import { qcVerdict, QC_VERDICT_AR, type QcReport } from '@/lib/qc';
+import { algoInputFromAd, algorithmScore } from '@/lib/growth/algorithm';
 
 const REASON = { MANUAL_MODE: 'الوضع اليدوي', ASSISTED_MODE: 'الوضع المساعد', QC_FAILED: 'فشل فحص الجودة' } as Record<string, string>;
 const FORMAT_AR: Record<string, string> = { REEL_VIDEO: 'ريلز', IMAGE_CAROUSEL: 'كاروسيل', IMAGE_FEED: 'منشور', IMAGE_SQUARE: 'مربع', IMAGE_STORY: 'ستوري' };
@@ -13,7 +14,7 @@ export default async function ApprovalsPage() {
   const user = await requirePageUser();
   const canPublish = user.perms.includes('publish:now');
   const canPublishNow = canPublish;
-  const items = await prisma.approvalRequest.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' }, include: { advertisement: { include: { media: true, account: true, product: true } } } });
+  const items = await prisma.approvalRequest.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' }, include: { advertisement: { include: { media: true, account: true, product: true, brief: { select: { hashtags: true } }, jobs: { select: { scheduledFor: true, primary: true } } } } } });
   // «فشل» but every final file exists (e.g. a late step was stopped) — can still be published by a person
   const stuck = (await prisma.advertisement.findMany({ where: { state: 'FAILED', dryRun: false, createdAt: { gte: new Date(Date.now() - 14 * 86400_000) }, media: { some: { role: 'FINAL' } } }, orderBy: { createdAt: 'desc' }, take: 12, include: { media: true, account: true } }))
     .filter((a) => a.format !== 'REEL_VIDEO' || a.media.some((m) => m.role === 'VIDEO'));
@@ -73,6 +74,7 @@ export default async function ApprovalsPage() {
                 <div className="mb-1 flex flex-wrap gap-1">
                   <Badge tone={verdict === 'PASS' ? 'green' : verdict === 'REJECTED' ? 'red' : 'amber'}>الجودة: {QC_VERDICT_AR[verdict]}</Badge>
                   <Badge tone={r.reason === 'QC_FAILED' ? 'red' : 'blue'}>{REASON[r.reason] ?? r.reason}</Badge>
+                  {(() => { const a = algorithmScore(algoInputFromAd(ad)); return <Badge tone={a.score >= 85 ? 'green' : a.score >= 70 ? 'blue' : 'amber'}>📈 الخوارزمية {a.score}</Badge>; })()}
                 </div>
                 <div className="text-base font-extrabold text-navy-900">{ad.headline}</div>
                 <div className="text-xs text-slate-500">{ad.account.name} · {ad.product.titleAr} · {fmtLocal(r.createdAt)}</div>
