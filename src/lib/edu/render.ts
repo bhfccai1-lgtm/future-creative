@@ -58,7 +58,10 @@ async function text(c: Ctx, raw: string, o: { size: number; weight?: Weight; col
   if (!str.trim()) return { png: await sharp({ create: { width: 1, height: 1, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer(), w: 1, h: 1, fits: true, missing: [] };
   const { fontfile, desc } = fontFor('ar', weight);
   const body = o.ltr ? `⁦${str}⁩` : str;
-  const { data, info } = await sharp({ text: { text: `<span foreground="${color}">${escapeMarkup(body)}</span>`, font: `${desc} ${size}`, fontfile, width: Math.max(10, Math.round(o.w)), rgba: true, align, wrap: 'word', dpi: 72, spacing: -Math.round(size * 0.22) } })
+  // Pango mirrors left/right for a right-to-left paragraph: ask for the opposite so wrapped Arabic lines really align right
+  const strong = str.match(/[A-Za-z\u0590-\u08FF]/)?.[0];
+  const pangoAlign = !o.ltr && strong && /[\u0590-\u08FF]/.test(strong) && align !== 'centre' ? (align === 'right' ? 'left' : 'right') : align;
+  const { data, info } = await sharp({ text: { text: `<span foreground="${color}">${escapeMarkup(body)}</span>`, font: `${desc} ${size}`, fontfile, width: Math.max(10, Math.round(o.w)), rgba: true, align: pangoAlign, wrap: 'word', dpi: 72, spacing: -Math.round(size * 0.22) } })
     .png().toBuffer({ resolveWithObject: true });
   const r = { png: data, w: info.width, h: info.height, fits: info.width <= o.w + 2, missing: missingGlyphs(str, 'ar', weight) };
   c.cache.set(key, r);
@@ -112,6 +115,189 @@ async function stack(c: Ctx, w: number, blocks: (Text & { id: string; kind?: Pla
   const png = await sharp({ create: { width: Math.max(1, Math.round(w)), height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([...(rects.length ? [{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H}">${rects.join('')}</svg>`) }] : []), ...comps]).png().toBuffer();
   return { png, h: H, parts };
+}
+
+// ───────────────────────── «مطوية احترافية لامعة» (glossy) building blocks ─────────────────────────
+const GOLD = '#e2b13c', GOLD_D = '#a87a1c', CREAM = '#fffaeb';
+const isGlossy = (c: Ctx) => resolveStyle(c.s) === 'glossy';
+/** headings, captions and cover lettering keep their designed size: auto-fit grows the reading text, not the ornaments */
+const fixed = (c: Ctx, size: number) => (size * Math.min(c.s.fontScale, 1.05)) / c.s.fontScale;
+const shade = (hex: string, f: number) => { const n = parseInt(hex.slice(1), 16); const ch = (v: number) => Math.max(0, Math.min(255, Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f))); return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => ch(v).toString(16).padStart(2, '0')).join('')}`; };
+const blank1 = () => sharp({ create: { width: 1, height: 1, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
+let gid = 0;
+type Icon = 'book' | 'search' | 'target' | 'pin' | 'star' | 'bulb' | 'pencil' | 'heart' | 'person' | 'books' | 'calc' | 'leaf';
+/** icon picked from the heading's meaning (vector — no emoji font needed in the print file) */
+export function iconFor(heading: string, i: number): Icon {
+  const h = heading.toLowerCase();
+  if (/مفرد|كلمات|معاني|vocab|word/.test(h)) return 'search';
+  if (/معنى|مفهوم|تعريف|ما هو|ما هي|meaning|what is/.test(h)) return 'book';
+  if (/أفكار|أهداف|الرئيس|idea|goal|objective/.test(h)) return 'target';
+  if (/معالم|أماكن|مكان|موقع|landmark|place/.test(h)) return 'pin';
+  if (/نشاط|تمرين|تدرّب|تدرب|أسئلة|activity|practice|exercise/.test(h)) return 'pencil';
+  if (/ملخص|تذكّر|تذكر|مهم|summary|remember/.test(h)) return 'star';
+  if (/مثال|أمثلة|حل|example|solve/.test(h)) return 'calc';
+  if (/طبيع|نبات|بيئة|ماء|nature|plant|water/.test(h)) return 'leaf';
+  if (/حب|وطن|قيم|love|value/.test(h)) return 'heart';
+  return (['bulb', 'book', 'target', 'star', 'pencil', 'leaf'] as Icon[])[i % 6];
+}
+/** a white medallion with a gold ring and a coloured vector icon, centred at (cx, cy) */
+function medallion(cx: number, cy: number, r: number, icon: Icon, col: string, red = '#dc2626'): string {
+  const u = r / 10, x = (v: number) => (cx + v * u).toFixed(1), y = (v: number) => (cy + v * u).toFixed(1), sw = (v: number) => (v * u).toFixed(1);
+  const g = `m${++gid}`;
+  const ring = `<defs><radialGradient id="${g}" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eef4ff"/></radialGradient></defs><circle cx="${cx}" cy="${cy + u * 0.8}" r="${r}" fill="#000" fill-opacity="0.18"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="${GOLD}"/><circle cx="${cx}" cy="${cy}" r="${r - u * 1.1}" fill="url(#${g})"/>`;
+  const paths: Record<Icon, string> = {
+    book: `<path d="M${x(-6)} ${y(-3.5)} Q${x(-3)} ${y(-5)} ${x(0)} ${y(-3.5)} L${x(0)} ${y(5)} Q${x(-3)} ${y(3.5)} ${x(-6)} ${y(5)} Z" fill="#fff" stroke="${col}" stroke-width="${sw(0.9)}"/><path d="M${x(6)} ${y(-3.5)} Q${x(3)} ${y(-5)} ${x(0)} ${y(-3.5)} L${x(0)} ${y(5)} Q${x(3)} ${y(3.5)} ${x(6)} ${y(5)} Z" fill="#fff" stroke="${col}" stroke-width="${sw(0.9)}"/><path d="M${x(-4.5)} ${y(-1)} L${x(-1.5)} ${y(-1.5)} M${x(-4.5)} ${y(1)} L${x(-1.5)} ${y(0.5)} M${x(4.5)} ${y(-1)} L${x(1.5)} ${y(-1.5)} M${x(4.5)} ${y(1)} L${x(1.5)} ${y(0.5)}" stroke="${col}" stroke-opacity="0.6" stroke-width="${sw(0.6)}"/>`,
+    search: `<circle cx="${x(-1)}" cy="${y(-1)}" r="${sw(4)}" fill="#dbeafe" stroke="${col}" stroke-width="${sw(1.4)}"/><path d="M${x(2)} ${y(2)} L${x(5.5)} ${y(5.5)}" stroke="${GOLD_D}" stroke-width="${sw(2.2)}" stroke-linecap="round"/><path d="M${x(-3)} ${y(-2.5)} Q${x(-2)} ${y(-4)} ${x(-0.5)} ${y(-4)}" stroke="#fff" stroke-width="${sw(0.9)}" fill="none"/>`,
+    target: `<circle cx="${cx}" cy="${cy}" r="${sw(6)}" fill="${red}"/><circle cx="${cx}" cy="${cy}" r="${sw(4.3)}" fill="#fff"/><circle cx="${cx}" cy="${cy}" r="${sw(2.7)}" fill="${red}"/><circle cx="${cx}" cy="${cy}" r="${sw(1.1)}" fill="#fff"/><path d="M${x(0)} ${y(0)} L${x(6)} ${y(-6)}" stroke="${col}" stroke-width="${sw(1)}"/><path d="M${x(6)} ${y(-6)} L${x(4)} ${y(-6.5)} M${x(6)} ${y(-6)} L${x(6.5)} ${y(-4)}" stroke="${col}" stroke-width="${sw(1)}"/>`,
+    pin: `<path d="M${x(0)} ${y(6.5)} C${x(-5)} ${y(1)} ${x(-5)} ${y(-1)} ${x(-5)} ${y(-2)} A${sw(5)} ${sw(5)} 0 1 1 ${x(5)} ${y(-2)} C${x(5)} ${y(-1)} ${x(5)} ${y(1)} ${x(0)} ${y(6.5)} Z" fill="${red}"/><circle cx="${cx}" cy="${y(-2)}" r="${sw(2)}" fill="#fff"/>`,
+    star: `<polygon points="${star(cx, cy, r * 0.62)}" fill="${GOLD}" stroke="${GOLD_D}" stroke-width="${sw(0.6)}"/>`,
+    bulb: `<circle cx="${cx}" cy="${y(-1.5)}" r="${sw(4.2)}" fill="#fde047" stroke="${GOLD_D}" stroke-width="${sw(0.7)}"/><rect x="${x(-2)}" y="${y(2.6)}" width="${sw(4)}" height="${sw(3)}" rx="${sw(0.6)}" fill="${col}"/>`,
+    pencil: `<g transform="rotate(-45 ${cx} ${cy})"><rect x="${x(-1.6)}" y="${y(-6)}" width="${sw(3.2)}" height="${sw(9)}" fill="#f59e0b"/><rect x="${x(-1.6)}" y="${y(-7)}" width="${sw(3.2)}" height="${sw(1.4)}" fill="#f472b6"/><polygon points="${x(-1.6)},${y(3)} ${x(1.6)},${y(3)} ${x(0)},${y(6.5)}" fill="#fde7c4"/><polygon points="${x(-0.6)},${y(5.2)} ${x(0.6)},${y(5.2)} ${x(0)},${y(6.5)}" fill="#334155"/></g>`,
+    heart: `<path d="M${x(0)} ${y(5.5)} C${x(-7)} ${y(0)} ${x(-5)} ${y(-6)} ${x(0)} ${y(-2.5)} C${x(5)} ${y(-6)} ${x(7)} ${y(0)} ${x(0)} ${y(5.5)} Z" fill="${red}"/>`,
+    person: `<circle cx="${cx}" cy="${y(-2.5)}" r="${sw(2.8)}" fill="${col}"/><path d="M${x(-5)} ${y(5.5)} Q${x(-5)} ${y(0.5)} ${x(0)} ${y(0.5)} Q${x(5)} ${y(0.5)} ${x(5)} ${y(5.5)} Z" fill="${col}"/>`,
+    books: `<rect x="${x(-5)}" y="${y(1.5)}" width="${sw(10)}" height="${sw(2.6)}" rx="${sw(0.5)}" fill="#dc2626"/><rect x="${x(-4.4)}" y="${y(-1.2)}" width="${sw(9)}" height="${sw(2.6)}" rx="${sw(0.5)}" fill="#16a34a"/><rect x="${x(-4.8)}" y="${y(-3.9)}" width="${sw(9.4)}" height="${sw(2.6)}" rx="${sw(0.5)}" fill="${col}"/>`,
+    calc: `<rect x="${x(-4.2)}" y="${y(-5.5)}" width="${sw(8.4)}" height="${sw(11)}" rx="${sw(1)}" fill="${col}"/><rect x="${x(-3)}" y="${y(-4.3)}" width="${sw(6)}" height="${sw(2.4)}" fill="#e0f2fe"/>${[0, 1, 2].flatMap((rr) => [0, 1, 2].map((cc) => `<rect x="${x(-3 + cc * 2.2)}" y="${y(-0.9 + rr * 2.1)}" width="${sw(1.6)}" height="${sw(1.5)}" fill="#fff"/>`)).join('')}`,
+    leaf: `<path d="M${x(-5)} ${y(5)} C${x(-5)} ${y(-4)} ${x(2)} ${y(-6)} ${x(6)} ${y(-6)} C${x(6)} ${y(1)} ${x(2)} ${y(5)} ${x(-5)} ${y(5)} Z" fill="#22c55e"/><path d="M${x(-5)} ${y(5)} L${x(3)} ${y(-3)}" stroke="#15803d" stroke-width="${sw(0.8)}"/>`,
+  };
+  return ring + paths[icon];
+}
+/** glossy heading pill: deep gradient, gold rim, a highlight on the top half, and the icon medallion at the reading start */
+async function glossyPill(c: Ctx, w: number, label: string, icon: Icon, o: { size?: number; id: string } = { id: 'pill' }) {
+  const size = o.size ?? 14.5;
+  const R = Math.round(c.k * 6.2); // medallion radius
+  const t = await text(c, label, { size: fixed(c, size), weight: 'extrabold', color: '#ffffff', w: Math.round(w - R * 2 - c.k * 8), align: 'centre' });
+  const ph = Math.max(Math.round(t.h + c.k * 4), Math.round(R * 1.55));
+  const pw = Math.min(Math.round(w - R * 0.9), Math.round(t.w + R * 2 + c.k * 10));
+  const H = Math.max(R * 2 + Math.round(c.k * 1.2), ph + Math.round(c.k * 1.6));
+  const px = Math.round((w - pw) / 2 + (c.rtl ? -R * 0.45 : R * 0.45)), py = Math.round((H - ph) / 2);
+  const mx = c.rtl ? px + pw : px, my = H / 2 - c.k * 0.3;
+  const g = `p${++gid}`, deep = shade(c.t.p, -0.35);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H}"><defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(c.t.p, 0.12)}"/><stop offset="1" stop-color="${deep}"/></linearGradient></defs>
+    <rect x="${px}" y="${py + c.k * 0.7}" width="${pw}" height="${ph}" rx="${ph / 2}" fill="#000" fill-opacity="0.16"/>
+    <rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="${ph / 2}" fill="url(#${g})" stroke="${GOLD}" stroke-width="${Math.max(2, c.k * 0.55)}"/>
+    <rect x="${px + ph * 0.3}" y="${py + ph * 0.1}" width="${pw - ph * 0.6}" height="${ph * 0.36}" rx="${ph * 0.18}" fill="#ffffff" fill-opacity="0.16"/>
+    ${medallion(mx, my, R, icon, c.t.p)}</svg>`;
+  const tx = Math.round(c.rtl ? px + (pw - R) / 2 - t.w / 2 : px + R + (pw - R) / 2 - t.w / 2);
+  const png = await sharp({ create: { width: Math.round(w), height: Math.round(H), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: Buffer.from(svg) }, { input: t.png, left: Math.max(0, tx), top: Math.round(py + (ph - t.h) / 2) }]).png().toBuffer();
+  return { png, h: Math.round(H), parts: [{ id: o.id, kind: 'text' as const, rect: { x: Math.max(0, tx), y: Math.round(py + (ph - t.h) / 2), w: t.w, h: t.h }, fits: t.fits, missing: t.missing, text: label }] };
+}
+/** bullet lines with round blue gloss dots (drawn, not a font glyph) */
+async function dotList(c: Ctx, w: number, lines: string[], idp: string, size = 11) {
+  const d = Math.round(pt(c, size) * 0.5), gap = Math.round(d * 1.3);
+  const rows = await Promise.all(lines.map((l) => text(c, l, { size, weight: 'bold', color: shade(c.t.ink, 0.05), w: w - d - gap })));
+  let y = 0; const comps: OverlayOptions[] = []; const svg: string[] = []; const parts: Omit<Placed, 'region'>[] = [];
+  const g = `d${++gid}`;
+  for (const [i, r] of rows.entries()) {
+    const tx = c.rtl ? w - d - gap - r.w : d + gap;
+    const cy = y + pt(c, size) * 0.72, cx = c.rtl ? w - d / 2 : d / 2;
+    svg.push(`<circle cx="${cx}" cy="${cy}" r="${d / 2}" fill="url(#${g})"/><circle cx="${cx - d * 0.15}" cy="${cy - d * 0.17}" r="${d * 0.16}" fill="#fff" fill-opacity="0.8"/>`);
+    comps.push({ input: r.png, left: Math.round(tx), top: Math.round(y) });
+    parts.push({ id: `${idp}:${i}`, kind: 'text', rect: { x: Math.round(tx), y: Math.round(y), w: r.w, h: r.h }, fits: r.fits, missing: r.missing, text: lines[i] });
+    y += r.h + Math.round(c.k * 1.4);
+  }
+  const H = Math.max(1, Math.round(y - c.k * 1.4));
+  const png = await sharp({ create: { width: Math.round(w), height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H}"><defs><radialGradient id="${g}" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="${shade(c.t.p, 0.35)}"/><stop offset="1" stop-color="${shade(c.t.p, -0.25)}"/></radialGradient></defs>${svg.join('')}</svg>`) }, ...comps]).png().toBuffer();
+  return { png, h: H, parts };
+}
+/** cream card with a gold rim and a soft shadow around rendered blocks */
+async function creamCard(c: Ctx, w: number, blocks: { png: Buffer; h: number; parts: Omit<Placed, 'region'>[] }[]) {
+  const pad = Math.round(c.k * 3.4), gap = Math.round(c.k * 2.2), sh = Math.round(c.k * 0.9);
+  const H = blocks.reduce((a, b) => a + b.h + gap, 0) - gap + pad * 2;
+  let y = pad; const comps: OverlayOptions[] = []; const parts: Omit<Placed, 'region'>[] = [];
+  for (const b of blocks) { comps.push({ input: b.png, left: pad, top: y }); for (const p of b.parts) parts.push({ ...p, rect: { ...p.rect, x: p.rect.x + pad, y: p.rect.y + y } }); y += b.h + gap; }
+  const rx = Math.round(c.k * 4.5), sw = Math.max(2, c.k * 0.6);
+  const png = await sharp({ create: { width: Math.round(w), height: H + sh, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H + sh}"><rect x="${sw}" y="${sw + sh}" width="${w - 2 * sw}" height="${H - 2 * sw}" rx="${rx}" fill="#7a5a12" fill-opacity="0.16"/><rect x="${sw}" y="${sw}" width="${w - 2 * sw}" height="${H - 2 * sw}" rx="${rx}" fill="${CREAM}" stroke="${GOLD}" stroke-width="${sw}"/><rect x="${sw * 2.6}" y="${sw * 2.6}" width="${w - 5.2 * sw}" height="${H - 5.2 * sw}" rx="${rx * 0.8}" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="${sw * 0.6}"/></svg>`) }, ...comps]).png().toBuffer();
+  return { png, h: H + sh, parts };
+}
+/** a styled table (e.g. «الكلمة | معناها»): coloured header cells, tinted first column, rounded frame */
+async function glossyTable(c: Ctx, w: number, tb: { headers: string[]; rows: string[][] }, idp: string) {
+  const n = tb.headers.length, pad = Math.round(c.k * 2), line = Math.max(1, Math.round(c.k * 0.35));
+  const widths = n === 2 ? [w * 0.36, w * 0.64] : Array.from({ length: n }, () => w / n);
+  const xs = widths.map((_, i) => { const before = widths.slice(0, i).reduce((a, v) => a + v, 0); return c.rtl ? w - before - widths[i] : before; });
+  const headCols = ['#6d28d9', c.t.p, shade(c.t.p, -0.2), '#0e7490'];
+  const all = [tb.headers, ...tb.rows.map((r) => Array.from({ length: n }, (_, i) => r[i] ?? ''))];
+  const cells = await Promise.all(all.map((row, ri) => Promise.all(row.map((v, ci) => text(c, v, { size: ri === 0 ? 11.5 : 10.5, weight: ri === 0 || ci === 0 ? 'extrabold' : 'regular', color: ri === 0 ? '#ffffff' : ci === 0 ? '#3b0764' : c.t.ink, w: Math.round(widths[ci] - pad * 2), align: ri === 0 || (ci === 0 && n === 2) ? 'centre' : undefined })))));
+  const hs = cells.map((r) => Math.max(...r.map((x) => x.h)) + pad * 2);
+  const H = hs.reduce((a, v) => a + v, 0);
+  const svg: string[] = []; const comps: OverlayOptions[] = []; const parts: Omit<Placed, 'region'>[] = [];
+  const clip = `t${++gid}`;
+  svg.push(`<defs><clipPath id="${clip}"><rect x="${line}" y="${line}" width="${w - 2 * line}" height="${H - 2 * line}" rx="${c.k * 3}"/></clipPath></defs><g clip-path="url(#${clip})"><rect width="${w}" height="${H}" fill="#ffffff"/>`);
+  let y = 0;
+  for (const [ri, row] of cells.entries()) {
+    for (const [ci, cell] of row.entries()) {
+      const fill = ri === 0 ? headCols[ci % headCols.length] : ci === 0 ? '#f3e8ff' : ri % 2 ? '#ffffff' : '#f8fafc';
+      svg.push(`<rect x="${xs[ci]}" y="${y}" width="${widths[ci]}" height="${hs[ri]}" fill="${fill}"/>`);
+      const tx = Math.round(xs[ci] + (cell.w < widths[ci] - pad * 2 && (ri === 0 || (ci === 0 && n === 2)) ? (widths[ci] - cell.w) / 2 : c.rtl ? widths[ci] - pad - cell.w : pad));
+      comps.push({ input: cell.png, left: tx, top: Math.round(y + (hs[ri] - cell.h) / 2) });
+      parts.push({ id: `${idp}:${ri}:${ci}`, kind: 'text', rect: { x: tx, y: Math.round(y + (hs[ri] - cell.h) / 2), w: cell.w, h: cell.h }, fits: cell.fits, missing: cell.missing, text: all[ri][ci] });
+    }
+    if (ri) svg.push(`<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#cbd5e1" stroke-width="${line}"/>`);
+    y += hs[ri];
+  }
+  for (let ci = 1; ci < n; ci++) { const xx = c.rtl ? xs[ci] + widths[ci] : xs[ci]; svg.push(`<line x1="${xx}" y1="0" x2="${xx}" y2="${H}" stroke="#cbd5e1" stroke-width="${line}"/>`); }
+  svg.push(`</g><rect x="${line}" y="${line}" width="${w - 2 * line}" height="${H - 2 * line}" rx="${c.k * 3}" fill="none" stroke="${c.t.p}" stroke-width="${line * 2.4}"/>`);
+  const png = await sharp({ create: { width: Math.round(w), height: Math.round(H), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H}">${svg.join('')}</svg>`) }, ...comps]).png().toBuffer();
+  return { png, h: Math.round(H), parts };
+}
+/** picture grid: rounded pictures with a gold rim and a cream caption pill overlapping the bottom (2 per row) */
+async function gallery(c: Ctx, w: number, items: { caption: string }[], secId: string) {
+  const perRow = items.length === 1 ? 1 : 2, gap = Math.round(c.k * 3);
+  const cw = Math.round((w - gap * (perRow - 1)) / perRow), ih = Math.round(cw * 0.78);
+  const caps = await Promise.all(items.map((g) => text(c, g.caption, { size: fixed(c, 10.5), weight: 'extrabold', color: shade(c.t.p, -0.45), w: Math.round(cw * 0.9), align: 'centre' })));
+  const capH = Math.max(...caps.map((x) => x.h)) + Math.round(c.k * 2.4);
+  const cellH = ih + Math.round(capH * 0.6), rows = Math.ceil(items.length / perRow);
+  const H = rows * cellH + (rows - 1) * gap;
+  const svg: string[] = []; const comps: OverlayOptions[] = []; const parts: Omit<Placed, 'region'>[] = [];
+  const rim = Math.max(2, Math.round(c.k * 0.7)), rx = Math.round(c.k * 3.5);
+  for (const [i] of items.entries()) {
+    const r = Math.floor(i / perRow), col = i % perRow;
+    const x = c.rtl ? w - (col + 1) * cw - col * gap : col * (cw + gap), y = r * (cellH + gap);
+    svg.push(`<rect x="${x}" y="${y + c.k * 0.8}" width="${cw}" height="${ih}" rx="${rx}" fill="#000" fill-opacity="0.15"/><rect x="${x}" y="${y}" width="${cw}" height="${ih}" rx="${rx}" fill="${GOLD}"/>`);
+    const key = c.images[`gal:${secId}:${i}`];
+    let placedImg = false;
+    if (key) {
+      try {
+        const buf = await storage().get(key); const meta = await sharp(buf).metadata();
+        const iw = cw - 2 * rim, ihh = ih - 2 * rim;
+        const img = await sharp(buf).resize(iw, ihh, { fit: 'cover' }).png().toBuffer();
+        const rounded = await sharp(img).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${iw}" height="${ihh}"><rect width="${iw}" height="${ihh}" rx="${rx - rim}" fill="#fff"/></svg>`), blend: 'dest-in' }]).png().toBuffer();
+        comps.push({ input: rounded, left: Math.round(x + rim), top: Math.round(y + rim) });
+        parts.push({ id: `img:gal:${secId}:${i}`, kind: 'image', rect: { x: Math.round(x + rim), y: Math.round(y + rim), w: iw, h: ihh }, fits: true, text: `${meta.width}x${meta.height}` });
+        placedImg = true;
+      } catch { /* drawn as a placeholder below */ }
+    }
+    if (!placedImg) { const g = `g${++gid}`; svg.push(`<defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfdbfe"/><stop offset="1" stop-color="#eff6ff"/></linearGradient></defs><rect x="${x + rim}" y="${y + rim}" width="${cw - 2 * rim}" height="${ih - 2 * rim}" rx="${rx - rim}" fill="url(#${g})"/>${medallion(x + cw / 2, y + ih * 0.42, Math.min(cw, ih) * 0.16, 'pin', c.t.p)}`); }
+    const t = caps[i], pw = Math.min(cw - c.k * 1, t.w + c.k * 8), px = x + (cw - pw) / 2, py = y + ih - capH * 0.4;
+    svg.push(`<rect x="${px}" y="${py + c.k * 0.6}" width="${pw}" height="${capH}" rx="${Math.min(capH / 2, c.k * 4)}" fill="#000" fill-opacity="0.15"/><rect x="${px}" y="${py}" width="${pw}" height="${capH}" rx="${Math.min(capH / 2, c.k * 4)}" fill="${CREAM}" stroke="${GOLD}" stroke-width="${rim}"/>`);
+    const tx = Math.round(x + (cw - t.w) / 2), ty = Math.round(py + (capH - t.h) / 2);
+    comps.push({ input: t.png, left: tx, top: ty });
+    parts.push({ id: `${secId}:gal${i}`, kind: 'text', rect: { x: tx, y: ty, w: t.w, h: t.h }, fits: t.fits, missing: t.missing, text: items[i].caption });
+  }
+  const png = await sharp({ create: { width: Math.round(w), height: Math.round(H), channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${H}">${svg.join('')}</svg>`) }, ...comps]).png().toBuffer();
+  return { png, h: Math.round(H), parts };
+}
+/** the glossy items of one section: icon pill · picture · cream card (body + dotted bullets) · table · gallery · examples · exercises */
+function glossySection(c: Ctx, content: EduContent, sec: EduContent['sections'][number], si: number, rest: Item[]): Item[] {
+  const items: Item[] = [{ id: `${sec.id}:head`, render: (w) => glossyPill(c, w, sec.heading, iconFor(sec.heading, si), { id: `${sec.id}:head` }) }];
+  const imgKey = c.images[`sec:${sec.id}`];
+  if (imgKey) items.push(rest.find((x) => x.id === `${sec.id}:img`)!);
+  if (sec.body.trim() || sec.bullets.length) items.push({ id: `${sec.id}:card`, render: async (w) => {
+    const inner = w - Math.round(c.k * 6.8);
+    const blocks: { png: Buffer; h: number; parts: Omit<Placed, 'region'>[] }[] = [];
+    if (sec.body.trim()) { const b = await text(c, sec.body, { size: 11.5, weight: 'bold', color: shade(c.t.ink, 0.05), w: inner, align: 'centre' }); blocks.push(await stack(c, inner, [{ ...b, id: `${sec.id}:body`, text: sec.body }])); }
+    if (sec.bullets.length) blocks.push(await dotList(c, inner, sec.bullets, `${sec.id}:b`));
+    return creamCard(c, w, blocks);
+  } });
+  if (sec.table?.headers.length && sec.table.rows.length) items.push({ id: `${sec.id}:table`, render: (w) => glossyTable(c, w, sec.table!, `${sec.id}:tb`) });
+  if (sec.gallery.length) items.push({ id: `${sec.id}:gallery`, render: (w) => gallery(c, w, sec.gallery, sec.id) });
+  items.push(...rest.filter((x) => /:(ex|q)\d+$/.test(x.id)));
+  void content; void blank1;
+  return items;
 }
 
 function sectionItems(c: Ctx, content: EduContent, sections = content.sections, opt: { numbering?: { n: number }; showAnswers?: boolean } = {}): Item[] {
@@ -184,6 +370,7 @@ function sectionItems(c: Ctx, content: EduContent, sections = content.sections, 
       return { png, h: H, parts: [{ id: `${sec.id}:q${i}`, kind: tk ? 'equation' : 'text', rect: { x: Math.max(0, bx), y: 0, w: body.w, h: body.h }, fits: body.fits && num.fits, missing: body.missing, text: ex.q }] };
     } });
   }
+  if (isGlossy(c)) return sections.flatMap((sec) => glossySection(c, content, sec, content.sections.indexOf(sec), items.filter((x) => x.id.startsWith(`${sec.id}:`))));
   return items;
 }
 
@@ -205,6 +392,13 @@ function sectionCards(c: Ctx, content: EduContent): Item[] {
 }
 
 function listItem(c: Ctx, id: string, title: string, lines: string[], boxed = true): Item {
+  if (isGlossy(c)) return { id, render: async (w) => {
+    const pill = await glossyPill(c, w, title, id === 'objectives' ? 'target' : id === 'summary' ? 'star' : 'pencil', { id: `${id}:t` });
+    const card = await creamCard(c, w, [await dotList(c, w - Math.round(c.k * 6.8), lines, id, 10.5)]);
+    const gap = Math.round(c.k * 1.5), H = pill.h + gap + card.h;
+    const png = await sharp({ create: { width: Math.round(w), height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: pill.png, left: 0, top: 0 }, { input: card.png, left: 0, top: pill.h + gap }]).png().toBuffer();
+    return { png, h: H, parts: [...pill.parts, ...card.parts.map((p) => ({ ...p, rect: { ...p.rect, y: p.rect.y + pill.h + gap } }))] };
+  } };
   return { id, render: async (w) => {
     const pad = boxed ? Math.round(c.k * 3) : 0, inner = w - pad * 2;
     const t = await text(c, title, { size: 13, weight: 'extrabold', color: c.t.p, w: inner });
@@ -217,8 +411,18 @@ function listItem(c: Ctx, id: string, title: string, lines: string[], boxed = tr
   } };
 }
 
+function introItem(c: Ctx, content: EduContent): Item {
+  return { id: 'intro', render: async (w) => {
+    if (!isGlossy(c)) { const t = await text(c, content.intro, { size: 11.5, w }); return stack(c, w, [{ ...t, id: 'intro', text: content.intro }]); }
+    const inner = w - Math.round(c.k * 6.8);
+    const t = await text(c, content.intro, { size: 11.5, weight: 'bold', color: shade(c.t.ink, 0.05), w: inner, align: 'centre' });
+    return creamCard(c, w, [await stack(c, inner, [{ ...t, id: 'intro', text: content.intro }])]);
+  } };
+}
+
 /** Places items into columns (in reading order); returns what did not fit. */
-async function flow(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect: Rect }[], opts: { balance?: boolean } = {}): Promise<Item[]> {
+async function flow(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect: Rect }[], opts: { balance?: boolean; spread?: boolean } = {}): Promise<Item[]> {
+  if (opts.spread && cols.length === 1 && items.length) { const left = await spreadOnce(c, cv, items, cols[0]); if (left) return []; }
   if (opts.balance) {
     // balanced breaks must never cost a page: if they leave something over, undo and fill the columns in order
     const mark = { comps: cv.comps.length, placed: cv.placed.length };
@@ -227,6 +431,26 @@ async function flow(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect:
     cv.comps.length = mark.comps; cv.placed.length = mark.placed;
   }
   return flowOnce(c, cv, items, cols, false);
+}
+
+/** one panel whose content fits: distribute the free height between the items (a filled, calm panel instead of a gap at the bottom) */
+async function spreadOnce(c: Ctx, cv: Canvas, items: Item[], col: { id: string; rect: Rect }): Promise<boolean> {
+  const rs = []; for (const it of items) rs.push(await it.render(col.rect.w));
+  const base = Math.round(c.k * 3), total = rs.reduce((a, r) => a + r.h, 0);
+  if (total + base * (rs.length - 1) > col.rect.h) return false;
+  // the free height goes BETWEEN sections (a heading stays close to its card)
+  const group = (id: string) => id.split(':')[0];
+  const breaks = items.slice(1).filter((it, i) => group(it.id) !== group(items[i].id)).length;
+  const inner = (rs.length - 1 - breaks) * base;
+  const gap = breaks ? Math.min(c.k * 14, (col.rect.h - total - inner) / breaks) : base;
+  let y = col.rect.y + Math.min(c.k * 6, Math.max(0, (col.rect.h - total - inner - gap * breaks) / 2));
+  for (const [i, r] of rs.entries()) {
+    if (i) y += group(items[i].id) !== group(items[i - 1].id) ? gap : base;
+    cv.comps.push({ input: r.png, left: Math.round(col.rect.x), top: Math.round(y) });
+    for (const p of r.parts) cv.placed.push({ ...p, region: col.id, fits: p.fits, rect: { x: p.rect.x + col.rect.x, y: p.rect.y + Math.round(y), w: p.rect.w, h: p.rect.h } });
+    y += r.h;
+  }
+  return true;
 }
 
 async function flowOnce(c: Ctx, cv: Canvas, items: Item[], cols: { id: string; rect: Rect }[], balance: boolean): Promise<Item[]> {
@@ -276,7 +500,8 @@ interface PageDraft { label: string; regions: { id: string; label: string; rect:
 const newPage = (label: string): PageDraft => ({ label, regions: [], folds: [], cv: { svg: [], comps: [], placed: [] } });
 
 async function headerBand(c: Ctx, cv: Canvas, content: EduContent, r: Rect, region: string, big = 26) {
-  cv.svg.push(`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="${Math.round(c.k * 5)}" fill="${c.t.p}"/><rect x="${r.x}" y="${r.y + r.h - Math.round(c.k * 1.6)}" width="${r.w}" height="${Math.round(c.k * 1.6)}" fill="${c.t.a}"/>`);
+  if (isGlossy(c)) { const g = `hb${++gid}`, sw = Math.max(2, c.k * 0.9); cv.svg.push(`<defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(c.t.p, 0.1)}"/><stop offset="1" stop-color="${shade(c.t.p, -0.4)}"/></linearGradient></defs><rect x="${r.x}" y="${r.y + c.k}" width="${r.w}" height="${r.h}" rx="${c.k * 7}" fill="#000" fill-opacity="0.18"/><rect x="${r.x + sw / 2}" y="${r.y + sw / 2}" width="${r.w - sw}" height="${r.h - sw}" rx="${c.k * 7}" fill="url(#${g})" stroke="${GOLD}" stroke-width="${sw}"/><rect x="${r.x + c.k * 6}" y="${r.y + r.h * 0.08}" width="${r.w - c.k * 12}" height="${r.h * 0.32}" rx="${r.h * 0.16}" fill="#fff" fill-opacity="0.13"/>`); }
+  else cv.svg.push(`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="${Math.round(c.k * 5)}" fill="${c.t.p}"/><rect x="${r.x}" y="${r.y + r.h - Math.round(c.k * 1.6)}" width="${r.w}" height="${Math.round(c.k * 1.6)}" fill="${c.t.a}"/>`);
   const pad = Math.round(c.k * 6);
   const t = await text(c, content.title, { size: big, weight: 'extrabold', color: '#ffffff', w: r.w - pad * 2, align: 'centre' });
   const st = content.subtitle ? await text(c, content.subtitle, { size: 12, color: '#ffffff', w: r.w - pad * 2, align: 'centre' }) : null;
@@ -322,6 +547,58 @@ async function nameLines(c: Ctx, cv: Canvas, r: Rect, region: string) {
   }
 }
 
+
+/** glossy front cover: subject cloud · «درس» tag · title in a cream frame · the cover painting · name / class fields */
+async function glossyCover(c: Ctx, cv: Canvas, content: EduContent, f: { rect: Rect; safe: Rect }) {
+  const S = f.safe, en = c.s.lang === 'en', sw = Math.max(2, c.k * 0.8), deep = shade(c.t.p, -0.4);
+  let y = S.y;
+  // 1) subject «cloud» band
+  const subj = await text(c, `${en ? 'Subject' : 'مادة'} ${c.s.subject}`, { size: fixed(c, 15), weight: 'extrabold', color: '#ffffff', w: Math.round(S.w * 0.86), align: 'centre' });
+  const sh = subj.h + c.k * 6, g1 = `cv${++gid}`;
+  cv.svg.push(`<defs><linearGradient id="${g1}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(c.t.p, 0.1)}"/><stop offset="1" stop-color="${deep}"/></linearGradient></defs><rect x="${S.x}" y="${y + c.k}" width="${S.w}" height="${sh}" rx="${sh / 2}" fill="#000" fill-opacity="0.18"/><rect x="${S.x + sw / 2}" y="${y}" width="${S.w - sw}" height="${sh}" rx="${sh / 2}" fill="url(#${g1})" stroke="${GOLD}" stroke-width="${sw * 1.4}"/><rect x="${S.x + sh * 0.4}" y="${y + sh * 0.1}" width="${S.w - sh * 0.8}" height="${sh * 0.33}" rx="${sh * 0.16}" fill="#fff" fill-opacity="0.14"/>`);
+  cv.comps.push({ input: subj.png, left: Math.round(S.x + (S.w - subj.w) / 2), top: Math.round(y + (sh - subj.h) / 2) });
+  cv.placed.push({ id: 'subject', kind: 'text', rect: { x: Math.round(S.x + (S.w - subj.w) / 2), y: Math.round(y + (sh - subj.h) / 2), w: subj.w, h: subj.h }, region: 'front', fits: subj.fits, missing: subj.missing, text: c.s.subject });
+  y += sh + c.k * 6;
+  // 2) title frame with the «درس» tag on its top edge
+  const tag = await text(c, en ? 'Lesson' : 'درس', { size: fixed(c, 11), weight: 'extrabold', color: '#ffffff', w: Math.round(S.w * 0.5), align: 'centre' });
+  let size = fixed(c, 32), tt = await text(c, content.title, { size, weight: 'extrabold', color: '#9f1239', w: Math.round(S.w * 0.82), align: 'centre' });
+  while (size > fixed(c, 16) && (tt.h > S.h * 0.17 || !tt.fits)) { size -= 3; tt = await text(c, content.title, { size, weight: 'extrabold', color: '#9f1239', w: Math.round(S.w * 0.82), align: 'centre' }); }
+  const fh = tt.h + c.k * 9, th = tag.h + c.k * 2.4, tw = tag.w + c.k * 10;
+  cv.svg.push(`<rect x="${S.x + c.k * 2}" y="${y + c.k * 1.2}" width="${S.w - c.k * 4}" height="${fh}" rx="${c.k * 8}" fill="#000" fill-opacity="0.16"/><rect x="${S.x + c.k * 2}" y="${y}" width="${S.w - c.k * 4}" height="${fh}" rx="${c.k * 8}" fill="${CREAM}" stroke="${GOLD}" stroke-width="${sw * 2}"/><rect x="${S.x + c.k * 3.6}" y="${y + c.k * 1.6}" width="${S.w - c.k * 7.2}" height="${fh - c.k * 3.2}" rx="${c.k * 6.5}" fill="none" stroke="${GOLD_D}" stroke-opacity="0.5" stroke-width="${sw * 0.6}"/>`);
+  cv.svg.push(`<rect x="${S.x + (S.w - tw) / 2}" y="${y - th / 2}" width="${tw}" height="${th}" rx="${th / 2}" fill="${c.t.p}" stroke="${GOLD}" stroke-width="${sw}"/>`);
+  cv.comps.push({ input: tag.png, left: Math.round(S.x + (S.w - tag.w) / 2), top: Math.round(y - tag.h / 2) });
+  cv.placed.push({ id: 'lesson_tag', kind: 'text', rect: { x: Math.round(S.x + (S.w - tag.w) / 2), y: Math.round(y - tag.h / 2), w: tag.w, h: tag.h }, region: 'front', fits: tag.fits, text: 'درس' });
+  const tyy = Math.round(y + (fh - tt.h) / 2 + c.k * 0.8);
+  cv.comps.push({ input: tt.png, left: Math.round(S.x + (S.w - tt.w) / 2), top: tyy });
+  cv.placed.push({ id: 'title', kind: 'text', rect: { x: Math.round(S.x + (S.w - tt.w) / 2), y: tyy, w: tt.w, h: tt.h }, region: 'front', fits: tt.fits, missing: tt.missing, text: content.title });
+  y += fh + c.k * 4;
+  // 3) fields at the bottom (filled only with what was typed — never an invented name)
+  const fields: [string, string, Icon][] = [[en ? 'Student name:' : 'اسم الطالب:', c.s.student, 'person'], [en ? 'Class:' : 'الصف:', c.s.classSection || c.s.grade, 'books']];
+  if (c.s.school) fields.push([en ? 'School:' : 'المدرسة:', c.s.school, 'book']);
+  const R = c.k * 5.2, boxes: { l: Text; v: Text; icon: Icon }[] = [];
+  for (const [l, v, icon] of fields) boxes.push({ l: await text(c, l, { size: fixed(c, 10.5), weight: 'extrabold', color: '#9f1239', w: Math.round(S.w - R * 2 - c.k * 10) }), v: await text(c, v || '……………………', { size: fixed(c, 12), weight: 'extrabold', color: deep, w: Math.round(S.w - R * 2 - c.k * 10) }), icon });
+  const bh = boxes.map((b) => Math.max(b.l.h + b.v.h + c.k * 3.5, R * 2 + c.k * 2)), gap = c.k * 2.6;
+  const fieldsH = bh.reduce((a, v) => a + v + gap, 0) - gap;
+  let fy = S.y + S.h - fieldsH;
+  // 4) the cover painting fills the space between the title and the fields
+  const art = { x: S.x, y, w: S.w, h: Math.max(c.k * 20, fy - c.k * 4 - y) };
+  cv.svg.push(`<rect x="${art.x}" y="${art.y + c.k}" width="${art.w}" height="${art.h}" rx="${c.k * 5}" fill="#000" fill-opacity="0.15"/><rect x="${art.x - sw}" y="${art.y - sw}" width="${art.w + 2 * sw}" height="${art.h + 2 * sw}" rx="${c.k * 5 + sw}" fill="${GOLD}"/>`);
+  if (!(await placeImage(c, cv, 'cover', art, 'front'))) { const g = `ca${++gid}`; cv.svg.push(`<defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfdbfe"/><stop offset="1" stop-color="#f0f9ff"/></linearGradient></defs><rect x="${art.x}" y="${art.y}" width="${art.w}" height="${art.h}" rx="${c.k * 4}" fill="url(#${g})"/>`); await subjectBadge(c, cv, art, 'front'); }
+  for (const [i, b] of boxes.entries()) {
+    const h = bh[i];
+    cv.svg.push(`<rect x="${S.x}" y="${fy + c.k}" width="${S.w}" height="${h}" rx="${c.k * 5}" fill="#000" fill-opacity="0.14"/><rect x="${S.x + sw / 2}" y="${fy}" width="${S.w - sw}" height="${h}" rx="${c.k * 5}" fill="${CREAM}" stroke="${GOLD}" stroke-width="${sw * 1.4}"/>`);
+    const mx = c.rtl ? S.x + c.k * 3 + R : S.x + S.w - c.k * 3 - R;
+    cv.svg.push(`<circle cx="${mx}" cy="${fy + h / 2}" r="${R}" fill="#e0ecff"/>`);
+    cv.svg.push(medallion(mx, fy + h / 2, R * 0.92, b.icon, c.t.p));
+    const tx = (tb: Text) => Math.round(c.rtl ? S.x + S.w - c.k * 5 - tb.w : S.x + c.k * 5);
+    const ly = Math.round(fy + (h - b.l.h - b.v.h - c.k) / 2);
+    cv.comps.push({ input: b.l.png, left: tx(b.l), top: ly }, { input: b.v.png, left: tx(b.v), top: Math.round(ly + b.l.h + c.k) });
+    const nx = Math.min(tx(b.l), tx(b.v)), nr = Math.max(tx(b.l) + b.l.w, tx(b.v) + b.v.w);
+    cv.placed.push({ id: `name:${i}`, kind: 'text', rect: { x: nx, y: ly, w: nr - nx, h: b.l.h + b.v.h + c.k }, region: 'front', fits: b.l.fits && b.v.fits, text: fields[i][1] });
+    fy += h + gap;
+  }
+}
+
 async function panelsEngine(c: Ctx, content: EduContent, W: number, H: number, b: number): Promise<PageDraft[]> {
   const order = c.s.panelOrder ?? defaultPanelOrder(c.s.lang);
   const pw = (W - 2 * b) / 3, gutter = c.k * 6, m = c.k * c.s.marginMm;
@@ -339,26 +616,29 @@ async function panelsEngine(c: Ctx, content: EduContent, W: number, H: number, b
     if (side === 0) {
       // front cover
       const f = reg('front');
+      if (isGlossy(c)) await glossyCover(c, cv, content, f);
+      else {
       if (!c.images['bg:0']) cv.svg.push(`<rect x="${f.rect.x}" y="${f.rect.y}" width="${f.rect.w}" height="${f.rect.h}" fill="${c.t.soft}"/>`);
       await headerBand(c, cv, content, { x: f.safe.x, y: f.safe.y, w: f.safe.w, h: f.safe.h * 0.36 }, 'front', 22);
       const imgR = { x: f.safe.x + f.safe.w * 0.1, y: f.safe.y + f.safe.h * 0.4, w: f.safe.w * 0.8, h: f.safe.h * 0.36 };
       if (!(await placeImage(c, cv, 'cover', imgR, 'front'))) await subjectBadge(c, cv, imgR, 'front');
       await nameLines(c, cv, { x: f.safe.x, y: f.safe.y + f.safe.h * 0.8, w: f.safe.w, h: f.safe.h * 0.2 }, 'front');
+      }
       // inner flap: intro + objectives
       const fl = reg('flap');
-      await flow(c, cv, [{ id: 'intro', render: async (w) => { const t = await text(c, content.intro, { size: 11.5, w }); return stack(c, w, [{ ...t, id: 'intro', text: content.intro }]); } }, listItem(c, 'objectives', c.s.lang === 'en' ? 'Learning objectives' : 'أهداف التعلم', content.objectives)], [{ id: 'flap', rect: fl.safe }]);
+      await flow(c, cv, [introItem(c, content), listItem(c, 'objectives', c.s.lang === 'en' ? 'Learning objectives' : 'أهداف التعلم', content.objectives)], [{ id: 'flap', rect: fl.safe }], { spread: isGlossy(c) });
       // back: summary + activity
       const bk = reg('back');
       const backItems = [listItem(c, 'summary', c.s.lang === 'en' ? 'Key points' : 'ملخص مهم', content.summary)];
       if (content.activity) backItems.push(listItem(c, 'activity', content.activity.title, content.activity.steps, false));
-      await flow(c, cv, backItems, [{ id: 'back', rect: bk.safe }]);
+      await flow(c, cv, backItems, [{ id: 'back', rect: bk.safe }], { spread: isGlossy(c) });
     } else {
       // one group of sections per inside panel (a brochure reads panel by panel); what does not fit moves on
       const secs = content.sections, n = secs.length, groups = [0, 1, 2].map((g) => secs.slice(Math.round((g * n) / 3), Math.round(((g + 1) * n) / 3)));
       let carry: Item[] = [];
       for (const [g, id] of ['in1', 'in2', 'in3'].entries()) {
         const items = [...carry, ...sectionItems(c, content, groups[g])];
-        carry = await flow(c, cv, items, [{ id, rect: reg(id).safe }]);
+        carry = await flow(c, cv, items, [{ id, rect: reg(id).safe }], { spread: isGlossy(c) && !carry.length });
       }
       if (carry.length) cv.placed.push({ id: 'overflow', kind: 'text', rect: { x: 0, y: 0, w: 1, h: 1 }, region: 'in3', fits: false, text: `${carry.length} عنصر لم يتسع — قلّل النص أو حجم الخط` });
     }
@@ -377,9 +657,9 @@ async function flowEngine(c: Ctx, content: EduContent, W: number, H: number, b: 
   if (mode === 'worksheet') {
     items = [{ id: 'instructions', render: async (w) => { const t = await text(c, c.s.lang === 'en' ? 'Solve the following:' : 'أجب عن الأسئلة التالية:', { size: 12, weight: 'bold', color: c.t.mute, w }); return stack(c, w, [{ ...t, id: 'instructions', text: '' }]); } }, ...sectionItems(c, content, content.sections, { numbering })];
   } else {
-    if (content.intro.trim()) items.push({ id: 'intro', render: async (w) => { const t = await text(c, content.intro, { size: 11.5, w }); return stack(c, w, [{ ...t, id: 'intro', text: content.intro }]); } });
+    if (content.intro.trim()) items.push(introItem(c, content));
     if (content.objectives.length) items.push(listItem(c, 'objectives', c.s.lang === 'en' ? 'Learning objectives' : 'أهداف التعلم', content.objectives));
-    items.push(...sectionCards(c, content));
+    items.push(...(isGlossy(c) ? sectionItems(c, content) : sectionCards(c, content)));
     if (content.summary.length) items.push(listItem(c, 'summary', c.s.lang === 'en' ? 'Key points' : 'ملخص مهم', content.summary));
     if (content.activity) items.push(listItem(c, 'activity', content.activity.title, content.activity.steps));
   }
@@ -562,6 +842,8 @@ const gradeNo = (g: string) => { const m = g.replace(/[٠-٩]/g, (d) => String('
 export function resolveStyle(s: EduSettings): Exclude<EduSettings['style'], 'auto'> {
   if (s.style !== 'auto') return s.style;
   if (PRESETS[s.type].engine === 'certificate') return 'luxury';
+  // brochures and posters: the polished printed-brochure look (icon pills, cream cards, gold rims)
+  if (['panels', 'poster'].includes(PRESETS[s.type].engine)) return 'glossy';
   const g = gradeNo(s.grade);
   return g <= 3 ? 'kids_cartoon' : g <= 6 ? 'school_colorful' : 'creative';
 }
@@ -571,7 +853,17 @@ const star = (cx: number, cy: number, r: number) => Array.from({ length: 10 }, (
 function decor(c: Ctx, W: number, H: number, b: number, engine: string): string {
   const st = resolveStyle(c.s), m = c.k * c.s.marginMm, t = c.t;
   const x0 = b, y0 = b, x1 = W - b, y1 = H - b, out: string[] = [];
-  if (st === 'kids_cartoon') {
+  if (st === 'glossy') {
+    // each panel (or the page) gets a sky gradient, a blue wave with a gold line along the top and the bottom margins
+    const panels = engine === 'panels' ? 3 : 1, pw = (x1 - x0) / panels, wv = Math.min(m * 0.85, c.k * 9);
+    for (let i = 0; i < panels; i++) {
+      const px = x0 + i * pw, g = `sky${++gid}`, lip = c.k * 1.6;
+      if (!Object.keys(c.images).some((k) => k.startsWith('bg:'))) out.push(`<defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(t.s, 0.72)}"/><stop offset="0.5" stop-color="#ffffff"/><stop offset="1" stop-color="${shade(t.s, 0.65)}"/></linearGradient></defs><rect x="${px}" y="${y0}" width="${pw}" height="${y1 - y0}" fill="url(#${g})"/>`);
+      out.push(`<path d="M${px} ${y0} L${px + pw} ${y0} L${px + pw} ${y0 + wv * 0.55} Q${px + pw * 0.7} ${y0 + wv * 1.15} ${px + pw * 0.45} ${y0 + wv * 0.6} T${px} ${y0 + wv * 0.7} Z" fill="${t.p}"/><path d="M${px + pw} ${y0 + wv * 0.55} Q${px + pw * 0.7} ${y0 + wv * 1.15} ${px + pw * 0.45} ${y0 + wv * 0.6} T${px} ${y0 + wv * 0.7}" fill="none" stroke="${GOLD}" stroke-width="${lip}"/>`);
+      out.push(`<path d="M${px} ${y1} L${px + pw} ${y1} L${px + pw} ${y1 - wv * 0.75} Q${px + pw * 0.62} ${y1 - wv * 1.2} ${px + pw * 0.35} ${y1 - wv * 0.55} T${px} ${y1 - wv * 0.6} Z" fill="${shade(t.p, -0.15)}"/><path d="M${px + pw} ${y1 - wv * 0.75} Q${px + pw * 0.62} ${y1 - wv * 1.2} ${px + pw * 0.35} ${y1 - wv * 0.55} T${px} ${y1 - wv * 0.6}" fill="none" stroke="${GOLD}" stroke-width="${lip}"/>`);
+      if (i > 0) out.push(`<line x1="${px}" y1="${y0}" x2="${px}" y2="${y1}" stroke="${GOLD}" stroke-opacity="0.55" stroke-width="${c.k * 0.5}"/>`);
+    }
+  } else if (st === 'kids_cartoon') {
     const r = m * 0.34;
     for (const [x, y, col] of [[x0 + m * 0.5, y0 + m * 0.5, t.a], [x1 - m * 0.5, y0 + m * 0.5, t.s], [x0 + m * 0.5, y1 - m * 0.5, t.s], [x1 - m * 0.5, y1 - m * 0.5, t.a]] as [number, number, string][]) out.push(`<polygon points="${star(x, y, r)}" fill="${col}" fill-opacity="0.85"/>`);
     const n = Math.floor((x1 - x0 - 3 * m) / (m * 0.9));
@@ -619,7 +911,7 @@ async function renderOnce(s: EduSettings, content: EduContent, opts: { dpi: numb
     const art = await background(c, W, H, i, preset.engine);
     // over an AI painting every reading area sits on a frosted card (readable text, real contrast)
     // the frosted card wraps only what is printed in each area, so the painting stays visible around it
-    const frost = art ? d.regions.map((r) => {
+    const frost = art && resolveStyle(s) !== 'glossy' ? d.regions.map((r) => {
       const inR = d.cv.placed.filter((x) => x.region === r.id && x.id !== 'overflow');
       if (!inR.length) return '';
       const e = c.k * 3, top = Math.max(r.rect.y, Math.min(...inR.map((x) => x.rect.y)) - e), bottom = Math.min(r.rect.y + r.rect.h, Math.max(...inR.map((x) => x.rect.y + x.rect.h)) + e);
@@ -651,7 +943,7 @@ export async function fitScale(s: EduSettings, content: EduContent, images?: Rec
   const basePages = singlePage ? 1 : minDoc.pages.length;
   if (overflowed(minDoc) || minDoc.pages.length > basePages) return floor;
   const ok = async (f: number) => { const d = await probe(f); return !overflowed(d) && d.pages.length <= basePages; };
-  let lo = floor, hi = eng === 'worksheet' ? 1.5 : 1.7;
+  let lo = floor, hi = eng === 'worksheet' ? 1.5 : resolveStyle(s) === 'glossy' ? 1.5 : 1.7;
   if (await ok(hi)) return hi;
   for (let i = 0; i < 5; i++) { const mid = (lo + hi) / 2; if (await ok(mid)) lo = mid; else hi = mid; }
   return Math.round(Math.max(floor, lo * 0.96) * 100) / 100;

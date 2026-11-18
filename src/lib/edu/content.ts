@@ -31,8 +31,9 @@ export function contentPrompts(s: EduSettings) {
     'Rules: facts must be correct and uncontroversial; arithmetic must be exactly right (check every result); short sentences for young pupils;',
     'no invented textbook names, page numbers or claims that the content is from a specific official curriculum; no brand names, ads, phone numbers or websites;',
     'no names of real students; do not include images — only an optional short "image" description per section (what an illustration would show, no text in it).',
-    'Return ONE JSON object: { title, subtitle, intro, objectives: string[] (3-5, specific and measurable), sections: [{ id, heading, body, bullets: string[], examples: [{ problem, steps: string[], answer }], exercises: [{ q, answer, kind, choices }], image }], summary: string[] (3-5 key points), activity?: { title, steps: string[] }, mindmap?, table?, cards?: [{front, back}], certificate? }.',
+    'Return ONE JSON object: { title, subtitle, intro, objectives: string[] (3-5, specific and measurable), sections: [{ id, heading, body, bullets: string[], examples: [{ problem, steps: string[], answer }], exercises: [{ q, answer, kind, choices }], image, table?: { headers: string[], rows: string[][] }, gallery?: [{ caption, image }] }], summary: string[] (3-5 key points), activity?: { title, steps: string[] }, mindmap?, table?, cards?: [{front, back}], certificate? }.',
     `For this design (${p.en}): ${need.join('; ') || 'a balanced set of sections'}.`,
+    'Where the lesson has new words, add ONE section whose table is a vocabulary table (headers e.g. ["الكلمة","معناها"], 3-5 rows). Where the lesson names concrete things (landmarks, animals, plants, tools, places), add ONE section with a gallery of 2-4 items: caption = the short real name (max 4 words), image = what the picture shows (no text in it). Only real, correct names.',
   ].join('\n');
   const user = JSON.stringify({ lesson: s.lesson, objectives_from_teacher: s.objectives || undefined, grade: s.grade, subject: s.subject });
   return { system, user };
@@ -65,7 +66,9 @@ export function normalizeContent(raw: unknown): EduContent {
       bullets: arr(o.bullets).map((b) => str(b, 240)).filter(Boolean).slice(0, 10),
       examples: arr(o.examples).slice(0, 4).map((e) => { const q = (e ?? {}) as Record<string, unknown>; return { problem: str(q.problem, 300), steps: arr(q.steps).map((t) => str(t, 240)).slice(0, 6), answer: str(q.answer, 120) }; }),
       exercises: arr(o.exercises).slice(0, 30).map((e) => { const q = (e ?? {}) as Record<string, unknown>; const k = str(q.kind, 10); return { q: str(q.q, 300), answer: str(q.answer, 120), kind: ['equation', 'text', 'blank', 'choice'].includes(k) ? k : 'text', choices: arr(q.choices).map((c) => str(c, 80)).slice(0, 4) }; }),
-      image: str(o.image, 300) }; }),
+      image: str(o.image, 300),
+      table: (() => { const tb = (o.table ?? null) as Record<string, unknown> | null; const h = arr(tb?.headers).map((x) => str(x, 60)).filter(Boolean).slice(0, 4); return h.length ? { headers: h, rows: arr(tb?.rows).slice(0, 10).map((r) => arr(r).map((x) => str(x, 160)).slice(0, 4)) } : undefined; })(),
+      gallery: arr(o.gallery).slice(0, 6).map((g) => { const q = (g ?? {}) as Record<string, unknown>; return { caption: str(q.caption, 60), image: str(q.image, 200) }; }).filter((g) => g.caption) }; }),
     summary: arr(r.summary).map((x) => str(x, 240)).filter(Boolean).slice(0, 8),
     cards: arr(r.cards).slice(0, 24).map((c) => { const o = (c ?? {}) as Record<string, unknown>; return { front: str(o.front, 120), back: str(o.back, 240) }; }),
   });
@@ -126,7 +129,7 @@ export async function generateContent(s: EduSettings): Promise<GenResult> {
     if (n < s.exerciseCount && /جمع|طرح|add|subtract/i.test(s.lesson)) {
       const extra = arithmeticDrill(s.exerciseCount - n, gradeNumber(s.grade), 11).map((d) => ({ q: d.q, answer: d.answer, kind: 'equation' as const, choices: [] }));
       if (content.sections.length) content.sections[content.sections.length - 1].exercises.push(...extra);
-      else content.sections.push({ id: 's1', heading: s.lang === 'en' ? 'Practice' : 'تدرّب', body: '', bullets: [], examples: [], image: '', exercises: extra });
+      else content.sections.push({ id: 's1', heading: s.lang === 'en' ? 'Practice' : 'تدرّب', body: '', bullets: [], examples: [], image: '', gallery: [], exercises: extra });
     }
   }
   return { content, source: 'ai', model: r.model, fixes: fixAnswerKeys(content) };
@@ -141,7 +144,7 @@ export async function regenerateSection(s: EduSettings, content: EduContent, sec
   if (provider.isDryRun || !provider.generateJson) throw new AppError('NO_AI', 'إعادة كتابة قسم تحتاج مفتاح OpenAI (وضع التجربة مفعّل) — عدّل النص يدويًا.', 412);
   await assertBudget(settings, estimateTextCost(settings, 1500, 900));
   const { system } = contentPrompts(s);
-  const r = await provider.generateJson(system + '\nReturn ONE JSON object for a single section only: { id, heading, body, bullets, examples, exercises, image }. Make it clearly better and different from the current one, same topic and level.', JSON.stringify({ lesson: s.lesson, current_section: cur, other_headings: content.sections.filter((x) => x.id !== sectionId).map((x) => x.heading) }), settings.ai.textModel);
+  const r = await provider.generateJson(system + '\nReturn ONE JSON object for a single section only: { id, heading, body, bullets, examples, exercises, image, table?, gallery? }. Make it clearly better and different from the current one, same topic and level.', JSON.stringify({ lesson: s.lesson, current_section: cur, other_headings: content.sections.filter((x) => x.id !== sectionId).map((x) => x.heading) }), settings.ai.textModel);
   await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(settings, r.usage.inputTokens, r.usage.outputTokens) });
   const sec = normalizeContent({ title: content.title, sections: [r.json] }).sections[0];
   if (!sec) throw new AppError('BAD_OUTPUT', 'لم يرجع النموذج قسمًا صالحًا.', 502);

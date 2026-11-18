@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from './ui';
 import { toast } from './toaster';
 import { apiCall } from '@/lib/client/api';
+import { GRADES, GRADES_EN, SUBJECTS, lessonIdeas } from '@/lib/edu/choices';
 import { EDU_TYPES, PRESETS, STYLES, STYLE_AR, STEPS, type EduContent, type EduSettings, type EduType, type StepState } from '@/lib/edu/types';
 
 /**
@@ -150,9 +151,18 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
             <fieldset className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <legend className="mb-1 text-sm font-extrabold text-indigo-900">{ui === 'ar' ? 'البيانات التعليمية' : 'Lesson'}</legend>
               <Field label={t('lang')}><select className="input" value={form.lang} onChange={(e) => set('lang', e.target.value as EduSettings['lang'])}><option value="ar">عربي</option><option value="en">English</option><option value="bi">{ui === 'ar' ? 'ثنائي اللغة' : 'Bilingual'}</option></select></Field>
-              <Field label={t('subject')}><input className="input" required maxLength={80} value={form.subject} onChange={(e) => set('subject', e.target.value)} placeholder={ui === 'ar' ? 'مثال: الرياضيات' : 'e.g. Mathematics'} /></Field>
-              <Field label={t('grade')}><input className="input" required maxLength={40} value={form.grade} onChange={(e) => set('grade', e.target.value)} placeholder={ui === 'ar' ? 'مثال: الصف الثالث' : 'e.g. Grade 3'} /></Field>
-              <Field label={t('lesson')}><input className="input" required maxLength={160} value={form.lesson} onChange={(e) => set('lesson', e.target.value)} placeholder={ui === 'ar' ? 'مثال: الجمع والطرح' : 'e.g. Addition and subtraction'} /></Field>
+              <div className="sm:col-span-2"><Group label={t('subject')}>
+                <Chips items={SUBJECTS.map((x) => ({ v: form.lang === 'en' ? x.en : x.ar, l: ui === 'ar' ? x.ar : x.en }))} value={form.subject ?? ''} onPick={(v) => setForm((f) => ({ ...f, subject: v, lesson: f.subject === v ? f.lesson : '' }))} />
+                <input className="input mt-2" required maxLength={80} value={form.subject} onChange={(e) => set('subject', e.target.value)} placeholder={ui === 'ar' ? 'أو اكتب مادة أخرى' : 'or type another subject'} />
+              </Group></div>
+              <div className="sm:col-span-2"><Group label={t('grade')}>
+                <Chips items={GRADES.map((g, i) => ({ v: form.lang === 'en' ? GRADES_EN[i] : g, l: ui === 'ar' ? g.replace('الصف ', '') : GRADES_EN[i] }))} value={form.grade ?? ''} onPick={(v) => set('grade', v)} />
+                <input className="input mt-2" required maxLength={40} value={form.grade} onChange={(e) => set('grade', e.target.value)} placeholder={ui === 'ar' ? 'أو اكتب الصف' : 'or type the grade'} />
+              </Group></div>
+              <div className="sm:col-span-2"><Group label={t('lesson')}>
+                <input className="input" required maxLength={160} value={form.lesson} onChange={(e) => set('lesson', e.target.value)} placeholder={ui === 'ar' ? 'اكتب عنوان الدرس أو اختر من الاقتراحات' : 'type the lesson or pick a suggestion'} />
+                {lessonIdeas(form.subject ?? '').length > 0 && <><div className="mt-2 text-[11px] font-bold text-slate-500">{ui === 'ar' ? 'اقتراحات دروس' : 'Lesson ideas'}</div><Chips items={lessonIdeas(form.subject ?? '').map((x) => ({ v: x, l: x }))} value={form.lesson ?? ''} onPick={(v) => set('lesson', v)} /></>}
+              </Group></div>
               <div className="sm:col-span-2"><Field label={t('objectives')}><textarea className="input" rows={2} maxLength={800} value={form.objectives} onChange={(e) => set('objectives', e.target.value)} /></Field></div>
               {has('student') && <Field label={t('student')}><input className="input" maxLength={80} value={form.student} onChange={(e) => set('student', e.target.value)} /></Field>}
               {has('student') && <Field label={t('classSection')}><input className="input" maxLength={40} value={form.classSection} onChange={(e) => set('classSection', e.target.value)} /></Field>}
@@ -167,7 +177,7 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
               {(has('columns') || preset.engine === 'cards') && <Field label={t('columns')}><select className="input" value={form.columns} onChange={(e) => set('columns', Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>}
               <Field label={t('style')}><select className="input" value={form.style} onChange={(e) => set('style', e.target.value as EduSettings['style'])}>{STYLES.map((x) => <option key={x} value={x}>{ui === 'ar' ? STYLE_AR[x] : x.replace('_', ' ')}</option>)}</select></Field>
               <Field label={t('detail')}><select className="input" value={form.detail} onChange={(e) => set('detail', e.target.value as EduSettings['detail'])}><option value="short">{ui === 'ar' ? 'مختصر' : 'Short'}</option><option value="medium">{ui === 'ar' ? 'متوسط' : 'Medium'}</option><option value="detailed">{ui === 'ar' ? 'مفصّل' : 'Detailed'}</option></select></Field>
-              {has('images') && <Field label={t('images')}><select className="input" value={form.images} onChange={(e) => set('images', e.target.value as EduSettings['images'])}><option value="none">{ui === 'ar' ? 'بدون صور' : 'None'}</option><option value="low">{ui === 'ar' ? 'رسم واحد للغلاف' : 'One cover illustration'}</option><option value="medium">{ui === 'ar' ? 'رسم للغلاف بجودة أعلى' : 'Higher-quality cover'}</option><option value="rich">{ui === 'ar' ? 'غني: غلاف + رسم لكل قسم' : 'Rich: cover + one per section'}</option></select></Field>}
+              {has('images') && <Field label={t('images')}><select className="input" value={form.images} onChange={(e) => set('images', e.target.value as EduSettings['images'])}><option value="none">{ui === 'ar' ? 'بدون صور' : 'None'}</option><option value="low">{ui === 'ar' ? 'رسم واحد للغلاف' : 'One cover illustration'}</option><option value="medium">{ui === 'ar' ? 'متوسط: غلاف أعلى جودة + صور المعالم' : 'Medium: better cover + picture grids'}</option><option value="rich">{ui === 'ar' ? 'غني: غلاف + صور المعالم + رسم لكل قسم' : 'Rich: cover + grids + one per section'}</option></select></Field>}
               <label className="col-span-2 flex items-start gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-xs sm:col-span-3"><input type="checkbox" className="mt-0.5" checked={!!form.aiBackground} onChange={(e) => set('aiBackground', e.target.checked)} /><span><b>{ui === 'ar' ? '🎨 خلفية فنية بالذكاء الاصطناعي لكل وجه' : '🎨 AI artwork behind every face'}</b> — {ui === 'ar' ? 'لوحة مرسومة حسب الدرس والنمط، والنص فوقها في بطاقات واضحة. النصوص والأرقام تبقى دقيقة (لا تُرسم داخل الصور).' : 'painted for the lesson and style; text stays exact on clear cards.'}</span></label>
               <Field label={t('fontScale')}><label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={form.autoFit !== false} onChange={(e) => set('autoFit', e.target.checked)} />{ui === 'ar' ? 'تلقائي — يملأ الصفحة' : 'Auto-fit'}</label>{form.autoFit === false && <input type="range" min={0.8} max={1.4} step={0.05} value={form.fontScale} onChange={(e) => set('fontScale', Number(e.target.value))} className="w-full" />}</Field>
               <Field label={t('digits')}><select className="input" value={form.digits} onChange={(e) => set('digits', e.target.value as EduSettings['digits'])}><option value="arabic">٠١٢٣٤٥٦٧٨٩</option><option value="latin">0123456789</option></select></Field>
@@ -317,6 +327,11 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
   );
 }
 
+/** a labelled group for chips + input (a <label> must not wrap several buttons) */
+function Group({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div role="group" aria-label={label} className="block"><span className="label">{label}</span>{children}</div>;
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className="label">{label}</span>{children}</label>;
 }
@@ -377,9 +392,18 @@ function ContentEditor({ draft, setDraft, ui, t, busy, onRewrite, aiLive }: { dr
           </div>
         </details>
       ))}
-      {sec.length < 12 && <button type="button" className="w-full rounded-xl border-2 border-dashed p-2 text-sm font-bold text-indigo-700" onClick={() => { const id = `s${Date.now().toString(36)}`; setAdded(id); up({ sections: [...sec, { id, heading: ui === 'ar' ? 'قسم جديد' : 'New section', body: '', bullets: [], examples: [], exercises: [], image: '' }] }); }}>+ {ui === 'ar' ? 'إضافة قسم' : 'Add section'}</button>}
+      {sec.length < 12 && <button type="button" className="w-full rounded-xl border-2 border-dashed p-2 text-sm font-bold text-indigo-700" onClick={() => { const id = `s${Date.now().toString(36)}`; setAdded(id); up({ sections: [...sec, { id, heading: ui === 'ar' ? 'قسم جديد' : 'New section', body: '', bullets: [], examples: [], exercises: [], image: '', gallery: [] }] }); }}>+ {ui === 'ar' ? 'إضافة قسم' : 'Add section'}</button>}
       <label className="block"><span className="label">{ui === 'ar' ? 'الملخص (سطر لكل نقطة)' : 'Summary'}</span><textarea className="input" rows={3} value={draft.summary.join('\n')} onChange={(e) => up({ summary: lines(e.target.value).slice(0, 8) })} /></label>
       {draft.cards.length > 0 && <label className="block"><span className="label">{ui === 'ar' ? 'البطاقات (أمام | خلف)' : 'Cards (front | back)'}</span><textarea className="input ltr" rows={4} value={draft.cards.map((c) => `${c.front} | ${c.back}`).join('\n')} onChange={(e) => up({ cards: lines(e.target.value).slice(0, 24).map((l) => { const [f, b] = l.split('|'); return { front: (f ?? '').trim(), back: (b ?? '').trim() }; }) })} /></label>}
     </div>
+  );
+}
+
+/** quick-pick chips (the field next to them still accepts free text) */
+function Chips({ items, value, onPick }: { items: { v: string; l: string }[]; value: string; onPick: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">{items.map((x) => (
+      <button key={x.v} type="button" aria-pressed={value === x.v} onClick={() => onPick(x.v)} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${value === x.v ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-700 active:bg-indigo-50'}`}>{x.l}</button>
+    ))}</div>
   );
 }

@@ -37,8 +37,8 @@ export const PRESETS: Record<EduType, TypePreset> = {
 export const PAPER_MM = { A3: [297, 420], A4: [210, 297], A5: [148, 210] } as const;
 export type PaperSize = keyof typeof PAPER_MM | 'custom';
 
-export const STYLES = ['creative', 'kids_cartoon', 'luxury', 'school_colorful', 'minimal', 'three_d', 'illustrated', 'auto'] as const;
-export const STYLE_AR: Record<(typeof STYLES)[number], string> = { creative: 'إبداعي احترافي', kids_cartoon: 'كرتوني للأطفال', luxury: 'فاخر وأنيق', school_colorful: 'مدرسي ملون', minimal: 'بسيط ومنظم', three_d: 'ثلاثي الأبعاد', illustrated: 'رسوم تعليمية', auto: 'اختيار ذكي تلقائي' };
+export const STYLES = ['glossy', 'creative', 'kids_cartoon', 'luxury', 'school_colorful', 'minimal', 'three_d', 'illustrated', 'auto'] as const;
+export const STYLE_AR: Record<(typeof STYLES)[number], string> = { glossy: 'مطوية احترافية لامعة', creative: 'إبداعي احترافي', kids_cartoon: 'كرتوني للأطفال', luxury: 'فاخر وأنيق', school_colorful: 'مدرسي ملون', minimal: 'بسيط ومنظم', three_d: 'ثلاثي الأبعاد', illustrated: 'رسوم تعليمية', auto: 'اختيار ذكي تلقائي' };
 
 export const SettingsSchema = z.object({
   type: z.enum(EDU_TYPES),
@@ -82,7 +82,11 @@ export type EduSettings = z.infer<typeof SettingsSchema>;
 
 const Exercise = z.object({ q: z.string().max(300), answer: z.string().max(120).default(''), kind: z.enum(['equation', 'text', 'blank', 'choice']).default('text'), choices: z.array(z.string().max(80)).max(4).default([]) });
 const Example = z.object({ problem: z.string().max(300), steps: z.array(z.string().max(240)).max(6).default([]), answer: z.string().max(120).default('') });
-export const SectionSchema = z.object({ id: z.string().max(40), heading: z.string().max(120), body: z.string().max(1200).default(''), bullets: z.array(z.string().max(240)).max(10).default([]), examples: z.array(Example).max(4).default([]), exercises: z.array(Exercise).max(30).default([]), image: z.string().max(300).default('') });
+export const SectionSchema = z.object({ id: z.string().max(40), heading: z.string().max(120), body: z.string().max(1200).default(''), bullets: z.array(z.string().max(240)).max(10).default([]), examples: z.array(Example).max(4).default([]), exercises: z.array(Exercise).max(30).default([]), image: z.string().max(300).default(''),
+  /** e.g. a vocabulary table «الكلمة | معناها» */
+  table: z.object({ headers: z.array(z.string().max(60)).min(1).max(4), rows: z.array(z.array(z.string().max(160)).max(4)).max(10) }).optional(),
+  /** a picture grid with captions (landmarks, animals, tools…) — each picture is AI art, the caption is real text */
+  gallery: z.array(z.object({ caption: z.string().max(60), image: z.string().max(200).default('') })).max(6).default([]) });
 export const ContentSchema = z.object({
   title: z.string().max(140), subtitle: z.string().max(200).default(''), intro: z.string().max(800).default(''),
   objectives: z.array(z.string().max(200)).max(8).default([]),

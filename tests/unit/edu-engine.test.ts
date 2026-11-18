@@ -3,7 +3,7 @@ import { arithmeticDrill, checkStatement, evaluate, toArabicDigits, toLatinDigit
 import { buildPdf, inspectPdf } from '@/lib/edu/pdf';
 import { defaultPanelOrder, foldCheck, paperMm, renderDoc } from '@/lib/edu/render';
 import { fixAnswerKeys, normalizeContent, sampleContent } from '@/lib/edu/content';
-import { EDU_TYPES, PRESETS, SettingsSchema } from '@/lib/edu/types';
+import { EDU_TYPES, PRESETS, SettingsSchema, ContentSchema } from '@/lib/edu/types';
 import { runQc } from '@/lib/edu/qc';
 import sharp from 'sharp';
 
@@ -72,11 +72,48 @@ describe('EDUCATION MASTER — styles, auto-fit, balanced columns', () => {
   const base = { subject: 'العلوم', lesson: 'درس', size: 'A4' as const };
   it('smart style by grade and type', async () => {
     const { resolveStyle } = await import('@/lib/edu/render');
-    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الثاني' }))).toBe('kids_cartoon');
-    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الخامس' }))).toBe('school_colorful');
-    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'Grade 9' }))).toBe('creative');
+    // brochures and posters get the polished printed-brochure look; other designs follow the grade
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'brochure', grade: 'الصف الرابع' }))).toBe('glossy');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الثاني' }))).toBe('glossy');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'worksheet', grade: 'الصف الثاني' }))).toBe('kids_cartoon');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'worksheet', grade: 'الصف الخامس' }))).toBe('school_colorful');
+    expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'worksheet', grade: 'Grade 9' }))).toBe('creative');
     expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'certificate', grade: 'الصف الثاني' }))).toBe('luxury');
     expect(resolveStyle(SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الثاني', style: 'minimal' }))).toBe('minimal');
+  });
+  it('glossy brochure: icon pills, cream cards, vocabulary table and picture grid pass layout QC', async () => {
+    const { renderDoc, iconFor } = await import('@/lib/edu/render');
+    const { runQc } = await import('@/lib/edu/qc');
+    expect(iconFor('معاني المفردات', 0)).toBe('search');
+    expect(iconFor('بعض معالم مملكة البحرين', 0)).toBe('pin');
+    expect(iconFor('أفكار الدرس الرئيسية', 0)).toBe('target');
+    const s = SettingsSchema.parse({ ...base, type: 'brochure', subject: 'اللغة العربية', grade: 'الصف الرابع', lesson: 'وطني', orientation: 'landscape' });
+    const c = ContentSchema.parse({ title: 'وطني', intro: 'يتحدث الدرس عن حب الوطن.', objectives: ['أعبّر عن حبي لوطني.'], summary: ['الوطن بيتنا الكبير.'],
+      sections: [
+        { id: 's1', heading: 'أفكار الدرس الرئيسية', bullets: ['حب الوطن والاعتزاز به.', 'جمال مملكة البحرين وتنوع معالمها الكثيرة والجميلة.'] },
+        { id: 's2', heading: 'معاني المفردات', table: { headers: ['الكلمة', 'معناها'], rows: [['معتزًا', 'فخورًا.'], ['الإرث', 'ما يُورث من الآباء والأجداد.']] } },
+        { id: 's3', heading: 'بعض معالم مملكة البحرين', gallery: [{ caption: 'قلعة البحرين' }, { caption: 'المتحف الوطني' }, { caption: 'شجرة الحياة' }] },
+      ] });
+    const doc = await renderDoc(s, c, { dpi: 60 });
+    expect(doc.pages).toHaveLength(2);
+    const ids = doc.pages.flatMap((p) => p.placed.map((x) => x.id));
+    expect(ids).toEqual(expect.arrayContaining(['subject', 'lesson_tag', 'title', 'name:0', 's2:tb:0:0', 's2:tb:2:1', 's3:gal0', 's3:gal2', 's1:head']));
+    // the student line is never invented
+    expect(doc.pages[0].placed.find((x) => x.id === 'name:0')?.text).toBe('');
+    const qc = runQc(s, c, doc, { source: 'edited' });
+    for (const id of ['text_fit', 'overlap', 'safe_area', 'glyphs']) expect(qc.checks.find((x) => x.id === id)?.status, id).toBe('PASS');
+  });
+  it('wrapped Arabic lines align to the right edge (Pango mirrors alignment for RTL paragraphs)', async () => {
+    const sharp = (await import('sharp')).default;
+    const { renderDoc } = await import('@/lib/edu/render');
+    const s = SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الخامس', style: 'minimal', autoFit: false, columns: 1 });
+    const long = 'جمال مملكة البحرين وتنوع معالمها الكثيرة '.repeat(6) + 'نهاية';
+    const doc = await renderDoc(s, ContentSchema.parse({ title: 'اختبار', intro: long }), { dpi: 60 });
+    const intro = doc.pages[0].placed.find((x) => x.id === 'intro')!;
+    // the ink of the LAST line must touch the right edge of the text block
+    const { data, info } = await sharp(doc.pages[0].png).extract({ left: Math.round(intro.rect.x), top: Math.round(intro.rect.y + intro.rect.h - 12), width: Math.round(intro.rect.w), height: 10 }).greyscale().raw().toBuffer({ resolveWithObject: true });
+    let maxx = 0; for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) if (data[y * info.width + x] < 128) maxx = Math.max(maxx, x);
+    expect(maxx).toBeGreaterThan(info.width * 0.9);
   });
   it('auto-fit grows sparse text without overflow; manual size is respected', async () => {
     const s = SettingsSchema.parse({ ...base, type: 'poster', grade: 'الصف الرابع', orientation: 'landscape', columns: 3 });
@@ -94,4 +131,15 @@ describe('EDUCATION MASTER — styles, auto-fit, balanced columns', () => {
     const per = ['col1', 'col2', 'col3'].map((id) => d.pages[0].placed.filter((x) => x.region === id).length);
     expect(Math.min(...per)).toBeGreaterThan(0);
   }, 60000);
+});
+
+describe('EDUCATION MASTER — form choices', () => {
+  it('subjects, grades and lesson ideas for quick picks (free text still allowed)', async () => {
+    const { SUBJECTS, GRADES, lessonIdeas } = await import('@/lib/edu/choices');
+    expect(SUBJECTS.map((x) => x.ar)).toEqual(expect.arrayContaining(['اللغة العربية', 'الرياضيات', 'العلوم', 'التربية الإسلامية']));
+    expect(GRADES).toHaveLength(13);
+    expect(lessonIdeas('الرياضيات')).toContain('الجمع والطرح');
+    expect(lessonIdeas('Science')).toContain('دورة الماء في الطبيعة');
+    expect(lessonIdeas('مادة غير معروفة')).toEqual([]);
+  });
 });
