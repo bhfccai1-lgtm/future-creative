@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+- **EDUCATION MASTER — professional AI images:**
+  - **The cover is the style reference.** It is painted first, and the backgrounds and section illustrations are generated with it as a reference (palette, light, finish), so the brochure looks like one piece.
+  - **One shared art direction for all images.**
+  - **New «شخصية على الغلاف» (cover character):** a Bahraini boy (thobe and ghutra) or girl (hijab), as a 3D character whose age follows the grade. Never used for Islamic studies.
+  - **New «صور المعارض» (gallery pictures):** in the glossy style, galleries default to realistic photos.
+  - **Accurate landmarks:** 10 well-known Bahrain landmarks are described precisely, so the model does not invent their shape.
+  - Every word stays system-typeset, and every image passes the quality gate.
 - **New page «خطة الحسابات» (accounts plan)** — a content strategist for every account, built from the real Metricool numbers the system imports for its own publications (last 30 days):
   - **Overview:** totals and a table ranking every account by views, saves, retention and skip rate, with its most important problem.
   - **The best post** and the metric it stood out in.
