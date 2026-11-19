@@ -116,6 +116,9 @@ describe('EDUCATION MASTER — AI artwork', () => {
     expect(r).toMatchObject({ generated: 9, failed: [] });
     expect(ai.lastScenePrompt).toMatch(/NO text, letters, words, numbers/);
     expect(ai.lastScenePrompt).toMatch(/NEVER draw people, faces/); // Islamic studies rule
+    // the cover was painted first and is the style reference of the other illustrations (one consistent brochure)
+    expect(ai.lastReferences?.length).toBe(1);
+    expect(ai.lastScenePrompt).toMatch(/reference image/);
     expect(await prisma.aiUsage.count({ where: { kind: 'image' } })).toBe(9);
     const pv = await preview(p.id, user);
     const imgs = pv.qc.checks.find((c) => c.id === 'image_quality');
