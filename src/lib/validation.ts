@@ -1,6 +1,19 @@
 import { z } from 'zod';
 import { CONCEPTS, CONTENT_TYPES, DESIGN_STYLES, DESIGN_TYPES, MARKETS, OCCASIONS, SEGMENTS, optionValues } from './creative/options';
 
+/**
+ * Schema for a PARTIAL update (PATCH): every field optional and NO defaults. zod v4's `.partial()` still fills in
+ * `.default()` values for missing keys, which would silently reset stored fields the request did not send.
+ */
+export function patchSchema<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
+  const shape: Record<string, z.ZodType> = {};
+  for (const [k, v] of Object.entries(schema.shape)) {
+    let t = v as z.ZodType;
+    while (t instanceof z.ZodDefault || t instanceof z.ZodPrefault) t = t.unwrap() as z.ZodType;
+    shape[k] = t.optional();
+  }
+  return z.object(shape) as unknown as ReturnType<z.ZodObject<T>['partial']>;
+}
 export const AccountInput = z.object({
   name: z.string().min(2).max(100),
   platform: z.enum(['instagram', 'facebook', 'tiktok', 'threads', 'youtube', 'pinterest', 'linkedin', 'twitter']),
@@ -21,7 +34,7 @@ export const AccountInput = z.object({
   reelDurationSec: z.number().int().min(6).max(60).default(10),
   maxDailyAds: z.number().int().min(1).max(48).default(10),
   formatStrategy: z.enum(['FIXED', 'GROWTH_MIX']).default('FIXED'),
-  formatMix: z.record(z.enum(['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE']), z.number().int().min(0).max(100)).optional(),
+  formatMix: z.partialRecord(z.enum(['REEL_VIDEO', 'IMAGE_CAROUSEL', 'IMAGE_FEED', 'IMAGE_STORY', 'IMAGE_SQUARE']), z.number().int().min(0).max(100)).optional(),
 });
 
 export const ProductInput = z.object({

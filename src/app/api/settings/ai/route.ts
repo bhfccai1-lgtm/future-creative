@@ -5,6 +5,8 @@ import { getSettings, secretStatus, setSecret, updateSettings } from '@/lib/sett
 import { audit } from '@/lib/audit';
 import { estimateAdCost, monthToDateSpend } from '@/lib/ai/cost';
 
+/** per-format image quality override («» = use the general setting) */
+const fq = () => z.enum(['', 'low', 'medium', 'high']).default('');
 const Body = z.object({
   apiKey: z.string().max(300).optional(), // write-only; empty string = keep, "__delete__" = remove
   dryRun: z.boolean(), textModel: z.string().min(2).max(80), imageModel: z.string().min(2).max(80),
@@ -13,7 +15,7 @@ const Body = z.object({
   creativeStyle: z.string().min(10).max(1000), languages: z.array(z.enum(['ar', 'en', 'ml'])).min(1), useAiReview: z.boolean().default(false), aiFullRequiresApproval: z.boolean().default(true),
   autoRenderMode: z.enum(['auto', 'layered', 'ai_full']).default('auto'), autoDesignStyle: z.string().max(40).default('fc_signature'),
   ownerGuidance: z.string().max(600).default(''), bannedPhrases: z.array(z.string().max(80)).max(30).optional(), useReferences: z.boolean().default(true), creativeConcepts: z.boolean().default(true), aiFullTextRetries: z.number().int().min(0).max(3).default(2), bestOf: z.number().int().min(1).max(3).default(1),
-  qualityByFormat: z.object(Object.fromEntries(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'IMAGE_CAROUSEL', 'REEL_VIDEO'].map((f) => [f, z.enum(['', 'low', 'medium', 'high']).default('')])) as Record<'IMAGE_STORY' | 'IMAGE_FEED' | 'IMAGE_SQUARE' | 'IMAGE_CAROUSEL' | 'REEL_VIDEO', z.ZodDefault<z.ZodEnum<['', 'low', 'medium', 'high']>>>).optional(),
+  qualityByFormat: z.object({ IMAGE_STORY: fq(), IMAGE_FEED: fq(), IMAGE_SQUARE: fq(), IMAGE_CAROUSEL: fq(), REEL_VIDEO: fq() }).optional(),
   pricing: z.object({ textInputPer1M: z.number().min(0), textOutputPer1M: z.number().min(0), imageLow: z.number().min(0), imageMedium: z.number().min(0), imageHigh: z.number().min(0) }),
 });
 

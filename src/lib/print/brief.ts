@@ -19,7 +19,7 @@ export const BriefSchema = z.object({
     headline: z.string().max(160).default(''), subline: z.string().max(240).default(''), body: z.string().max(1200).default(''),
     name: z.string().max(120).default(''), role: z.string().max(120).default(''), phone: z.string().max(60).default(''), email: z.string().max(120).default(''),
     website: z.string().max(120).default(''), address: z.string().max(200).default(''), cta: z.string().max(80).default(''), extra: z.array(z.string().max(200)).max(12).default([]),
-  }).default({}),
+  }).prefault({}),
   logoKey: z.string().max(300).optional(),
   dielineKey: z.string().max(300).optional(),
   /** the parsed supplier dieline (mm): cut / fold / perforation paths, glue zones, panels */
@@ -30,7 +30,7 @@ export const BriefSchema = z.object({
   finishes: z.array(z.string().max(40)).max(8).default([]),
   method: z.string().max(40).optional(),
   outputs: z.enum(['print', 'ad', 'both']).default('print'),
-  conditions: z.object({ outdoor: z.boolean().default(false), waterproof: z.boolean().default(false), food: z.boolean().default(false), darkFabric: z.boolean().default(false) }).default({}),
+  conditions: z.object({ outdoor: z.boolean().default(false), waterproof: z.boolean().default(false), food: z.boolean().default(false), darkFabric: z.boolean().default(false) }).prefault({}),
   viewM: z.number().min(0.2).max(100).optional(),
   /** the printer's logo/numbers are placed in a CLIENT product only when the client agreed */
   shopBrandingConsent: z.boolean().default(false),
