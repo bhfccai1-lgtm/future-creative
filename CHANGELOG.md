@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **Print studio — «فكرتك للتصميم» (your design idea) and idea suggestions for the AI picture:**
+  - A box above «إنشاء الصورة» (generate image) where you describe the scene: subject, angle, light, material.
+  - Your idea becomes the core of the picture prompt, and the chosen direction (A/B/C) becomes secondary. The print rules stay: no text inside the picture, the exact crop and the safe margins.
+  - The idea is saved with the design, so it appears in the history and is part of the approval fingerprint.
+  - «💡 اقترح أفكارًا» (suggest ideas) gives 5 ideas fitted to the activity, the product size and the audience. With an AI key it is one small text call (recorded against the budget); without one, it gives free ready-made ideas per product. Tap an idea to fill the box, then edit it.
 - **Fix: Saudi account posts carried #البحرين.** Two Reels on bhfcc.ksa (14 and 18 Nov) went out with Bahrain hashtags. The algorithm gate now removes every Bahrain hashtag from Saudi-market posts (#البحرين, #Bahrain, #هدايا_البحرين…), from the tag list and from inside the caption, and adds #السعودية. The branch phone line is left untouched.
 - **Project skills for future development sessions** (`.claude/skills/`):
   - **`fc-dev`** (new) holds this repository's development workflow: local Postgres and Redis, the checks to run before a PR, the phone-sized UI check, the zod-4 and RTL pitfalls that already broke builds, and the branch → PR → green CI → merge → one-click release flow.

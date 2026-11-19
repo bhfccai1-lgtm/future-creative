@@ -6,6 +6,8 @@ import { detectIndustry, type Identity } from './identity';
 export const BriefSchema = z.object({
   productId: z.string().max(40),
   request: z.string().max(2000).default(''),
+  /** the owner's own idea for the AI picture («فكرتك للتصميم») — the core of the picture prompt */
+  artIdea: z.string().max(600).optional(),
   business: z.string().max(120).default(''),
   activity: z.string().max(200).default(''),
   audience: z.string().max(200).default(''),
