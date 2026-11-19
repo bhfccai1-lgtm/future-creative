@@ -1,0 +1,2 @@
+source: https://github.com/pbakaus/impeccable (commit b49177d, v4.10.0)
+method: documented manual copy of .claude/skills/impeccable (no design hook, no subagents)
