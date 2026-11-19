@@ -101,6 +101,8 @@ export const SettingsSchema = z.object({
     styleRefsByFormat: z.partialRecord(z.enum(['vertical', 'feed', 'square', 'carousel']), z.object({ key: z.string().max(200).nullable().default(null), brief: z.string().max(1500).default('') })).prefault({}),
     /** send the real product photo + reference design to the image model (images.edit) */
     useReferences: z.boolean().default(true),
+    /** attach the reference DESIGN itself to the image model as a style reference (not only its text description) */
+    styleRefImage: z.boolean().default(true),
     /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */
     creativeConcepts: z.boolean().default(true),
     /** full-AI posters: re-draw up to N times when the machine-read text is misspelled/missing (each retry = 1 image + 1 read) */
