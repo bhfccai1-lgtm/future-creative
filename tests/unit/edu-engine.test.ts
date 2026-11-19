@@ -151,3 +151,18 @@ describe('EDUCATION MASTER — form choices', () => {
     expect(officialLessons([], 'الرياضيات', 'الصف الرابع')).toEqual([]);
   });
 });
+
+describe('EDUCATION MASTER — curriculum bulk import', () => {
+  it('reads headings and CSV, strips numbering, reports unknown subjects/grades, round-trips the export', async () => {
+    const { parseCurriculumText, curriculumToText } = await import('@/lib/edu/choices');
+    const r = parseCurriculumText(['// تعليق', '# اللغة العربية | الصف الرابع', '1. وطني', '2- أمي الحبيبة', '• وطني', '', '# الرياضيات - الصف الثالث', '١) الجمع', 'العلوم,الصف الخامس,دورة الماء', '"Science";"Grade 5";"السلسلة الغذائية"', 'الفلك,الصف الأول,شيء', '# الرياضيات | الصف العشرون', 'درس'].join('\n'));
+    const ar4 = r.entries.find((e) => e.subject === 'اللغة العربية' && e.grade === 4)!;
+    expect(ar4.lessons).toEqual(['وطني', 'أمي الحبيبة']);
+    expect(r.entries.find((e) => e.subject === 'الرياضيات' && e.grade === 3)?.lessons).toEqual(['الجمع']);
+    expect(r.entries.find((e) => e.subject === 'العلوم' && e.grade === 5)?.lessons).toEqual(['دورة الماء', 'السلسلة الغذائية']);
+    expect(r.errors.join(' ')).toContain('العشرون');
+    const back = parseCurriculumText(curriculumToText(r.entries, '2026-2027'));
+    expect(back.errors).toEqual([]); expect(back.entries).toEqual(expect.arrayContaining(r.entries));
+  });
+});
+

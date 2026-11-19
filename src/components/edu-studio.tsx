@@ -450,7 +450,39 @@ function CurriculumEditor({ ui, canAdmin, curriculum, onSaved }: { ui: Lang; can
         <input className="input text-xs" value={source} maxLength={200} onChange={(e) => setSource(e.target.value)} placeholder={ui === 'ar' ? 'المصدر (مثال: كتاب الطالب — الفصل الأول)' : 'Source (e.g. student book, term 1)'} />
         <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={save} className="rounded-lg bg-indigo-700 px-4 py-2 text-xs font-bold text-white">{ui === 'ar' ? 'حفظ القائمة' : 'Save list'}</button>{msg && <span className="text-xs font-bold text-emerald-700">{msg}</span>}</div>
       </>}
+      {canAdmin && <BulkImport ui={ui} year={year} onSaved={onSaved} />}
+      <a href="/api/edu/curriculum/import" download className="inline-block text-xs font-bold text-indigo-700 underline">{ui === 'ar' ? 'تنزيل كل القوائم المحفوظة (ملف نصي قابل للتعديل)' : 'Download all saved lists'}</a>
     </section>
+  );
+}
+
+/** all subjects and grades at once: «# المادة | الصف» + lessons, or CSV «المادة,الصف,الدرس»; preview before saving */
+function BulkImport({ ui, year, onSaved }: { ui: Lang; year: string; onSaved: (c: { curriculumYear: string; curriculum: CurriculumEntry[] }) => void }) {
+  const [text, setText] = useState('');
+  const [pv, setPv] = useState<{ preview: { subject: string; grade: number; lessons: number }[]; errors: string[] } | null>(null);
+  const [msg, setMsg] = useState('');
+  const run = async (save: boolean) => {
+    try {
+      const r = await apiCall<{ preview?: { subject: string; grade: number; lessons: number }[]; errors: string[]; curriculumYear?: string; curriculum?: CurriculumEntry[]; imported?: number }>('/api/edu/curriculum/import', { method: 'POST', body: { text, save, curriculumYear: year } });
+      if (save && r.curriculum) { onSaved({ curriculumYear: r.curriculumYear ?? year, curriculum: r.curriculum }); setMsg(ui === 'ar' ? `حُفظت ${r.imported} قائمة ✓` : `Saved ${r.imported} lists ✓`); setPv(null); }
+      else setPv({ preview: r.preview ?? [], errors: r.errors });
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <div className="space-y-2 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 p-3">
+      <div className="text-xs font-extrabold text-indigo-900">{ui === 'ar' ? 'إدخال جماعي — كل المواد والصفوف دفعة واحدة' : 'Bulk import — all subjects and grades'}</div>
+      <pre className="whitespace-pre-wrap rounded bg-white p-2 font-sans text-[11px] text-slate-600" dir="rtl">{'# اللغة العربية | الصف الرابع\nالدرس الأول\nالدرس الثاني\n\n# الرياضيات | الصف الثالث\nالدرس الأول\n…'}</pre>
+      <p className="text-[11px] text-slate-500">{ui === 'ar' ? 'أو ملف CSV بأعمدة: المادة، الصف، الدرس. كل مادة/صف في الملف يستبدل قائمته المحفوظة فقط.' : 'Or CSV: subject, grade, lesson.'}</p>
+      <input type="file" accept=".txt,.csv,text/plain,text/csv" className="block w-full text-xs" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { setText(await f.text()); setPv(null); } }} />
+      <textarea className="input text-xs" rows={6} value={text} onChange={(e) => { setText(e.target.value); setPv(null); }} placeholder={ui === 'ar' ? 'الصق النص هنا' : 'Paste here'} />
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={!text.trim()} onClick={() => run(false)} className="rounded-lg border bg-white px-3 py-1.5 text-xs font-bold">{ui === 'ar' ? 'معاينة' : 'Preview'}</button>
+        <button type="button" disabled={!pv || !pv.preview.length} onClick={() => run(true)} className="rounded-lg bg-indigo-700 px-3 py-1.5 text-xs font-bold text-white disabled:bg-slate-300">{ui === 'ar' ? 'حفظ الكل' : 'Save all'}</button>{msg && <span className="text-xs font-bold text-emerald-700">{msg}</span>}</div>
+      {pv && <div className="text-xs">
+        <div className="font-bold">{ui === 'ar' ? `${pv.preview.length} قائمة · ${pv.preview.reduce((a, x) => a + x.lessons, 0)} درسًا` : `${pv.preview.length} lists`}</div>
+        <ul className="mt-1 grid grid-cols-1 gap-0.5 sm:grid-cols-2">{pv.preview.map((x) => <li key={`${x.subject}${x.grade}`}>• {x.subject} — {GRADES[x.grade]}: {x.lessons}</li>)}</ul>
+        {pv.errors.length > 0 && <ul className="mt-1 space-y-0.5 rounded bg-amber-50 p-2 text-amber-900">{pv.errors.map((er, i) => <li key={i}>{er}</li>)}</ul>}
+      </div>}
+    </div>
   );
 }
 

@@ -113,3 +113,41 @@ export function officialLessons(entries: CurriculumEntry[], subject: string, gra
   if (!key || g === null) return [];
   return entries.find((e) => e.subject === key && e.grade === g)?.lessons ?? [];
 }
+
+/**
+ * Bulk import of the official lessons (all subjects and grades at once). Two accepted formats:
+ *   1) headings:  «# الرياضيات | الصف الرابع» then one lesson per line (numbers / bullets are removed)
+ *   2) CSV rows:  «المادة,الصف,الدرس» (comma, semicolon or tab separated; quotes allowed)
+ * Unknown subjects or grades are reported, never guessed.
+ */
+export function parseCurriculumText(text: string): { entries: CurriculumEntry[]; errors: string[] } {
+  const map = new Map<string, CurriculumEntry>(); const errors: string[] = [];
+  const clean = (s: string) => s.replace(/^["'\s]+|["'\s]+$/g, '').replace(/^[\s\d٠-٩.\-–•)(*]+/, '').trim();
+  const add = (subject: string, grade: string, lesson: string, line: number) => {
+    const sk = subjectKey(subject), g = gradeIndex(grade), l = clean(lesson).slice(0, 160);
+    if (!sk) { errors.push(`سطر ${line}: مادة غير معروفة «${subject.trim()}»`); return; }
+    if (g === null) { errors.push(`سطر ${line}: صف غير معروف «${grade.trim()}»`); return; }
+    if (!l) return;
+    const k = `${sk}|${g}`; const e = map.get(k) ?? { subject: sk, grade: g, lessons: [] };
+    if (!e.lessons.includes(l) && e.lessons.length < 80) e.lessons.push(l);
+    map.set(k, e);
+  };
+  let cur: { subject: string; grade: string } | null = null;
+  text.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.trim(); if (!line || line.startsWith('//')) return; // blank / comment
+    const head = line.match(/^#+\s*(.+?)\s*[|،,\-–]\s*(.+)$/);
+    if (head) { cur = { subject: head[1], grade: head[2] }; if (!subjectKey(head[1])) errors.push(`سطر ${i + 1}: مادة غير معروفة «${head[1]}»`); if (gradeIndex(head[2]) === null) errors.push(`سطر ${i + 1}: صف غير معروف «${head[2]}»`); return; }
+    const cells = line.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((c) => c.trim());
+    // a CSV row is recognised by its grade column (so an unknown subject is reported, not swallowed as a lesson)
+    if (cells.length >= 3 && (subjectKey(clean(cells[0])) || gradeIndex(clean(cells[1])) !== null)) { add(clean(cells[0]), clean(cells[1]), cells.slice(2).join(' - '), i + 1); return; }
+    if (/^(المادة|subject)\b/i.test(line)) return; // CSV header
+    if (cur) add(cur.subject, cur.grade, line, i + 1);
+    else errors.push(`سطر ${i + 1}: لا يوجد عنوان «# المادة | الصف» قبل الدرس`);
+  });
+  return { entries: [...map.values()].filter((e) => e.lessons.length), errors: [...new Set(errors)].slice(0, 30) };
+}
+/** the reverse: the saved lists as an editable text file */
+export function curriculumToText(entries: CurriculumEntry[], year: string): string {
+  const order = (e: CurriculumEntry) => SUBJECTS.findIndex((s) => s.ar === e.subject) * 100 + e.grade;
+  return [`// منهج ${year} — دروس كتاب الطالب`, '', ...[...entries].sort((a, b) => order(a) - order(b)).flatMap((e) => [`# ${e.subject} | ${GRADES[e.grade]}`, ...e.lessons, ''])].join('\n');
+}
