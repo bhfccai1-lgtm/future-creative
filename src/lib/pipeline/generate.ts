@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import { fitToAlgorithm, type AlgoFit } from '../growth/algorithm';
+import { applyProofIssues, PROOF_SYSTEM, type ProofCopy, type ProofIssue } from '../creative/ai-proofread';
 import { pickFromWeek, programContentTypes } from '../growth/program';
 import { findBanned, stripBanned } from '../creative/banned';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
@@ -82,10 +83,13 @@ export async function assertDailyLimits(s: Settings, accountId: string, maxPerAc
   const since = startOfDayInTz();
   const [total, perAcc] = await Promise.all([
     prisma.advertisement.count({ where: { createdAt: { gte: since }, dryRun: false } }),
-    prisma.advertisement.count({ where: { createdAt: { gte: since }, accountId } }),
+    // the account quota is about how much gets POSTED: a failed design (nothing to post) or a dry-run preview does not
+    // use it. The overall cap above still counts failures — it protects the AI budget.
+    prisma.advertisement.count({ where: { createdAt: { gte: since }, accountId, dryRun: false, state: { not: 'FAILED' } } }),
   ]);
-  if (!s.ai.dryRun && total >= s.ai.maxDailyAds) throw new AppError('DAILY_LIMIT', `تم بلوغ الحد اليومي للإعلانات (${s.ai.maxDailyAds}).`, 429);
-  if (perAcc >= maxPerAccount) throw new AppError('ACCOUNT_DAILY_LIMIT', `تم بلوغ الحد اليومي لهذا الحساب (${maxPerAccount}).`, 429);
+  const reset = 'يتجدد العدّاد منتصف الليل بتوقيت البحرين';
+  if (!s.ai.dryRun && total >= s.ai.maxDailyAds) throw new AppError('DAILY_LIMIT', `تم بلوغ الحد اليومي لكل الإعلانات (${s.ai.maxDailyAds}) — ${reset}. لرفعه: إعدادات الذكاء الاصطناعي ← «الحد الأقصى اليومي للإعلانات».`, 429);
+  if (perAcc >= maxPerAccount) throw new AppError('ACCOUNT_DAILY_LIMIT', `تم بلوغ الحد اليومي لهذا الحساب (${perAcc} من ${maxPerAccount} تصاميم اليوم) — ${reset}. لرفعه: الحسابات الاجتماعية ← تعديل الحساب ← «الحد الأقصى اليومي».`, 429);
 }
 
 /** Steps 2–12 of the AI creative director. Never publishes by itself — at most it queues an approved, QC-passed ad. */
@@ -239,6 +243,19 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     if (captionIssues(brief.caption, { cta: ctaFor(business, lang), hashtags: brief.hashtags }).some((x) => x.includes('دعوة'))) {
       brief = { ...brief, caption: `${brief.caption.trim()}\n\n${ctaFor(business, lang)} 📞 ${contactLines(business, lang).map((c) => `${c.label} ${c.phone}`).join(' · ')}` };
     }
+    // ── AI PROOFREADING (optional, `useAiReview`): definite spelling/grammar mistakes fixed BEFORE the design is drawn ──
+    let proof: { applied: ProofIssue[]; flagged: ProofIssue[]; error?: string } | null = null;
+    if (s.ai.useAiReview && !provider.isDryRun && provider.generateJson) {
+      try {
+        await assertBudget(s, estimateTextCost(s, 1200, 300));
+        const copy: ProofCopy = { headline: brief.headline, badge: brief.badge, supportingCopy: brief.supportingCopy, cta: brief.cta, caption: brief.caption };
+        const r = await provider.generateJson(PROOF_SYSTEM, JSON.stringify({ language: lang, ...copy }), s.ai.textModel);
+        await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
+        const fixed = applyProofIssues(copy, r.json);
+        brief = { ...brief, headline: fixed.copy.headline ?? brief.headline, badge: fixed.copy.badge ?? brief.badge, supportingCopy: fixed.copy.supportingCopy ?? brief.supportingCopy, cta: fixed.copy.cta ?? brief.cta, caption: fixed.copy.caption ?? brief.caption };
+        proof = { applied: fixed.applied, flagged: fixed.flagged };
+      } catch (e) { proof = { applied: [], flagged: [], error: (e as Error).message.slice(0, 160) }; }
+    }
     // ── ALGORITHM GATE: the design is BUILT to the algorithm index, not just scored afterwards — bait removed, first line
     // visible before «more», product keyword + place in the first two lines, a natural send/save line, 3–5 hashtags ──
     const algoFit: AlgoFit = fitToAlgorithm({
@@ -249,7 +266,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     brief = { ...brief, caption: algoFit.caption, hashtags: algoFit.hashtags };
     {
       const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(o ?? {}), algorithm: { before: algoFit.before, after: algoFit.after, grade: algoFit.grade, fixes: algoFit.fixes, remaining: algoFit.remaining } } as unknown as Prisma.InputJsonValue } });
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(o ?? {}), algorithm: { before: algoFit.before, after: algoFit.after, grade: algoFit.grade, fixes: algoFit.fixes, remaining: algoFit.remaining }, ...(proof ? { aiProofread: proof } : {}) } as unknown as Prisma.InputJsonValue } });
     }
 
     const briefRow = await prisma.creativeBrief.create({
@@ -556,6 +573,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
       aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,
       algorithm: { score: algoFit.after, grade: algoFit.grade, remaining: algoFit.remaining.map((r) => r.label) },
+      aiProofread: proof,
     });
 
     await storeFingerprints(account.id, ad.id, [
