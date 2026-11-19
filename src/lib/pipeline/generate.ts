@@ -133,6 +133,9 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   if (marketOf(account) === 'KSA' && !p.direction?.market) p = { ...p, direction: { ...(p.direction ?? {}), market: 'gcc_saudi' } };
   // «يتعلم من ذوقك»: the owner's approvals/rejections (human decisions only)
   const taste = await tasteProfile();
+  // 🧠 the account's performance memory (learnt nightly from its real numbers) — 1 design in 5 explores without it
+  const brain = await (await import('../growth/brain')).brainGuidance(account.id).catch(() => ({ text: null, mode: 'none' as const, rules: [] as string[] }));
+  const feedback = brain.text ? [...taste.feedback, brain.text] : taste.feedback;
   // automatic designs that didn't choose a method/style use the settings (default: signature style, «تلقائي» method)
   if (!p.direction?.renderMode || !p.direction?.designStyle) {
     p = { ...p, direction: { ...(p.direction ?? {}), renderMode: p.direction?.renderMode ?? s.ai.autoRenderMode, designStyle: p.direction?.designStyle ?? s.ai.autoDesignStyle } };
@@ -187,7 +190,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     data: {
       accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId,
       channels: await withAutoGbp(account, format, withAutoChannels(account, format, (d.channels ?? []) as import('@prisma/client').SocialPlatform[])),
-      options: { designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? s.ai.audio.defaultReelAudio) : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
+      options: { brain: { mode: brain.mode, rules: brain.rules }, designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? s.ai.audio.defaultReelAudio) : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
     },
   });
   await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.start', targetType: 'advertisement', targetId: ad.id, details: { product: product.slug, format, provider: provider.name, language: lang, direction: (p.direction ?? null) as Prisma.InputJsonValue } });
@@ -205,7 +208,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         const r = await (await getIdeasProvider(s)).suggestIdeas({
           language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
           accountName: account.name, businessCategory: account.businessCategory, creativeStyle, defaultCta: ctaFor(business, lang),
-          avoidIdeas, avoidHeadlines, ownerFeedback: taste.feedback, attempt: 0, direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format,
+          avoidIdeas, avoidHeadlines, ownerFeedback: feedback, attempt: 0, direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format,
         }, s.ai.textModel, 3);
         if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
         const recentAngles = (await prisma.idea.findMany({ where: { accountId: account.id, status: 'USED' }, orderBy: { createdAt: 'desc' }, take: 10, select: { angle: true } })).map((x) => x.angle).filter((x): x is string => !!x);
@@ -227,7 +230,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           language: lang, product: { ...product, recommendedMessages: product.recommendedMessages as Record<string, string[]> },
           accountName: account.name, businessCategory: account.businessCategory, creativeStyle,
           defaultCta: ctaFor(business, lang), avoidIdeas, avoidHeadlines, attempt,
-          direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format, ownerFeedback: taste.feedback,
+          direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format, ownerFeedback: feedback,
         }, s.ai.textModel));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: out.model, kind: 'text', inputTokens: out.usage.inputTokens, outputTokens: out.usage.outputTokens, costUsd: estimateTextCost(s, out.usage.inputTokens, out.usage.outputTokens) });
         return out;

@@ -24,6 +24,12 @@ export const SettingsSchema = z.object({
   /** Idea bank: weekly rated ideas per active account; approved ideas feed automatic generation. */
   /** occasions the owner switched off — never picked automatically, hidden from the calendar suggestions */
   disabledOccasions: z.array(z.string().max(60)).max(100).default([]),
+  /** «🔥 رادار الترند»: today's Google searches in these countries → safe, product-matched ideas in the bank (off by default; 1 small AI text call a day) */
+  trends: z.object({
+    enabled: z.boolean().default(false),
+    geos: z.array(z.enum(['BH', 'SA', 'AE', 'KW', 'QA', 'OM'])).min(1).max(6).default(['BH', 'SA']),
+    ideasPerDay: z.number().int().min(1).max(10).default(5),
+  }).prefault({}),
   ideas: z.object({
     weekly: z.boolean().default(true),
     perAccount: z.number().int().min(1).max(6).default(5),
@@ -191,6 +197,16 @@ export const SettingsSchema = z.object({
       showOnProductPage: z.boolean().default(true),
       inCatalog: z.boolean().default(true),
     })).max(10).default([]),
+    /** WhatsApp Cloud API (Meta): the owner's copilot + customer messages → leads */
+    cloud: z.object({
+      enabled: z.boolean().default(false),
+      phoneNumberId: z.string().regex(/^\d*$/).default(''),
+      graphVersion: z.string().regex(/^v\d+\.\d+$/).default('v23.0'),
+      /** numbers (international digits) that talk to the smart assistant; everyone else is a customer */
+      ownerNumbers: z.array(z.string().regex(/^\d{10,15}$/)).max(5).default([]),
+      autoAck: z.boolean().default(false),
+      ackText: z.string().max(600).default('هلا والله 🌷 وصلتنا رسالتك، وبنرد عليك بأقرب وقت. مطبعة إبداع المستقبل — سار 33316319 | سلماباد 34315316'),
+    }).prefault({}),
     statusPack: z.object({
       enabled: z.boolean().default(false),
       maxPerDay: z.number().int().min(1).max(10).default(3),
@@ -226,6 +242,8 @@ export const SettingsSchema = z.object({
     driveOffload: z.boolean().default(false),
     offloadAfterDays: z.number().int().min(7).max(365).default(45),
     keepDriveBackups: z.number().int().min(3).max(365).default(30),
+    /** smart Drive: nightly performance sheet + «⭐ أفضل التصاميم» + the monthly report on day 1 */
+    driveSmart: z.boolean().default(false),
     lastOffload: z.object({ at: z.string(), removed: z.number(), freedMb: z.number() }).nullable().default(null),
   }).prefault({}),
   metricool: z.object({
@@ -259,7 +277,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

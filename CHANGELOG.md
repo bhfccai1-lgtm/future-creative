@@ -1,6 +1,33 @@
 # Changelog
 
 ## Unreleased
+- **🔥 رادار الترند (trend radar)** — new page under «النمو والتحليل» (growth & analytics), off by default:
+  - **Real searches, not guesses:** every morning (06:20) it reads Google Trends' free daily feed for Bahrain and Saudi Arabia (UAE, Kuwait, Qatar and Oman are optional), with search volumes.
+  - **Safe by design:** deaths, accidents, disasters, wars, politics, crime and religious disputes are dropped before any AI sees them, and the AI double-checks the rest.
+  - **Ideas you can run:** one small AI text call links the safe trends to real products each account is allowed to sell. Each idea has a hook, a format and why it fits, and goes into «بنك الأفكار» (idea bank) as NEW. Ids or trends the model made up are rejected.
+  - **Nothing publishes by itself:** you press «اعتمد» (approve) and the schedule designs it. Unapproved trend ideas expire after 3 days.
+  - **Learns whether trends pay off:** the account brain gains a «منشورات الترند» (trend posts) dimension, and the smart assistant can answer «شنو الترند اليوم؟» (what's trending today?).
+- **🧠 دماغ الحساب (account brain)** — every account learns from its own real numbers:
+  - **Learns every night (04:55):** the measured posts of the last 60 days are compared by opening (question or statement), format, time of day, occasion vs everyday, caption length and product category. A rule is kept only when both sides have at least 3 posts and the winner is at least 30 % better on retained views. Every rule shows its sample sizes.
+  - **Applies automatically:** the account's rules go into the brief of every new design for that account. No extra AI call and no extra cost.
+  - **Keeps exploring:** 1 design in 5 is made without the rules on purpose (epsilon-greedy), so the brain keeps learning instead of freezing on an old pattern. Each design records `options.brain.mode` (apply / explore).
+  - **Explains itself:** «خطة الحسابات» (accounts plan) shows «ما تعلّمه النظام» (what the system learnt) for each account, with numbers and a «عينة صغيرة» (small sample) flag. The smart assistant can answer «شنو تعلّمت عن حساب …؟».
+- **Old backups → Google Drive instead of being deleted:** `bash scripts/backups-to-drive.sh` moves every full backup except the newest one to the archive folder's `backups/` on Drive, streamed in 20 MB parts with each part's size verified. A backup is removed from the server only after Drive confirmed every byte of every file in it; otherwise it stays. `KEEP=2` keeps two on the server. `scripts/drive-upload.ts` now streams, so a media archive of several GB never sits whole in memory.
+- **✨ Drive الذكي (smart Drive)** — archive script v3, Settings → Integrations → Google archive (off by default):
+  - **Live performance sheet:** every night the «published» sheet gets each design's real numbers: views, reach, saves, shares, comments, retention, skip and a performance score.
+  - **«⭐ أفضل التصاميم» (best designs):** the best 3 designs of each account (last 30 days, at least 20 views) are copied once into a per-account folder, a portfolio ready to share with new customers.
+  - **Monthly smart report** in Google Docs → «التقارير» (reports), on day 1 of each month. The AI writes it from the real numbers in one small text call and labels interpretations; without a key it is written from the numbers alone, and the raw numbers are always appended.
+  - **Buttons:** «زامن الآن» (sync now) and «أنشئ التقرير الشهري الآن» (create this month's report now).
+- **«واتساب الذكي» (smart WhatsApp)** — the official WhatsApp Cloud API (Settings → Integrations):
+  - **Your assistant on WhatsApp.** Your number talks to the smart assistant: questions, designs, plan ideas. An action runs only when you reply «تأكيد» (confirm) within 15 minutes; «إلغاء» (cancel) cancels it.
+  - **Customer messages → leads.** Every customer who writes becomes a lead in «العملاء والطلبات» (customers & orders), with a notification. Later messages are added to the same lead, so there are no duplicates.
+  - **Optional welcome reply,** at most once every 24 hours per customer.
+  - **Security.** Webhooks are verified with the Meta App Secret (X-Hub-Signature-256), and each message is handled only once. Tokens are stored encrypted. The page shows the Callback URL and Verify token to copy into Meta.
+- **New «المساعد الذكي» (smart assistant)** — one chat instead of 30 pages, the first item in the menu. Write in Gulf Arabic («شنو وضع النظام؟», «أي حساب أداؤه أفضل؟», «صمم ريل لحساب الأكواب عن العيد الوطني»):
+  - **Tools:** the model plans and uses read-only tools: system health, accounts, one account's plan, the approval queue, products. It answers from the real results and never invents numbers.
+  - **Actions** (design now, approve plan ideas) are **only proposed**. Nothing runs until you press «تأكيد» (confirm). The proposal is signed, valid for 15 minutes, tied to your user, and your permission is checked again.
+  - **Costs:** every AI call is budgeted and recorded.
+  - **Without an AI key:** it still answers status, approvals and accounts for free.
 - **Menu organised into groups:** Content, Publishing, Customers & sales, Growth & analysis, Studios, System. The ~30 pages were one long list in the sidebar and the phone «المزيد» (more) sheet. Fix: a page no longer lights up a sibling that only shares its start, such as «الحسابات الاجتماعية» (social accounts) on «خطة الحسابات» (accounts plan).
 - **Release train:** brings to `main` the work merged into intermediate branches. That is the print-studio design idea (#25), the accounts plan (#26), the professional education images (#27) and Google Drive cold storage (#29). Development rule from now on: no stacked PRs; every PR is based on `main`.
 - **Google Drive for designs, videos and database backups** (Settings → Integrations → Google archive):

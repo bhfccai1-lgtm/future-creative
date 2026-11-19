@@ -54,6 +54,14 @@ function PlanCard({ p, canCreate }: { p: AccountPlan; canCreate: boolean }) {
         </div>
       )}
 
+      {p.brain && p.brain.rules.length > 0 && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm">
+          <div className="mb-1 font-extrabold">🧠 ما تعلّمه النظام من أرقام هذا الحساب</div>
+          <ul className="space-y-1">{p.brain.rules.map((r, k) => <li key={k}>• {r.ar}{Math.min(r.nBest, r.nWorst) < 5 && <span className="text-xs text-amber-700"> (عينة صغيرة — مبدئي)</span>}</li>)}</ul>
+          <p className="mt-1 text-[11px] text-slate-600">تُطبَّق تلقائيًا على تصاميم هذا الحساب الجديدة، وتصميم من كل ٥ يجرّب بدونها حتى يستمر التعلم. تُحدَّث كل ليلة من آخر ٦٠ يومًا ({p.brain.posts} منشورًا مقاسًا).</p>
+        </div>
+      )}
+
       {p.issues.length > 0 && (
         <div>
           <div className="mb-1 text-sm font-extrabold">المشاكل وحلولها</div>

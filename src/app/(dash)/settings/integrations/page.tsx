@@ -6,6 +6,7 @@ import { IntegrationsForm } from '@/components/integrations-form';
 import { N8nForm } from '@/components/n8n-form';
 import { DriveStorageForm, GoogleArchiveForm } from '@/components/google-archive-form';
 import { WhatsappSettings } from '@/components/whatsapp-settings';
+import { WhatsappCloudForm } from '@/components/whatsapp-cloud-form';
 import { whatsappStatus } from '@/lib/integrations/whatsapp-catalog';
 import { ActionButton } from '@/components/action-button';
 import { EVENTS } from '@/lib/integrations/events';
@@ -56,6 +57,7 @@ export default async function IntegrationsPage() {
       <Card collapsible title="واتساب — الكتالوج وحزمة الحالة" className="mt-6">
         <WhatsappSettings initial={await whatsappStatus()} categories={await prisma.productCategory.findMany({ select: { id: true, nameAr: true }, orderBy: { nameAr: 'asc' } })} accounts={await prisma.socialAccount.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } })} />
       </Card>
+      <Card collapsible title="💬 واتساب الذكي — مساعدك ورسائل العملاء" className="mt-6"><WhatsappCloudForm /></Card>
       <Card collapsible title="مزودات أخرى" className="mt-6">
         <p className="text-sm text-slate-600">واجهة المحوّل (PublishingAdapter) جاهزة لإضافة الواجهات الرسمية مباشرة (Meta Graph API، TikTok Content Posting API، YouTube Data API …). غير مفعّلة في هذا الإصدار — راجع docs/FEATURES.md.</p>
       </Card>

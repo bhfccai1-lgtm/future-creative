@@ -38,13 +38,13 @@ export function GoogleArchiveForm({ configured }: { configured: boolean }) {
   );
 }
 
-type StorageView = { settings: { driveOffload: boolean; offloadAfterDays: number; keepDriveBackups: number; lastOffload: { at: string; removed: number; freedMb: number } | null }; stats: { files: number; onDrive: number; offloaded: number; freedMb: number; localMb: number } };
+type StorageView = { settings: { driveSmart?: boolean; driveOffload: boolean; offloadAfterDays: number; keepDriveBackups: number; lastOffload: { at: string; removed: number; freedMb: number } | null }; stats: { files: number; onDrive: number; offloaded: number; freedMb: number; localMb: number } };
 /** Google Drive as cold storage for published designs + where the database backups go */
 export function DriveStorageForm({ configured }: { configured: boolean }) {
   const [v, setV] = useState<StorageView | null>(null);
-  const [f, setF] = useState({ driveOffload: false, offloadAfterDays: 45, keepDriveBackups: 30 });
+  const [f, setF] = useState({ driveOffload: false, offloadAfterDays: 45, keepDriveBackups: 30, driveSmart: false });
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
-  const load = async () => { try { const r = await apiCall<StorageView>('/api/settings/google-archive/storage'); setV(r); setF({ driveOffload: r.settings.driveOffload, offloadAfterDays: r.settings.offloadAfterDays, keepDriveBackups: r.settings.keepDriveBackups }); } catch { /* not allowed */ } };
+  const load = async () => { try { const r = await apiCall<StorageView>('/api/settings/google-archive/storage'); setV(r); setF({ driveOffload: r.settings.driveOffload, offloadAfterDays: r.settings.offloadAfterDays, keepDriveBackups: r.settings.keepDriveBackups, driveSmart: !!r.settings.driveSmart }); } catch { /* not allowed */ } };
   useEffect(() => { void load(); }, []);
   const run = async (fn: () => Promise<string>) => { setMsg(null); try { setMsg({ ok: true, t: await fn() }); await load(); } catch (x) { setMsg({ ok: false, t: (x as Error).message }); } };
   if (!v) return null;
@@ -55,6 +55,15 @@ export function DriveStorageForm({ configured }: { configured: boolean }) {
         {[['تصاميم منشورة لها نسخة في Drive', `${v.stats.onDrive} / ${v.stats.files}`], ['نُقلت من السيرفر', v.stats.offloaded], ['المساحة المحرّرة', `${v.stats.freedMb} MB`], ['ما زال على السيرفر', `${v.stats.localMb} MB`]].map(([k, x]) => (
           <div key={k as string} className="rounded-lg bg-slate-50 p-2"><div className="text-[11px] text-slate-500">{k}</div><div className="font-bold tabular-nums">{x}</div></div>
         ))}
+      </div>
+      <div className="rounded-lg border border-gold-500/60 bg-gold-300/10 p-2.5">
+        <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={f.driveSmart} disabled={!configured} onChange={(e) => setF({ ...f, driveSmart: e.target.checked })} />
+          <span><b>✨ Drive الذكي</b> — كل ليلة: أرقام كل تصميم (مشاهدات، حفظ، مشاركات، إكمال، تخطٍّ، درجة أداء) في جدول الأرشيف، ونسخ أفضل 3 تصاميم لكل حساب في مجلد <b>«⭐ أفضل التصاميم»</b> (معرض أعمال جاهز للمشاركة)، وفي أول كل شهر <b>تقرير ذكي</b> في Google Docs ← «التقارير».</span></label>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={!configured} onClick={() => run(async () => { const r = await apiCall<{ metrics: { updated: number }; best: { designs: number } }>('/api/settings/google-archive/smart', { body: { action: 'sync' } }); return `حُدّثت أرقام ${r.metrics.updated} تصميم، وأُضيف ${r.best.designs} تصميم لـ«⭐ أفضل التصاميم» ✓`; })}>زامن الآن</Button>
+          <Button type="button" size="sm" variant="outline" disabled={!configured} onClick={() => run(async () => { const r = await apiCall<{ title: string; url: string; source: string }>('/api/settings/google-archive/smart', { body: { action: 'report' } }); return `${r.title} جاهز (${r.source === 'ai' ? 'بالذكاء الاصطناعي' : 'من الأرقام'}) ✓ ${r.url}`; })}>أنشئ التقرير الشهري الآن</Button>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-500">يحتاج السكربت الإصدار 3 (أنشئه من جديد بالأعلى والصقه ثم New version). التقرير بالذكاء الاصطناعي = طلب نصي واحد صغير في الشهر؛ بدون مفتاح يُكتب من الأرقام.</p>
       </div>
       <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={f.driveOffload} disabled={!configured} onChange={(e) => setF({ ...f, driveOffload: e.target.checked })} />
         <span><b>نقل التصاميم القديمة إلى Drive وتحرير مساحة السيرفر</b> — كل ليلة: التصاميم المنشورة منذ أكثر من

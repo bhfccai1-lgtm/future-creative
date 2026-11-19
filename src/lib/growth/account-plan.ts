@@ -30,6 +30,8 @@ export interface AccountPlan {
   hooks: { question: { n: number; skip: number | null }; statement: { n: number; skip: number | null } };
   frequency: { first: { posts: number; avgViews: number | null }; second: { posts: number; avgViews: number | null } } | null;
   issues: PlanIssue[]; ideas: PlanIdea[]; bio: string; messages: string[]; recent: PlanPost[];
+  /** 🧠 what the account's brain learnt from its numbers (null = not enough data yet) */
+  brain: { at: string; posts: number; rules: { ar: string; lift: number; nBest: number; nWorst: number }[] } | null;
 }
 
 const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -158,6 +160,7 @@ export async function accountPlans(opts: { now?: Date; days?: number; accountId?
       account: { id: acc.id, name: acc.name, handle: acc.handle, language: acc.language, market }, days, posts: posts.length, measured, totals, top, hooks, frequency, issues, ideas,
       bio: bioFor(acc.language, catNames, market === 'KSA'), messages: messagesFor(acc.language, main?.name ?? (acc.language === 'ar' ? 'منتجنا' : 'our product')),
       recent: [...posts].reverse().slice(0, 9),
+      brain: await (async () => { const b = await (await import('./brain')).brainOf(acc.id); return b ? { at: b.at, posts: b.posts, rules: b.rules.map((r) => ({ ar: r.ar, lift: r.lift, nBest: r.nBest, nWorst: r.nWorst })) } : null; })(),
     });
   }
   return out;

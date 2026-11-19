@@ -28,7 +28,7 @@ export async function queueGoogleArchive(adId: string, publicUrl: string | null)
 }
 
 /** v2: returns the Drive id + size of every saved file (needed before a local copy may be removed) and stores DB backups. */
-export const SCRIPT_VERSION = 2;
+export const SCRIPT_VERSION = 3;
 
 /** The Apps Script the owner deploys as a web app. Folder/sheet ids and the system host are filled in. */
 export function appsScriptSource(o: { folderId: string; sheetId: string; host: string; keepBackups?: number }) {
@@ -44,6 +44,9 @@ function doPost(e) {
     const p = JSON.parse(e.postData.contents);
     if (p.event === 'test.ping') return out({ ok: true, test: true, version: VERSION });
     if (p.event === 'backup.part') return backupPart(p.data || {});
+    if (p.event === 'metrics.update') return metricsUpdate(p.data || {});
+    if (p.event === 'best.copy') return bestCopy(p.data || {});
+    if (p.event === 'report.doc') return reportDoc(p.data || {});
     if (p.event !== 'archive.google') return out({ ok: false, error: 'unknown event' });
     const d = p.data || {};
     const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -86,6 +89,57 @@ function backupPart(d) {
     all.slice(KEEP_BACKUPS).forEach(function (f) { f.setTrashed(true); });
   }
   return out({ ok: true, id: file.getId(), size: file.getSize() });
+}
+// v3 — live performance columns in the «published» sheet (matched by design id, column G)
+var METRIC_HEADERS = ['المشاهدات', 'الوصول', 'الحفظ', 'المشاركات', 'التعليقات', 'الإكمال٪', 'التخطي٪', 'درجة الأداء', 'آخر تحديث'];
+function metricsUpdate(d) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('published');
+  if (!sheet) return out({ ok: true, updated: 0 });
+  sheet.getRange(1, 10, 1, METRIC_HEADERS.length).setValues([METRIC_HEADERS]);
+  const last = sheet.getLastRow(); if (last < 2) return out({ ok: true, updated: 0 });
+  const ids = sheet.getRange(2, 7, last - 1, 1).getValues().map(function (r) { return String(r[0]); });
+  let n = 0;
+  (d.rows || []).forEach(function (r) {
+    const i = ids.indexOf(String(r.adId)); if (i < 0) return;
+    sheet.getRange(i + 2, 10, 1, METRIC_HEADERS.length).setValues([[r.views, r.reach, r.saves, r.shares, r.comments, r.retention === null ? '' : r.retention, r.skip === null ? '' : r.skip, r.score, d.at || '']]);
+    n++;
+  });
+  return out({ ok: true, updated: n });
+}
+// v3 — «⭐ أفضل التصاميم»: a copy of the best performers per account (an always-ready portfolio to share)
+function bestCopy(d) {
+  const root = DriveApp.getFolderById(FOLDER_ID);
+  const bi = root.getFoldersByName('⭐ أفضل التصاميم');
+  const best = bi.hasNext() ? bi.next() : root.createFolder('⭐ أفضل التصاميم');
+  const ai = best.getFoldersByName(d.account || 'other');
+  const folder = ai.hasNext() ? ai.next() : best.createFolder(d.account || 'other');
+  const copied = [];
+  (d.fileIds || []).forEach(function (id) {
+    const f = DriveApp.getFileById(id);
+    const name = (d.prefix ? d.prefix + ' — ' : '') + f.getName();
+    if (folder.getFilesByName(name).hasNext()) return;
+    copied.push(f.makeCopy(name, folder).getId());
+  });
+  return out({ ok: true, copied: copied.length, folderUrl: folder.getUrl() });
+}
+// v3 — the monthly smart report as a Google Doc in «التقارير»
+function reportDoc(d) {
+  const root = DriveApp.getFolderById(FOLDER_ID);
+  const ri = root.getFoldersByName('التقارير');
+  const reports = ri.hasNext() ? ri.next() : root.createFolder('التقارير');
+  const ex = reports.getFilesByName(d.title); if (ex.hasNext()) ex.next().setTrashed(true);
+  const doc = DocumentApp.create(d.title);
+  const body = doc.getBody();
+  body.setAttributes({ [DocumentApp.Attribute.FONT_FAMILY]: 'Tajawal' });
+  (d.blocks || []).forEach(function (b) {
+    const p = b.type === 'h1' ? body.appendParagraph(b.text).setHeading(DocumentApp.ParagraphHeading.HEADING1)
+      : b.type === 'h2' ? body.appendParagraph(b.text).setHeading(DocumentApp.ParagraphHeading.HEADING2)
+      : b.type === 'li' ? body.appendListItem(b.text) : body.appendParagraph(b.text);
+    p.setLeftToRight(false).setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  });
+  doc.saveAndClose();
+  const file = DriveApp.getFileById(doc.getId()); file.moveTo(reports);
+  return out({ ok: true, id: file.getId(), url: file.getUrl() });
 }
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 `;
@@ -162,26 +216,56 @@ export async function backfillArchive(limit = 200) {
   return { queued };
 }
 
-/** DATABASE BACKUP → Google Drive through the same script, in parts of at most 20 MB (Apps Script request limit) */
-export async function uploadBackupToDrive(data: Buffer, opts: { backup: string; name: string; fetchImpl?: typeof fetch }) {
+const PART = 20 * 1024 * 1024;
+/** one part of a backup file → Drive (3 attempts), its size verified */
+export async function uploadBackupPart(target: string, p: { backup: string; name: string; chunk: Buffer; last: boolean }, fetchImpl: typeof fetch = fetch) {
+  const body = JSON.stringify({ event: 'backup.part', data: { backup: p.backup, name: p.name, base64: p.chunk.toString('base64'), last: p.last } });
+  let j: { ok?: boolean; id?: string; size?: number; error?: string } | null = null;
+  for (let attempt = 1; attempt <= 3 && !j?.ok; attempt++) {
+    try { const r = await fetchImpl(target, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(300_000) }); j = await r.json().catch(() => null); }
+    catch (e) { j = { ok: false, error: (e as Error).message }; }
+  }
+  if (!j?.ok || !j.id) throw new Error(`Drive upload failed for ${p.name}: ${j?.error ?? 'no answer'} — is the script updated to version ${SCRIPT_VERSION}?`);
+  if (j.size !== p.chunk.length) throw new Error(`Drive size mismatch for ${p.name}: ${j.size} ≠ ${p.chunk.length}`);
+  return { name: p.name, id: j.id, size: j.size };
+}
+async function archiveTarget() {
   const target = await getSecret('GOOGLE_ARCHIVE_URL');
   if (!target) throw new Error('GOOGLE_ARCHIVE_URL is not set — connect the Google archive first (Settings → Integrations).');
-  const PART = 20 * 1024 * 1024, parts = Math.max(1, Math.ceil(data.length / PART));
+  return target;
+}
+
+/** DATABASE BACKUP → Google Drive through the same script, in parts of at most 20 MB (Apps Script request limit) */
+export async function uploadBackupToDrive(data: Buffer, opts: { backup: string; name: string; fetchImpl?: typeof fetch }) {
+  const target = await archiveTarget();
+  const parts = Math.max(1, Math.ceil(data.length / PART));
   const out: { name: string; id: string; size: number }[] = [];
   for (let i = 0; i < parts; i++) {
-    const chunk = data.subarray(i * PART, (i + 1) * PART);
     const name = parts === 1 ? opts.name : `${opts.name}.part${String(i + 1).padStart(2, '0')}`;
-    const body = JSON.stringify({ event: 'backup.part', data: { backup: opts.backup, name, base64: chunk.toString('base64'), last: i === parts - 1 } });
-    let j: { ok?: boolean; id?: string; size?: number; error?: string } | null = null;
-    for (let attempt = 1; attempt <= 3 && !j?.ok; attempt++) {
-      try { const r = await (opts.fetchImpl ?? fetch)(target, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(300_000) }); j = await r.json().catch(() => null); }
-      catch (e) { j = { ok: false, error: (e as Error).message }; }
-    }
-    if (!j?.ok || !j.id) throw new Error(`Drive upload failed for ${name}: ${j?.error ?? 'no answer'} — is the script updated to version ${SCRIPT_VERSION}?`);
-    if (j.size !== chunk.length) throw new Error(`Drive size mismatch for ${name}: ${j.size} ≠ ${chunk.length}`);
-    out.push({ name, id: j.id, size: j.size });
+    out.push(await uploadBackupPart(target, { backup: opts.backup, name, chunk: data.subarray(i * PART, (i + 1) * PART), last: i === parts - 1 }, opts.fetchImpl));
   }
   return { parts: out, bytes: data.length };
+}
+
+/**
+ * Large files (a media archive of several GB) streamed to Drive part by part — never held in memory whole.
+ * Parts are named <name>.part0001…; join them in order to restore (cat name.part* > name).
+ */
+export async function uploadStreamToDrive(stream: AsyncIterable<Buffer | Uint8Array>, opts: { backup: string; name: string; fetchImpl?: typeof fetch }) {
+  const target = await archiveTarget();
+  let buf = Buffer.alloc(0), pending: Buffer | null = null, n = 0, bytes = 0;
+  const out: { name: string; id: string; size: number }[] = [];
+  const send = async (chunk: Buffer, last: boolean) => { n++; out.push(await uploadBackupPart(target, { backup: opts.backup, name: `${opts.name}.part${String(n).padStart(4, '0')}`, chunk, last }, opts.fetchImpl)); };
+  for await (const c of stream) {
+    buf = Buffer.concat([buf, Buffer.from(c)]); bytes += c.length;
+    while (buf.length >= PART) {
+      if (pending) await send(pending, false); // one part is held back so the final part can carry «last»
+      pending = buf.subarray(0, PART); buf = buf.subarray(PART);
+    }
+  }
+  if (buf.length) { if (pending) await send(pending, false); pending = buf; }
+  if (pending) await send(pending, true);
+  return { parts: out, bytes };
 }
 
 /** a file that was moved to Google Drive: where the dashboard sends the viewer instead (null = not offloaded) */
