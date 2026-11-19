@@ -27,7 +27,9 @@ export const GEO_AR: Record<string, string> = { BH: 'البحرين', SA: 'ال�
 /** bad news a business must never ride (Arabic + English) */
 export const SENSITIVE = /وفا[ةه]|توفي|مقتل|قتل|قتيل|ضحايا|حادث|حريق|انفجار|زلزال|فيضان|غرق|حرب|قصف|غارة|هجوم|إرهاب|ارهاب|اعتقال|سجن|محاكم|جريم|اغتصاب|تحرش|انتخاب|مظاهر|احتجاج|عزاء|جنازة|إعدام|اعدام|طائفي|مذهبي|إسرائيل|اسرائيل|غزة|فلسطين|لبنان|سوريا|إيران|ايران|\b(died|dies|death|dead|killed|kills?|murder|crash|accident|fire|explosion|earthquake|flood|war|attack|terror\w*|arrest\w*|prison|trial|election\w*|protest\w*|funeral|shooting|israel|gaza|iran)\b/i;
 
-const decode = (s: string) => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+const ENTITIES: Record<string, string> = { amp: '&', quot: '"', '#39': "'", apos: "'", lt: '<', gt: '>' };
+/** one pass, so «&amp;quot;» stays «&quot;» (never decoded twice) */
+const decode = (s: string) => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&(amp|quot|#39|apos|lt|gt);/g, (_, e: string) => ENTITIES[e]).trim();
 const tag = (xml: string, name: string) => { const m = xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`)); return m ? decode(m[1]) : ''; };
 /** «2000+» / «10K+» / «1M+» → a number for sorting */
 export const volumeOf = (t: string) => { const m = t.replace(/,/g, '').match(/([\d.]+)\s*([KM]?)/i); return m ? Math.round(Number(m[1]) * (m[2].toUpperCase() === 'M' ? 1e6 : m[2].toUpperCase() === 'K' ? 1e3 : 1)) : 0; };

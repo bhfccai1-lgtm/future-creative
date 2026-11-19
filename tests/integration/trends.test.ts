@@ -26,6 +26,7 @@ describe('🔥 trend radar (real searches → safe, product-matched ideas)', () 
     expect(t.map((x) => x.title)).toEqual(['وفاة فنان', 'منتخب البحرين', 'العيد الوطني']);
     expect(t[1]).toMatchObject({ traffic: '20K+', volume: 20000, news: ['البحرين تفوز وتتأهل لنهائي كأس الخليج'] });
     expect(isSensitive(t[0])).toBe(true); expect(isSensitive(t[1])).toBe(false);
+    expect(parseTrendsRss(item('Tom &amp; Jerry &amp;quot;', '1K+', 'x'), 'BH')[0].title).toBe('Tom & Jerry &quot;'); // decoded once
     expect(volumeOf('1M+')).toBe(1_000_000); expect(volumeOf('2,000+')).toBe(2000);
   });
 
