@@ -8,10 +8,54 @@ type Product = { id: string; titleAr: string; categoryId?: string };
 type Category = { id: string; nameAr: string; count?: number };
 type Account = {
   id?: string; name: string; platform: string; handle?: string | null; language: string; businessCategory?: string | null; allowedProductIds: string[]; allowedCategoryIds?: string[];
-  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string; gbpAuto?: boolean; gbpPerWeek?: number; autoChannels?: string[]; pinterestBoard?: string | null;
+  publishFormat: string; publishIntervalMinutes: number; publishWindowStart: string; publishWindowEnd: string; timezone: string; reelDurationSec: number; maxDailyAds: number; formatStrategy?: string; formatMix?: Record<string, number> | null; gbpAuto?: boolean; gbpPerWeek?: number; autoChannels?: string[]; pinterestBoard?: string | null;
 };
 
 const EMPTY: Account = { name: '', platform: 'instagram', language: 'ar', allowedProductIds: [], allowedCategoryIds: [], publishFormat: 'IMAGE_STORY', publishIntervalMinutes: 420, publishWindowStart: '09:00', publishWindowEnd: '22:00', timezone: 'Asia/Bahrain', reelDurationSec: 10, maxDailyAds: 10, formatStrategy: 'GROWTH_MIX' };
+
+/** the formats an account can rotate between, with the growth mix recommended from the accounts' own data */
+const FORMATS: [string, string, string][] = [
+  ['REEL_VIDEO', 'ريلز (فيديو)', 'أكبر وصول لغير المتابعين'],
+  ['IMAGE_CAROUSEL', 'كاروسيل', 'حفظ ومشاركة'],
+  ['IMAGE_FEED', 'منشور عمودي 1080×1350', 'يبني شبكة الحساب'],
+  ['IMAGE_SQUARE', 'منشور مربع 1080×1080', ''],
+  ['IMAGE_STORY', 'ستوري 1080×1920', 'للمتابعين الحاليين فقط'],
+];
+const GROWTH_MIX: Record<string, number> = { REEL_VIDEO: 50, IMAGE_CAROUSEL: 25, IMAGE_FEED: 15, IMAGE_STORY: 10 };
+
+function FormatMixPicker({ mix, onChange }: { mix: Record<string, number>; onChange: (m: Record<string, number>) => void }) {
+  const total = Object.values(mix).reduce((x, y) => x + y, 0) || 1;
+  // the last chosen format cannot be unticked (an account needs at least one)
+  const toggle = (f: string) => { const m = { ...mix }; if (m[f]) { if (Object.keys(m).length === 1) return; delete m[f]; } else m[f] = 20; onChange(m); };
+  return (
+    <div className="md:col-span-3 rounded-lg border border-slate-200 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-bold">الصيغ التي ينشرها الحساب (اختر صيغة أو أكثر)</span>
+        <button type="button" className="rounded-lg border border-slate-300 px-2 py-1 text-xs" onClick={() => onChange({ ...GROWTH_MIX })}>مزيج النمو الموصى به</button>
+      </div>
+      <ul className="space-y-1.5">
+        {FORMATS.map(([f, label, note]) => {
+          const on = !!mix[f];
+          return (
+            <li key={f} className={`flex flex-wrap items-center gap-2 rounded-lg px-2 py-1.5 ${on ? 'bg-gold-300/20' : ''}`}>
+              <label className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                <input type="checkbox" checked={on} onChange={() => toggle(f)} />
+                <span className="min-w-0"><span className="block">{label}</span>{note && <span className="block text-xs text-slate-500">{note}</span>}</span>
+              </label>
+              {on && (
+                <span className="flex items-center gap-1 text-xs">
+                  <input type="number" min={1} max={100} className="w-14 rounded border border-slate-300 px-1 py-1 text-center ltr" value={mix[f]} onChange={(e) => onChange({ ...mix, [f]: Math.max(1, Math.min(100, Number(e.target.value) || 1)) })} aria-label={`وزن ${label}`} />
+                  <b className="w-10 text-left">{Math.round((mix[f] / total) * 100)}%</b>
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-xs text-slate-500">النظام يختار صيغة كل تصميم آلي ليقترب من هذه النسب (حسب آخر 14 يومًا). النسبة تُحسب من الأوزان تلقائيًا. التصميم اليدوي يمكنك اختيار صيغته بنفسك.</p>
+    </div>
+  );
+}
 
 const NET_AR: Record<string, string> = { instagram: 'إنستغرام', facebook: 'فيسبوك', tiktok: 'تيك توك', threads: 'ثريدز', youtube: 'يوتيوب Shorts', pinterest: 'بنترست', linkedin: 'لينكدإن', twitter: 'X' };
 const NET_NOTE: Record<string, string> = { youtube: 'الريلز فقط', tiktok: 'ريلز وصور', pinterest: 'صور وريلز + رابط صفحة المنتج', linkedin: 'جمهور الشركات', twitter: 'نص قصير خاص', threads: 'نص قصير خاص', facebook: 'منشور/ريلز/ستوري' };
@@ -26,8 +70,10 @@ export function AccountForm({ account, products, categories = [], linked = [] }:
     <form className="grid gap-4 md:grid-cols-3" onSubmit={async (e) => {
       e.preventDefault(); setMsg(null);
       const { id, ...rest } = a;
-      const { formatMix: _ignored, ...body } = rest as typeof rest & { formatMix?: unknown }; // mix is edited elsewhere; never send null
-      void _ignored;
+      // the mix is sent only when the account rotates formats and at least one is chosen (never null)
+      const { formatMix, ...base } = rest;
+      const mix = formatMix && Object.keys(formatMix).length ? formatMix : GROWTH_MIX; // untouched picker = the recommended mix
+      const body = base.formatStrategy === 'GROWTH_MIX' ? { ...base, formatMix: mix } : base;
       try {
         const r = await apiCall<{ id: string }>(id ? `/api/accounts/${id}` : '/api/accounts', { method: id ? 'PATCH' : 'POST', body });
         setMsg({ ok: true, t: 'تم الحفظ ✓' });
@@ -43,15 +89,16 @@ export function AccountForm({ account, products, categories = [], linked = [] }:
       <div><label className="label">لغة الإعلانات</label>
         <select className="input" value={a.language} onChange={(e) => set('language', e.target.value)}><option value="ar">العربية</option><option value="en">English</option><option value="ml">മലയാളം Malayalam</option></select></div>
       <div><label className="label">فئة النشاط</label><input className="input" value={a.businessCategory ?? ''} onChange={(e) => set('businessCategory', e.target.value || null)} placeholder="مثال: هدايا، شركات، أعراس" /></div>
-      <div><label className="label">صيغة النشر</label>
+      {(a.formatStrategy ?? 'FIXED') === 'FIXED' && <div><label className="label">صيغة النشر</label>
         <select className="input" value={a.publishFormat} onChange={(e) => set('publishFormat', e.target.value)}>
           <option value="IMAGE_STORY">صورة عمودية 1080×1920</option><option value="IMAGE_FEED">صورة منشور 1080×1350</option><option value="IMAGE_SQUARE">صورة مربعة 1080×1080</option><option value="REEL_VIDEO">فيديو Reel متحرك (MP4)</option><option value="IMAGE_CAROUSEL">كاروسيل 5–6 شرائح 1080×1350</option>
-        </select></div>
+        </select></div>}
       <div><label className="label">استراتيجية المحتوى</label>
         <select className="input" value={a.formatStrategy ?? 'FIXED'} onChange={(e) => set('formatStrategy', e.target.value)}>
-          <option value="GROWTH_MIX">مزيج النمو: 50% ريلز · 25% كاروسيل · 15% منشور · 10% ستوري (موصى به)</option><option value="FIXED">صيغة ثابتة (صيغة النشر أعلاه فقط)</option>
+          <option value="GROWTH_MIX">عدة صيغ بالتناوب (موصى به)</option><option value="FIXED">صيغة واحدة ثابتة</option>
         </select>
         <p className="mt-1 text-xs text-slate-500">بيانات حساباتك: الريلز وصلت 5–7 أضعاف وصول الصور، والستوري لا تجلب متابعين جددًا.</p></div>
+      {a.formatStrategy === 'GROWTH_MIX' && <FormatMixPicker mix={a.formatMix && Object.keys(a.formatMix).length ? a.formatMix : GROWTH_MIX} onChange={(m) => set('formatMix', m)} />}
       <div><label className="label">النشر كل</label>
         <select className="input" value={a.publishIntervalMinutes} onChange={(e) => { const m = Number(e.target.value); setA((x) => ({ ...x, publishIntervalMinutes: m, maxDailyAds: Math.max(10, x.maxDailyAds, Math.ceil(1440 / m)) })); }}>
           {[...new Set([3, 4, 5, 6, 7, 8, 9, 12, 24, 48].map((h) => h * 60).concat(a.publishIntervalMinutes))].sort((x, y) => x - y).map((m) => <option key={m} value={m}>{m % 60 ? `${m} دقيقة` : `${m / 60} ساعات`}</option>)}

@@ -93,7 +93,9 @@ describe('content generation pipeline', () => {
   it('enforces the per-account daily limit', async () => {
     const { accounts } = await seedBase();
     await prisma.socialAccount.update({ where: { id: accounts[0].id }, data: { maxDailyAds: 1 } });
-    await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't' });
+    setAiProviderOverride(new FakeAiProvider()); // a real (non dry-run) design uses the quota; dry-run previews do not
+    const first = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't' });
+    expect(first.advertisement.state).not.toBe('FAILED');
     await expect(generateAdvertisement({ accountId: accounts[0].id, createdBy: 't' })).rejects.toThrow(/الحد اليومي/);
   });
 
