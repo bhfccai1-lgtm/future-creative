@@ -288,14 +288,19 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     await assertBudget(s, estimateImageCost(s, imgQuality));
     // a phrase the owner put in quotes («…» / "…") must appear letter-for-letter (e.g. printed on the mug) and is spell-checked too
     const quoted = quotedPhrases(d.idea);
-    // reference images: the REAL product photo (every mode) + the owner's reference design (full-AI posters)
-    const refs: { role: 'product'; png: Buffer }[] = [];
+    // reference images: the REAL product photo + the owner's reference design (every mode: full-AI posters take its whole
+    // look, layered designs take its photographic look — lighting, palette, mood, background — under the system's layout)
+    const refs: { role: 'product' | 'style'; png: Buffer }[] = [];
     if (s.ai.useReferences && !provider.isDryRun && !d.realPhotoKey) {
       const photo = await loadReference(product.photoKey);
       if (photo) refs.push({ role: 'product', png: photo });
     }
-    const styleBrief = s.ai.useReferences && aiFull ? await styleBriefFor(s, provider, format) : '';
-    const refPrompt = referencePrompt(refs, styleBrief), references = refs.length ? refs.map((r) => r.png) : undefined;
+    const styleBrief = s.ai.useReferences && !d.realPhotoKey ? await styleBriefFor(s, provider, format) : '';
+    if (s.ai.useReferences && s.ai.styleRefImage && !provider.isDryRun && !d.realPhotoKey) {
+      const style = await loadReference(styleKeyFor(s, format));
+      if (style) refs.push({ role: 'style', png: style });
+    }
+    const refPrompt = referencePrompt(refs, styleBrief, aiFull ? 'poster' : 'scene'), references = refs.length ? refs.map((r) => r.png) : undefined;
     const realPhoto = d.realPhotoKey ? await loadReference(d.realPhotoKey) : null;
     if (d.realPhotoKey && !realPhoto) throw new AppError('NO_PHOTO', 'صورة العمل المنجز غير موجودة — ارفعها مرة أخرى.', 422);
     type Scene = Awaited<ReturnType<typeof provider.generateScene>>;
@@ -391,7 +396,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       if (pool.length === 1) { chosenQ = qualities[0] ?? null; return pool[0]; }
       try {
         const thumbs = await Promise.all(pool.map((c) => sharp(c.png).resize(512).jpeg({ quality: 80 }).toBuffer()));
-        const j = await provider.judgeImages!(thumbs, `${brief!.headline} — ${brief!.sceneDescription}`.slice(0, 1500), s.ai.textModel);
+        const j = await provider.judgeImages!(thumbs, `${brief!.headline} — ${brief!.sceneDescription}${styleBrief ? ` — prefer the candidate closest to the owner's target style: ${styleBrief}` : ''}`.slice(0, 1800), s.ai.textModel);
         await recordUsage({ jobId, provider: provider.name, model: j.model, kind: 'text', inputTokens: j.usage.inputTokens, outputTokens: j.usage.outputTokens, costUsd: estimateTextCost(s, j.usage.inputTokens, j.usage.outputTokens) });
         artDirector = { candidates: pool.length, best: j.best, scores: j.scores, reason: j.reason };
         chosenQ = qualities[j.best] ?? qualities[0] ?? null;
@@ -417,7 +422,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     }
     if (artDirector || textCheck || refs.length || styleBrief || conceptSelection || textFallback) {
       const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])] } : {}) } as Prisma.InputJsonValue } });
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...new Set([...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])])] } : {}) } as Prisma.InputJsonValue } });
     }
 
     // ── Step 9: deterministic layered composition ──
@@ -770,6 +775,12 @@ export function quotedPhrases(idea?: string | null): string[] {
   const out: string[] = [];
   for (const m of idea.matchAll(/[«"“]([^«»"“”]{3,120})[»"”]/g)) { const t = m[1].trim().replace(/[.،,]+$/, ''); if (t && !out.includes(t)) out.push(t); }
   return out.slice(0, 2);
+}
+
+/** The stored reference design for a format: its own slot first (story/reel, feed, square, carousel), then the general one. */
+function styleKeyFor(s: Settings, format: string): string | null {
+  const slot = slotsFor(format).find((k) => s.ai.styleRefsByFormat[k]?.key);
+  return slot ? s.ai.styleRefsByFormat[slot]!.key : s.ai.styleReferenceKey;
 }
 
 /** The reference design's style as words; made once (also for designs uploaded before this existed) and cached in settings. */
