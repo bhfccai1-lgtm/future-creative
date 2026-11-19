@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Old backups → Google Drive instead of being deleted:** `bash scripts/backups-to-drive.sh` moves every full backup except the newest one to the archive folder's `backups/` on Drive, streamed in 20 MB parts with each part's size verified. A backup is removed from the server only after Drive confirmed every byte of every file in it; otherwise it stays. `KEEP=2` keeps two on the server. `scripts/drive-upload.ts` now streams, so a media archive of several GB never sits whole in memory.
 - **✨ Drive الذكي (smart Drive)** — archive script v3, Settings → Integrations → Google archive (off by default):
   - **Live performance sheet:** every night the «published» sheet gets each design's real numbers: views, reach, saves, shares, comments, retention, skip and a performance score.
   - **«⭐ أفضل التصاميم» (best designs):** the best 3 designs of each account (last 30 days, at least 20 views) are copied once into a per-account folder, a portfolio ready to share with new customers.

@@ -216,26 +216,56 @@ export async function backfillArchive(limit = 200) {
   return { queued };
 }
 
-/** DATABASE BACKUP → Google Drive through the same script, in parts of at most 20 MB (Apps Script request limit) */
-export async function uploadBackupToDrive(data: Buffer, opts: { backup: string; name: string; fetchImpl?: typeof fetch }) {
+const PART = 20 * 1024 * 1024;
+/** one part of a backup file → Drive (3 attempts), its size verified */
+export async function uploadBackupPart(target: string, p: { backup: string; name: string; chunk: Buffer; last: boolean }, fetchImpl: typeof fetch = fetch) {
+  const body = JSON.stringify({ event: 'backup.part', data: { backup: p.backup, name: p.name, base64: p.chunk.toString('base64'), last: p.last } });
+  let j: { ok?: boolean; id?: string; size?: number; error?: string } | null = null;
+  for (let attempt = 1; attempt <= 3 && !j?.ok; attempt++) {
+    try { const r = await fetchImpl(target, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(300_000) }); j = await r.json().catch(() => null); }
+    catch (e) { j = { ok: false, error: (e as Error).message }; }
+  }
+  if (!j?.ok || !j.id) throw new Error(`Drive upload failed for ${p.name}: ${j?.error ?? 'no answer'} — is the script updated to version ${SCRIPT_VERSION}?`);
+  if (j.size !== p.chunk.length) throw new Error(`Drive size mismatch for ${p.name}: ${j.size} ≠ ${p.chunk.length}`);
+  return { name: p.name, id: j.id, size: j.size };
+}
+async function archiveTarget() {
   const target = await getSecret('GOOGLE_ARCHIVE_URL');
   if (!target) throw new Error('GOOGLE_ARCHIVE_URL is not set — connect the Google archive first (Settings → Integrations).');
-  const PART = 20 * 1024 * 1024, parts = Math.max(1, Math.ceil(data.length / PART));
+  return target;
+}
+
+/** DATABASE BACKUP → Google Drive through the same script, in parts of at most 20 MB (Apps Script request limit) */
+export async function uploadBackupToDrive(data: Buffer, opts: { backup: string; name: string; fetchImpl?: typeof fetch }) {
+  const target = await archiveTarget();
+  const parts = Math.max(1, Math.ceil(data.length / PART));
   const out: { name: string; id: string; size: number }[] = [];
   for (let i = 0; i < parts; i++) {
-    const chunk = data.subarray(i * PART, (i + 1) * PART);
     const name = parts === 1 ? opts.name : `${opts.name}.part${String(i + 1).padStart(2, '0')}`;
-    const body = JSON.stringify({ event: 'backup.part', data: { backup: opts.backup, name, base64: chunk.toString('base64'), last: i === parts - 1 } });
-    let j: { ok?: boolean; id?: string; size?: number; error?: string } | null = null;
-    for (let attempt = 1; attempt <= 3 && !j?.ok; attempt++) {
-      try { const r = await (opts.fetchImpl ?? fetch)(target, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(300_000) }); j = await r.json().catch(() => null); }
-      catch (e) { j = { ok: false, error: (e as Error).message }; }
-    }
-    if (!j?.ok || !j.id) throw new Error(`Drive upload failed for ${name}: ${j?.error ?? 'no answer'} — is the script updated to version ${SCRIPT_VERSION}?`);
-    if (j.size !== chunk.length) throw new Error(`Drive size mismatch for ${name}: ${j.size} ≠ ${chunk.length}`);
-    out.push({ name, id: j.id, size: j.size });
+    out.push(await uploadBackupPart(target, { backup: opts.backup, name, chunk: data.subarray(i * PART, (i + 1) * PART), last: i === parts - 1 }, opts.fetchImpl));
   }
   return { parts: out, bytes: data.length };
+}
+
+/**
+ * Large files (a media archive of several GB) streamed to Drive part by part — never held in memory whole.
+ * Parts are named <name>.part0001…; join them in order to restore (cat name.part* > name).
+ */
+export async function uploadStreamToDrive(stream: AsyncIterable<Buffer | Uint8Array>, opts: { backup: string; name: string; fetchImpl?: typeof fetch }) {
+  const target = await archiveTarget();
+  let buf = Buffer.alloc(0), pending: Buffer | null = null, n = 0, bytes = 0;
+  const out: { name: string; id: string; size: number }[] = [];
+  const send = async (chunk: Buffer, last: boolean) => { n++; out.push(await uploadBackupPart(target, { backup: opts.backup, name: `${opts.name}.part${String(n).padStart(4, '0')}`, chunk, last }, opts.fetchImpl)); };
+  for await (const c of stream) {
+    buf = Buffer.concat([buf, Buffer.from(c)]); bytes += c.length;
+    while (buf.length >= PART) {
+      if (pending) await send(pending, false); // one part is held back so the final part can carry «last»
+      pending = buf.subarray(0, PART); buf = buf.subarray(PART);
+    }
+  }
+  if (buf.length) { if (pending) await send(pending, false); pending = buf; }
+  if (pending) await send(pending, true);
+  return { parts: out, bytes };
 }
 
 /** a file that was moved to Google Drive: where the dashboard sends the viewer instead (null = not offloaded) */

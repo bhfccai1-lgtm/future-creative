@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { setSecret } from '@/lib/settings';
 import { storage } from '@/lib/storage';
 import { generateAdvertisement } from '@/lib/pipeline/generate';
-import { appsScriptSource, backfillArchive, driveFallback, offloadArchivedMedia, queueGoogleArchive, uploadBackupToDrive } from '@/lib/integrations/google-archive';
+import { appsScriptSource, backfillArchive, driveFallback, offloadArchivedMedia, queueGoogleArchive, uploadBackupToDrive, uploadStreamToDrive } from '@/lib/integrations/google-archive';
 import { deliverPending } from '@/lib/integrations/events';
 import { captureQueues, resetDb, seedBase } from './helpers';
 
@@ -91,6 +91,22 @@ describe('Google Drive as cold storage', () => {
     expect(seen.reduce((a, x) => a + x.bytes, 0)).toBe(data.length);
     const wrong = (async () => new Response(JSON.stringify({ ok: true, id: 'x', size: 1 }), { status: 200 })) as unknown as typeof fetch;
     await expect(uploadBackupToDrive(Buffer.alloc(5000, 1), { backup: 'b', name: 'db.dump', fetchImpl: wrong })).rejects.toThrow(/size mismatch/);
+  });
+
+  it('large files are STREAMED to Drive part by part (never whole in memory); the final part carries «last»', async () => {
+    await seedBase();
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    const seen: { name: string; last: boolean; bytes: number }[] = [];
+    const f = (async (_u: string, init: { body: string }) => { const d = JSON.parse(init.body).data; const bytes = Buffer.from(d.base64, 'base64').length; seen.push({ name: d.name, last: d.last, bytes }); return new Response(JSON.stringify({ ok: true, id: `id${seen.length}`, size: bytes }), { status: 200 }); }) as unknown as typeof fetch;
+    async function* chunks() { for (let i = 0; i < 45; i++) yield Buffer.alloc(1024 * 1024, i); } // 45 MB in 1 MB pieces
+    const r = await uploadStreamToDrive(chunks(), { backup: '20261101-020000', name: 'media.tar.gz', fetchImpl: f });
+    expect(r.bytes).toBe(45 * 1024 * 1024);
+    expect(seen.map((x) => x.name)).toEqual(['media.tar.gz.part0001', 'media.tar.gz.part0002', 'media.tar.gz.part0003']);
+    expect(seen.map((x) => x.last)).toEqual([false, false, true]);
+    seen.length = 0;
+    async function* small() { yield Buffer.alloc(5000, 1); }
+    await uploadStreamToDrive(small(), { backup: 'b', name: 'db.dump', fetchImpl: f });
+    expect(seen).toEqual([{ name: 'db.dump.part0001', last: true, bytes: 5000 }]);
   });
 
   it('the v2 script returns Drive ids and stores database backups', () => {
