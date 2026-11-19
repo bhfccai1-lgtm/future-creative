@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Google Drive for designs, videos and database backups** (Settings → Integrations → Google archive):
+  - **Confirmed copies.** The archive script (v2) returns the Drive id and size of every saved file, and the system records them. A script answer of `ok:false` is now retried; before, it was counted as delivered.
+  - **Free server space** (off by default). Each night, designs published more than N days ago (default 45) are removed from the server, but only when Drive holds a copy of exactly the same size. The dashboard then opens them from Drive. Thumbnails, drafts, print and education files stay on the server.
+  - **«حرّر المساحة الآن» (free space now)** and «أرشفة المنشورات غير المؤرشفة» (archive unarchived posts) buttons, plus live numbers: on Drive, moved, MB freed, MB still on the server.
+  - **Daily database backup to Drive:** `scripts/drive-backup.sh` (plus a one-line cron) uploads the dump in parts of up to 20 MB, each size verified, to the archive folder's `backups/`. Drive keeps the last 30; the server keeps only the last 3. The database itself still runs on the server.
+  - **`scripts/backup.sh` keeps 3 full backups instead of 14** (`FC_KEEP_BACKUPS`). Each one holds all media, and 14 of them filled the disk.
 - **EDUCATION MASTER — professional AI images:**
   - **The cover is the style reference.** It is painted first, and the backgrounds and section illustrations are generated with it as a reference (palette, light, finish), so the brochure looks like one piece.
   - **One shared art direction for all images.**
