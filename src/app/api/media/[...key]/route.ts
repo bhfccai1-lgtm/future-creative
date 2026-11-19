@@ -8,5 +8,10 @@ export const GET = api<{ params: Promise<{ key: string[] }> }>('dashboard:view',
   try {
     const buf = await storage().get(key);
     return new Response(new Uint8Array(buf), { headers: { 'Content-Type': contentTypeFor(key), 'Cache-Control': 'private, max-age=600' } });
-  } catch { return new Response('Not found', { status: 404 }); }
+  } catch {
+    // moved to Google Drive (server space freed): send the viewer to the Drive copy
+    const { driveFallback } = await import('@/lib/integrations/google-archive');
+    const to = await driveFallback(key).catch(() => null);
+    return to ? Response.redirect(to, 302) : new Response('Not found', { status: 404 });
+  }
 });

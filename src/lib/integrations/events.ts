@@ -61,12 +61,21 @@ export async function deliverPending(fetchImpl: typeof fetch = fetch, now = new 
     if (secret) headers['X-FC-Signature'] = sign(secret, ts, body);
     let status: number | null = null; let error: string | null = null;
     const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 10_000);
-    try { const r = await fetchImpl(d.target, { method: 'POST', headers, body, signal: ctrl.signal }); status = r.status; if (!r.ok) error = `HTTP ${r.status}`; }
+    let answer: unknown = null;
+    try {
+      const r = await fetchImpl(d.target, { method: 'POST', headers, body, signal: ctrl.signal }); status = r.status; if (!r.ok) error = `HTTP ${r.status}`;
+      // the Google archive script answers 200 even on failure — its JSON says ok:false, which must be retried
+      if (!error && d.event === 'archive.google') {
+        answer = await r.json().catch(() => null);
+        if (!answer || (answer as { ok?: boolean }).ok !== true) error = `script: ${String((answer as { error?: string } | null)?.error ?? 'no JSON answer').slice(0, 200)}`;
+      }
+    }
     catch (e) { error = (e as Error).message.slice(0, 300); }
     finally { clearTimeout(t); }
     const attempt = d.attempts + 1;
     if (!error) {
       await prisma.webhookDelivery.update({ where: { id: d.id }, data: { status: 'DELIVERED', deliveredAt: new Date(), lastStatus: status, lastError: null } });
+      if (answer) { try { const { recordArchiveResult } = await import('./google-archive'); await recordArchiveResult(answer); } catch (e) { log.warn('google_archive.record_failed', { deliveryId: d.id, error: (e as Error).message }); } }
       delivered++;
     } else {
       // n8n answers 404 while a workflow is inactive or still starting → transient, keep retrying.

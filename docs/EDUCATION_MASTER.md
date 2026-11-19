@@ -67,3 +67,11 @@
 
 ## الملفات
 `src/lib/edu/{types,math,content,render,pdf,qc,service}.ts` · `src/app/api/edu/**` · `src/app/(dash)/education-master/page.tsx` · `src/components/edu-studio.tsx` · `prisma/migrations/20261118150000_edu_projects` · اختبارات: `tests/unit/edu-engine.test.ts`، `tests/integration/edu-master.test.ts`.
+
+## How the AI images are made — the professional method
+1. **The AI draws pictures only; the system typesets every word.** Titles, lessons, tables, names and numbers are exact text layers, because image models misspell Arabic. Every image prompt forbids any text, and the quality gate rejects images where text was drawn by mistake.
+2. **One art direction for the whole brochure.** All images share the same sunlight from the upper left, the same blue sky, and the same colour grading.
+3. **The cover is painted first and is the style reference** for the backgrounds and section illustrations, so they look like one brochure. Realistic gallery photos are not tied to the cartoon reference.
+4. **The cover character** (settings: «شخصية على الغلاف»): a Bahraini schoolboy in a thobe and ghutra, or a schoolgirl in a hijab, as a 3D character. The age follows the grade. The bottom of the cover is left plain for the name cards. There is never a character in Islamic studies.
+5. **The landmark gallery** (settings: «صور المعارض»): auto means realistic travel-brochure photos in the glossy style. Well-known Bahrain landmarks are described precisely (shape, material, setting) so the model does not invent them: the World Trade Center, Bahrain Fort, the Tree of Life, the National Museum, Bab Al Bahrain, Al Fateh Mosque, Arad Fort, the Circuit, pearl diving, and the King Fahd Causeway.
+6. **Quality gate:** no text inside, sharp, correct exposure, with one automatic retry when an image fails. Any image can be regenerated on its own without changing the rest of the design.

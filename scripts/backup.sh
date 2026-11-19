@@ -11,6 +11,8 @@ if docker volume inspect future-creative_n8n_data >/dev/null 2>&1; then
   docker run --rm -v future-creative_n8n_data:/d:ro -v "$(pwd)/$OUT:/b" alpine tar -czf /b/n8n.tar.gz -C /d .
 fi
 sha256sum "$OUT"/* > "$OUT/SHA256SUMS"
-# keep the last 14 backups
-ls -1dt ./backups/*/ | tail -n +15 | xargs -r rm -rf
+# keep the last FC_KEEP_BACKUPS full backups (default 3: every one holds ALL media — 14 filled the disk; the daily
+# database copy goes to Google Drive with scripts/drive-backup.sh)
+KEEP=${FC_KEEP_BACKUPS:-3}
+ls -1dt ./backups/2*/ 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -rf
 echo "Backup written to $OUT"

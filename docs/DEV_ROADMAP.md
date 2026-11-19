@@ -21,6 +21,12 @@ It is updated with every round; the newest decisions are at the top.
 - ✅ The image quality gate now covers the ad pipeline: layered scenes and Reel shots. Before, only the print studio, EDUCATION MASTER and the text check of full-AI posters were covered.
 - 📋 Next: a monthly picture-quality report. It will show the first-try pass rate, the most common failure reasons, the cost per accepted picture, and which style or prompt fails most, so those reasons can be fed back into the prompts automatically.
 
+### Round 3 — organisation
+- ✅ The release train brought #25, #26, #27 and #29 to `main`; they had been merged into intermediate branches.
+- ✅ The menu is grouped by daily work.
+- ✅ New rule: no stacked PRs.
+- 📋 Next: after merging, publish v9.2.0 with Actions → «Publish release». Then turn on automatic updates (`autoupdate.sh on`) so releases install themselves.
+
 ## 2. Next steps (in order)
 
 1. **Branch protection on `main`** (owner, 1 minute — §3). It stops a repeat of finding #1.

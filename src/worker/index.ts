@@ -28,7 +28,7 @@ import { importCompetitors } from '../lib/competitors/service';
 import { buildReport } from '../lib/analytics/report';
 import { sweepStuckJobs, HEARTBEAT_KEY } from '../lib/ops/diagnostics';
 import { redis } from '../lib/queue/connection';
-import { getSettings } from '../lib/settings';
+import { getSettings, updateSettings } from '../lib/settings';
 import { syncWhatsappCatalog } from '../lib/integrations/whatsapp-catalog';
 import { sendStatusPacks } from '../lib/integrations/whatsapp-status';
 import { generateFromBank } from '../lib/ideas/bank';
@@ -51,6 +51,7 @@ async function main() {
   await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
   await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
+  await sched.upsertJobScheduler('drive-offload', { pattern: '10 4 * * *', tz: TZ }, { name: 'drive-offload' }); // only acts when enabled in settings
   await sched.upsertJobScheduler('foreign-posts', { pattern: '35 */2 * * *', tz: TZ }, { name: 'foreign-posts' }); // read-only Metricool watch
   await sched.upsertJobScheduler('webhooks', { every: 60_000 }, { name: 'webhooks' }); // n8n outbox delivery
   await sched.upsertJobScheduler('approval-reminders', { pattern: '20 * * * *', tz: TZ }, { name: 'approval-reminders' });
@@ -106,6 +107,15 @@ async function main() {
       if (job.name === 'ideas-weekly') return (await import('../lib/ideas/bank')).weeklyIdeas();
       if (job.name === 'winners') return (await import('../lib/growth/winners')).boostWinners();
       if (job.name === 'campaigns') return runCampaignCycle();
+      if (job.name === 'drive-offload') {
+        const st = (await getSettings()).storage;
+        if (!st.driveOffload) return { skipped: true };
+        const ga = await import('../lib/integrations/google-archive');
+        await ga.backfillArchive(100); // keep archiving older published designs a little every night
+        const r = await ga.offloadArchivedMedia({ afterDays: st.offloadAfterDays });
+        await updateSettings((x) => ({ ...x, storage: { ...x.storage, lastOffload: { at: new Date().toISOString(), removed: r.removed, freedMb: Math.round(r.freedBytes / 1e6) } } }), 'worker');
+        return r;
+      }
       if (job.name === 'maintenance') return { retention: await applyRetention(), perf: await refreshPerformanceScores() };
       return undefined;
     }, { connection: newRedisConnection(), concurrency: 1 }),

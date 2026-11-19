@@ -221,6 +221,13 @@ export const SettingsSchema = z.object({
     /** file name of the printer's ICC profile in the fonts/profile dir; empty = built-in generic CMYK */
     iccProfile: z.string().max(120).default(''),
   }).prefault({}),
+  /** Google Drive as cold storage: confirmed copies of published designs replace the server files after N days */
+  storage: z.object({
+    driveOffload: z.boolean().default(false),
+    offloadAfterDays: z.number().int().min(7).max(365).default(45),
+    keepDriveBackups: z.number().int().min(3).max(365).default(30),
+    lastOffload: z.object({ at: z.string(), removed: z.number(), freedMb: z.number() }).nullable().default(null),
+  }).prefault({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),

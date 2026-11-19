@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Bell, CheckSquare, Home, Lightbulb, LogOut, Menu, Plus, X } from 'lucide-react';
-import { NAV } from './sidebar';
+import { NAV_GROUPS, isActivePath } from './nav';
 import { cn } from './ui';
 import { apiCall } from '@/lib/client/api';
 
@@ -24,7 +24,7 @@ export function MobileTabBar({ pendingApprovals }: { pendingApprovals: number })
   const path = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(false); }, [path]);
-  const active = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+  const active = (href: string) => isActivePath(path, href);
   const Tab = ({ href, label, icon: Icon, badge }: { href: string; label: string; icon: typeof Home; badge?: number }) => (
     <Link href={href} className={cn('relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-bold', active(href) ? 'text-gold-600' : 'text-slate-500')}>
       <Icon size={22} strokeWidth={active(href) ? 2.6 : 2} />{label}
@@ -37,13 +37,18 @@ export function MobileTabBar({ pendingApprovals }: { pendingApprovals: number })
         <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setOpen(false)}>
           <div className="absolute inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between"><b className="text-navy-800">كل الصفحات</b><button onClick={() => setOpen(false)} aria-label="إغلاق" className="rounded-full p-2 hover:bg-slate-100"><X size={20} /></button></div>
-            <div className="grid grid-cols-3 gap-2">
-              {NAV.map(([href, label, Icon]) => (
-                <Link key={href} href={href} onClick={() => setOpen(false)} className={cn('flex flex-col items-center gap-1 rounded-xl border p-3 text-center text-xs font-bold', active(href) ? 'border-gold-500 bg-gold-300/20 text-navy-900' : 'text-slate-700')}>
-                  <Icon size={22} />{label}
-                </Link>
-              ))}
-            </div>
+            {NAV_GROUPS.map((g) => (
+              <div key={g.title || 'home'} className="mb-3">
+                {g.title && <div className="mb-1.5 text-xs font-bold text-slate-500">{g.title}</div>}
+                <div className="grid grid-cols-3 gap-2">
+                  {g.items.map(([href, label, Icon]) => (
+                    <Link key={href} href={href} onClick={() => setOpen(false)} className={cn('flex flex-col items-center gap-1 rounded-xl border p-3 text-center text-xs font-bold', active(href) ? 'border-gold-500 bg-gold-300/30 text-navy-900' : 'text-slate-700')}>
+                      <Icon size={22} />{label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
             <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold text-slate-600" onClick={async () => { await apiCall('/api/auth/logout', { method: 'POST' }); location.href = '/login'; }}><LogOut size={16} /> تسجيل الخروج</button>
           </div>
         </div>

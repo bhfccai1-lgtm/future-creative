@@ -64,7 +64,8 @@ export function artPlan(a: Analysis, b: Brief, c: Concept, boxMm: { w: number; h
   const prompt = [
     `Professional ${a.product.en.toLowerCase()} artwork for a ${a.identity.en.toLowerCase()} business${b.business ? ` (the brand name must NOT appear)` : ''}.`,
     b.texts.headline ? `The picture expresses: ${b.texts.headline}.` : '',
-    `Visual direction: ${c.idea}. Metaphor: ${c.metaphor}.`,
+    b.artIdea?.trim() ? `THE CLIENT'S OWN DESIGN IDEA — follow it faithfully, it decides the subject, composition and mood (interpret any Arabic): «${b.artIdea.trim()}». Only render it as a picture: no words from it may appear as text.` : '',
+    b.artIdea?.trim() ? `Style direction (secondary to the client's idea): ${c.idea}.` : `Visual direction: ${c.idea}. Metaphor: ${c.metaphor}.`,
     `Product-specific style: ${FAMILY_STYLE[fam] ?? FAMILY_STYLE.sheet}.`,
     `Imagery: ${c.imagery}.`,
     `Colour palette: ${c.palette.primary}, ${c.palette.secondary}, ${c.palette.accent}${background === 'transparent' ? '' : `, background in harmony with ${c.palette.bg}`}.`,

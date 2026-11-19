@@ -1,6 +1,35 @@
 # Changelog
 
 ## Unreleased
+- **Menu organised into groups:** Content, Publishing, Customers & sales, Growth & analysis, Studios, System. The ~30 pages were one long list in the sidebar and the phone «المزيد» (more) sheet. Fix: a page no longer lights up a sibling that only shares its start, such as «الحسابات الاجتماعية» (social accounts) on «خطة الحسابات» (accounts plan).
+- **Release train:** brings to `main` the work merged into intermediate branches. That is the print-studio design idea (#25), the accounts plan (#26), the professional education images (#27) and Google Drive cold storage (#29). Development rule from now on: no stacked PRs; every PR is based on `main`.
+- **Google Drive for designs, videos and database backups** (Settings → Integrations → Google archive):
+  - **Confirmed copies.** The archive script (v2) returns the Drive id and size of every saved file, and the system records them. A script answer of `ok:false` is now retried; before, it was counted as delivered.
+  - **Free server space** (off by default). Each night, designs published more than N days ago (default 45) are removed from the server, but only when Drive holds a copy of exactly the same size. The dashboard then opens them from Drive. Thumbnails, drafts, print and education files stay on the server.
+  - **«حرّر المساحة الآن» (free space now)** and «أرشفة المنشورات غير المؤرشفة» (archive unarchived posts) buttons, plus live numbers: on Drive, moved, MB freed, MB still on the server.
+  - **Daily database backup to Drive:** `scripts/drive-backup.sh` (plus a one-line cron) uploads the dump in parts of up to 20 MB, each size verified, to the archive folder's `backups/`. Drive keeps the last 30; the server keeps only the last 3. The database itself still runs on the server.
+  - **`scripts/backup.sh` keeps 3 full backups instead of 14** (`FC_KEEP_BACKUPS`). Each one holds all media, and 14 of them filled the disk.
+- **EDUCATION MASTER — professional AI images:**
+  - **The cover is the style reference.** It is painted first, and the backgrounds and section illustrations are generated with it as a reference (palette, light, finish), so the brochure looks like one piece.
+  - **One shared art direction for all images.**
+  - **New «شخصية على الغلاف» (cover character):** a Bahraini boy (thobe and ghutra) or girl (hijab), as a 3D character whose age follows the grade. Never used for Islamic studies.
+  - **New «صور المعارض» (gallery pictures):** in the glossy style, galleries default to realistic photos.
+  - **Accurate landmarks:** 10 well-known Bahrain landmarks are described precisely, so the model does not invent their shape.
+  - Every word stays system-typeset, and every image passes the quality gate.
+- **New page «خطة الحسابات» (accounts plan)** — a content strategist for every account, built from the real Metricool numbers the system imports for its own publications (last 30 days):
+  - **Overview:** totals and a table ranking every account by views, saves, retention and skip rate, with its most important problem.
+  - **The best post** and the metric it stood out in.
+  - **Openings against skips:** question openings compared with statement or product openings, against the 3-second skip rate.
+  - **Posting against views:** posting frequency compared with views per post.
+  - **Problems, each with its fix:** Reels shown to many people but skipped; no comments or shares; posting more while views drop; posts in the wrong language; Bahrain hashtags on the Saudi account; too many product types.
+  - **5 ideas built on what worked:** a sequel to the best post, a product-first opening with the one feature a customer sees (the name on the mug's curve, the sticker peel, the canvas edge…), the next occasion, a guide worth saving, and before/after.
+  - **Ready to copy:** a bio and 3 reply messages in the account's language.
+  - **Execute in one click:** «اعتمد في بنك الأفكار» (approve into the idea bank) is free now — the automatic schedule designs the approved ideas in its own slots. «صمّم الآن» (design now) designs one idea immediately into the approval queue. Both follow the normal approval rules, and the ideas are recomputed on the server. Interpretations are labelled as such, and nothing is published from the page.
+- **Print studio — «فكرتك للتصميم» (your design idea) and idea suggestions for the AI picture:**
+  - A box above «إنشاء الصورة» (generate image) where you describe the scene: subject, angle, light, material.
+  - Your idea becomes the core of the picture prompt, and the chosen direction (A/B/C) becomes secondary. The print rules stay: no text inside the picture, the exact crop and the safe margins.
+  - The idea is saved with the design, so it appears in the history and is part of the approval fingerprint.
+  - «💡 اقترح أفكارًا» (suggest ideas) gives 5 ideas fitted to the activity, the product size and the audience. With an AI key it is one small text call (recorded against the budget); without one, it gives free ready-made ideas per product. Tap an idea to fill the box, then edit it.
 - **Fix: Saudi account posts carried #البحرين.** Two Reels on bhfcc.ksa (14 and 18 Nov) went out with Bahrain hashtags. The algorithm gate now removes every Bahrain hashtag from Saudi-market posts (#البحرين, #Bahrain, #هدايا_البحرين…), from the tag list and from inside the caption, and adds #السعودية. The branch phone line is left untouched.
 - **Project skills for future development sessions** (`.claude/skills/`):
   - **`fc-dev`** (new) holds this repository's development workflow: local Postgres and Redis, the checks to run before a PR, the phone-sized UI check, the zod-4 and RTL pitfalls that already broke builds, and the branch → PR → green CI → merge → one-click release flow.
