@@ -17,7 +17,7 @@ const NAVY = '#0b1730', NAVY2 = '#14295c', WHITE = '#ffffff';
 // benefit icons row · large product window · gold «اطلب الآن» with a tapping hand · branch names + WhatsApp number
 // pills · gold footer ribbon with the Bahrain pin. Logo, order button and numbers stay inside the Instagram safe zone
 // (IG_SAFE_1920: 236–1540); the footer ribbon is decoration below it.
-const L = { logo: { x: 290, y: 236, w: 500, h: 168 }, title: 414, sub: 544, sep: 616, feat: 636, cta: 1258, label: 1374, phone: 1430, footer: 1586, colX: 110 };
+const L = { logo: { x: 290, y: 236, w: 500, h: 168 }, title: 414, sub: 544, sep: 616, feat: 636, cta: 1258, label: 1374, phone: 1430, footer: 1748, colX: 110 };
 const PANEL_Y = L.cta - 90; // where the bottom shade becomes solid enough for the order block
 const goldGrad = (id: string) => `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdeeb0"/><stop offset="0.45" stop-color="#e6c25a"/><stop offset="1" stop-color="#b8892a"/></linearGradient>`;
 const goldLine = (id: string) => `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b8892a" stop-opacity="0"/><stop offset="0.2" stop-color="#f6d77a"/><stop offset="0.5" stop-color="#fff1b8"/><stop offset="0.8" stop-color="#f6d77a"/><stop offset="1" stop-color="#b8892a" stop-opacity="0"/></linearGradient>`;
