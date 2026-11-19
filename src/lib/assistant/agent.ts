@@ -35,7 +35,7 @@ export const ASSISTANT_SYSTEM = [
   '- system_status {} → health score, the most important problems, disk space',
   '- list_accounts {} → account names and ids',
   '- accounts_summary {} → each account: posts, views, saves, skip rate, its top problem',
-  '- account_plan {"account": "<name or handle>"} → best post, problems with fixes, idea keys',
+  '- account_plan {"account": "<name or handle>"} → what the account brain learnt (rules with sample sizes), best post, problems with fixes, idea keys',
   '- pending_approvals {} → designs waiting for approval',
   '- find_products {"query": "<word>"} → product names and ids',
   '- design_now {"account": "<name>", "idea": "<the idea in Arabic>", "format": "REEL_VIDEO|IMAGE_FEED|IMAGE_SQUARE|IMAGE_STORY|IMAGE_CAROUSEL"?, "product": "<product name>"?} → ACTION (costs one AI design): becomes a proposal the owner confirms',
@@ -79,7 +79,7 @@ export async function runReadTool(name: string, args: Record<string, unknown>): 
       const acc = await findAccount(args.account);
       if (!acc) return { error: 'account not found', hint: 'call list_accounts' };
       const [p] = await accountPlans({ accountId: acc.id, days: 30 });
-      return { account: acc.name, top: p.top && { hook: p.top.hook, views: p.top.views, reason: p.top.reason }, issues: p.issues.map((i) => ({ text: i.text, fix: i.fix })), ideas: p.ideas.map((i) => ({ key: i.key, title: i.title, idea: i.idea, inBank: i.inBank })) };
+      return { account: acc.name, learnt: p.brain?.rules.map((r) => r.ar) ?? [], top: p.top && { hook: p.top.hook, views: p.top.views, reason: p.top.reason }, issues: p.issues.map((i) => ({ text: i.text, fix: i.fix })), ideas: p.ideas.map((i) => ({ key: i.key, title: i.title, idea: i.idea, inBank: i.inBank })) };
     }
     case 'pending_approvals': {
       const ads = await prisma.advertisement.findMany({ where: { state: 'QUALITY_REVIEW' }, orderBy: { createdAt: 'desc' }, take: 8, select: { id: true, headline: true, format: true, account: { select: { name: true } } } });

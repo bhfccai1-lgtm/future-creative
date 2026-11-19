@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **🧠 دماغ الحساب (account brain)** — every account learns from its own real numbers:
+  - **Learns every night (04:55):** the measured posts of the last 60 days are compared by opening (question or statement), format, time of day, occasion vs everyday, caption length and product category. A rule is kept only when both sides have at least 3 posts and the winner is at least 30 % better on retained views. Every rule shows its sample sizes.
+  - **Applies automatically:** the account's rules go into the brief of every new design for that account. No extra AI call and no extra cost.
+  - **Keeps exploring:** 1 design in 5 is made without the rules on purpose (epsilon-greedy), so the brain keeps learning instead of freezing on an old pattern. Each design records `options.brain.mode` (apply / explore).
+  - **Explains itself:** «خطة الحسابات» (accounts plan) shows «ما تعلّمه النظام» (what the system learnt) for each account, with numbers and a «عينة صغيرة» (small sample) flag. The smart assistant can answer «شنو تعلّمت عن حساب …؟».
 - **Old backups → Google Drive instead of being deleted:** `bash scripts/backups-to-drive.sh` moves every full backup except the newest one to the archive folder's `backups/` on Drive, streamed in 20 MB parts with each part's size verified. A backup is removed from the server only after Drive confirmed every byte of every file in it; otherwise it stays. `KEEP=2` keeps two on the server. `scripts/drive-upload.ts` now streams, so a media archive of several GB never sits whole in memory.
 - **✨ Drive الذكي (smart Drive)** — archive script v3, Settings → Integrations → Google archive (off by default):
   - **Live performance sheet:** every night the «published» sheet gets each design's real numbers: views, reach, saves, shares, comments, retention, skip and a performance score.
