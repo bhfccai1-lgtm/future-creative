@@ -6,29 +6,32 @@
 # 4) prints the one-time setup code and the next steps. Safe to run again.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[ -f .env ] || { echo "ملف .env غير موجود في $(pwd)"; exit 1; }
+# The Hetzner web console (TERM=linux) cannot draw Arabic letters (◆◆◆) → English there, Arabic elsewhere (FC_LANG=ar|en to choose).
+if [ "${FC_LANG:-}" = en ] || { [ -z "${FC_LANG:-}" ] && [ "${TERM:-}" = linux ]; }; then EN=1; else EN=0; fi
+tr_() { if [ "$EN" = 1 ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
+[ -f .env ] || { echo "$(tr_ "ملف .env غير موجود في $(pwd)" ".env not found in $(pwd)")"; exit 1; }
 say() { printf '\n\033[1;33m%s\033[0m\n' "$*"; }
 setenv() { local k="$1" v="$2"; if grep -q "^$k=" .env; then sed -i "s|^$k=.*|$k=$v|" .env; else printf '%s=%s\n' "$k" "$v" >> .env; fi; }
 DOMAIN=$(grep -E '^DOMAIN=' .env | cut -d= -f2- | tr -d '"' || true)
-[ -n "$DOMAIN" ] || { echo "DOMAIN غير مضبوط في .env"; exit 1; }
+[ -n "$DOMAIN" ] || { echo "$(tr_ "DOMAIN غير مضبوط في .env" "DOMAIN is not set in .env")"; exit 1; }
 
-say "1/4 مفتاح التشفير…"
-if ! grep -qE '^FREELLM_ENCRYPTION_KEY=.{64}$' .env; then setenv FREELLM_ENCRYPTION_KEY "$(openssl rand -hex 32)"; echo "   أُنشئ مفتاح جديد (احتفظ بنسخة من .env)"; else echo "   موجود"; fi
+say "$(tr_ "1/4 مفتاح التشفير…" "1/4 Encryption key…")"
+if ! grep -qE '^FREELLM_ENCRYPTION_KEY=.{64}$' .env; then setenv FREELLM_ENCRYPTION_KEY "$(openssl rand -hex 32)"; echo "   $(tr_ "أُنشئ مفتاح جديد (احتفظ بنسخة من .env)" "new key created (keep a copy of .env)")"; else echo "   $(tr_ "موجود" "exists")"; fi
 if ! grep -qE '^FREELLM_DASHBOARD_PASSWORD=.+' .env; then setenv FREELLM_DASHBOARD_PASSWORD "$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)"; fi
 chmod 600 .env
 PW=$(grep -E '^FREELLM_DASHBOARD_PASSWORD=' .env | cut -d= -f2-)
 
-say "2/4 تشغيل FreeLLMAPI…"
+say "$(tr_ "2/4 تشغيل FreeLLMAPI…" "2/4 Starting FreeLLMAPI…")"
 docker compose --profile freellm up -d freellmapi
 ok=0
 for i in $(seq 1 60); do
   if docker compose exec -T freellmapi node -e "fetch('http://127.0.0.1:3001/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then ok=1; break; fi
   sleep 3
 done
-[ "$ok" = 1 ] || { echo "FreeLLMAPI لم يبدأ — راجع: docker compose --profile freellm logs --tail=50 freellmapi"; exit 1; }
-echo "   ✓ يعمل (داخل السيرفر فقط على freellmapi:3001)"
+[ "$ok" = 1 ] || { echo "$(tr_ "FreeLLMAPI لم يبدأ — راجع:" "FreeLLMAPI did not start — check:") docker compose --profile freellm logs --tail=50 freellmapi"; exit 1; }
+echo "   ✓ $(tr_ "يعمل (داخل السيرفر فقط على freellmapi:3001)" "running (inside the server only, freellmapi:3001)")"
 
-say "3/4 لوحة التحكم https://ai.$DOMAIN بكلمة مرور…"
+say "$(tr_ "3/4 لوحة التحكم" "3/4 Dashboard") https://ai.$DOMAIN $(tr_ "بكلمة مرور…" "behind a password…")"
 docker compose up -d caddy >/dev/null 2>&1 # picks up the deploy/sites mount
 HASH=$(docker compose exec -T caddy caddy hash-password --plaintext "$PW" | tr -d '\r')
 mkdir -p deploy/sites
@@ -45,14 +48,27 @@ ai.{\$DOMAIN} {
 }
 EOF
 if docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
-  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 && echo "   ✓ نُشرت اللوحة"
+  docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 && echo "   ✓ $(tr_ "نُشرت اللوحة" "dashboard published")"
 else
-  rm -f "$SITE"; echo "   ✗ إعداد Caddy غير صالح — لم يُغيَّر شيء في الموقع. اللوحة غير منشورة."; exit 1
+  rm -f "$SITE"; echo "   ✗ $(tr_ "إعداد Caddy غير صالح — لم يُغيَّر شيء في الموقع. اللوحة غير منشورة." "invalid Caddy config — the site was not changed, the dashboard is not published.")"; exit 1
 fi
 
-say "4/4 جاهز"
+say "$(tr_ "4/4 جاهز" "4/4 Ready")"
 CODE=$(docker compose --profile freellm logs freellmapi 2>/dev/null | grep -iEo 'setup code[^A-Za-z0-9]*[A-Za-z0-9-]+' | tail -1 || true)
-cat <<EOF
+if [ "$EN" = 1 ]; then cat <<EOF
+
+  Dashboard:   https://ai.$DOMAIN
+  User:        admin
+  Password:    $PW
+  Setup code:  ${CODE:-shown on first open - or: docker compose --profile freellm logs freellmapi | grep -i setup}
+
+  Next steps:
+  1) Open the dashboard and create your account (with the code above).
+  2) Keys page: add the free providers' keys (Groq, Google Gemini, OpenRouter...).
+  3) Copy the "unified key" at the top of the Keys page.
+  4) Your system: AI settings > FreeLLMAPI: paste the key > Test > enable > Save.
+EOF
+else cat <<EOF
 
   اللوحة:        https://ai.$DOMAIN
   المستخدم:      admin
@@ -65,3 +81,4 @@ cat <<EOF
   3) انسخ «المفتاح الموحد» من أعلى صفحة Keys.
   4) لوحة نظامك ← إعدادات الذكاء الاصطناعي ← FreeLLMAPI: الصق المفتاح ← اختبار الاتصال ← فعّل ← حفظ.
 EOF
+fi

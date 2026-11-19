@@ -4,6 +4,7 @@
 - **Reels render faster:** decoded still frames are reused instead of being re-decoded by FFmpeg for every second (#13).
 - **Fix — intermittent test failure on `main`:** Metricool «link all brands» picked the free account slot by creation time only; accounts created in the same millisecond came back in random order. The id now breaks ties, so the slot order is deterministic (the CI failure after #13 was this, not the Reels change).
 - **CI:** commits on `main` are never cancelled any more (only superseded PR runs are), so every commit gets a real ✓ or ✗ — the server's update check no longer sees «failure» for a run that was merely cancelled; a weekly run on `main` (Sunday 02:17) catches intermittent tests and outside drift; a new check fails when `prisma/schema.prisma` changes without a migration.
+- **`bash scripts/freellm.sh` readable in the Hetzner console:** it printed its steps, the dashboard password label and the setup code in Arabic, which that console shows as ◆◆◆; it now prints English there (TERM=linux) like `update.sh`, Arabic elsewhere (`FC_LANG=ar|en`).
 - **Releases:** `node scripts/release-prep.mjs X.Y.Z "title"` turns «Unreleased» into the version section and sets `package.json` (both checked by the Release workflow).
 
 ## 9.1.0 — 2026-11-18 (releases install themselves on the server)
