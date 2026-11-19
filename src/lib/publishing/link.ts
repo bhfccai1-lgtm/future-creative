@@ -28,7 +28,7 @@ export async function linkAllBrands(adapter: PublishingAdapter): Promise<LinkRes
       continue;
     }
     // reuse an unconnected placeholder slot of the same platform before creating a new account
-    const slot = await prisma.socialAccount.findFirst({ where: { platform, OR: [{ connection: null }, { connection: { status: { in: ['NOT_CONNECTED', 'DISCONNECTED', 'ERROR'] } } }] }, orderBy: { createdAt: 'asc' } });
+    const slot = await prisma.socialAccount.findFirst({ where: { platform, OR: [{ connection: null }, { connection: { status: { in: ['NOT_CONNECTED', 'DISCONNECTED', 'ERROR'] } } }] }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }); // id breaks createdAt ties (same-millisecond inserts) so the order is deterministic
     const name = p.label.replace(/^@/, '');
     const account = slot
       ? await prisma.socialAccount.update({ where: { id: slot.id }, data: { name, handle, externalId: p.brandId, timezone: p.timezone || slot.timezone } })

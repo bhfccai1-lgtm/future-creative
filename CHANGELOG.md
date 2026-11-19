@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- **Reels render faster:** decoded still frames are reused instead of being re-decoded by FFmpeg for every second (#13).
+- **Fix — intermittent test failure on `main`:** Metricool «link all brands» picked the free account slot by creation time only; accounts created in the same millisecond came back in random order. The id now breaks ties, so the slot order is deterministic (the CI failure after #13 was this, not the Reels change).
+- **CI:** commits on `main` are never cancelled any more (only superseded PR runs are), so every commit gets a real ✓ or ✗ — the server's update check no longer sees «failure» for a run that was merely cancelled; a weekly run on `main` (Sunday 02:17) catches intermittent tests and outside drift; a new check fails when `prisma/schema.prisma` changes without a migration.
+- **Releases:** `node scripts/release-prep.mjs X.Y.Z "title"` turns «Unreleased» into the version section and sets `package.json` (both checked by the Release workflow).
+
 ## 9.1.0 — 2026-11-18 (releases install themselves on the server)
 - **Automatic release deploy** (opt-in): `bash scripts/autoupdate.sh on` once; after that every GitHub Release is installed by the server within 10 minutes — exactly the released tag, through `scripts/update.sh` with all its safety (green CI required, build while running, health check, automatic rollback). A failed release is retried at most every 6 hours; a manual newer version is left alone. `autoupdate.sh off` / status. Guide: `docs/RELEASES.md`.
 - **update.sh:** `FC_REF=<tag>` updates to a precise release; the GitHub check compares with the version that actually runs; after a failed build or a rollback the code returns to the running version (the next try checks GitHub again).

@@ -32,3 +32,12 @@ bash scripts/autoupdate.sh on
 - Add `## X.Y.Z — date (title)` to `CHANGELOG.md` and set `"version": "X.Y.Z"` in `package.json`; the Release workflow refuses a tag without both.
 - Release notes are filled from the changelog even when the release is created on the GitHub website.
 - How it runs: `/etc/cron.d/future-creative-releases` → `scripts/release-update.sh` every 10 min → `FC_REF=<tag> scripts/update.sh`.
+
+## Preparing a release (one command)
+```
+node scripts/release-prep.mjs 9.2.0 "short title"
+git commit -am "Release 9.2.0" && git push
+```
+Wait for the green ✓ (ci-ok) on that commit, then publish the release on GitHub with tag `v9.2.0` (the script prints the link).
+New work is always written under «## Unreleased» at the top of `CHANGELOG.md`.
+
