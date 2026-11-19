@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Fix: Saudi account posts carried #البحرين.** Two Reels on bhfcc.ksa (14 and 18 Nov) went out with Bahrain hashtags. The algorithm gate now removes every Bahrain hashtag from Saudi-market posts (#البحرين, #Bahrain, #هدايا_البحرين…), from the tag list and from inside the caption, and adds #السعودية. The branch phone line is left untouched.
 - **Project skills for future development sessions** (`.claude/skills/`):
   - **`fc-dev`** (new) holds this repository's development workflow: local Postgres and Redis, the checks to run before a PR, the phone-sized UI check, the zod-4 and RTL pitfalls that already broke builds, and the branch → PR → green CI → merge → one-click release flow.
   - **`react-best-practices`** is Vercel's 72 React/Next.js performance rules, vendored from `vercel-labs/agent-skills` under MIT and reviewed as documentation only.

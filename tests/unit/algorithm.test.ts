@@ -70,3 +70,22 @@ describe('algorithm gate (design built to the index)', () => {
     expect(r.remaining.map((x) => x.id)).toContain('reach_format');
   });
 });
+
+describe('Saudi accounts never carry Bahrain hashtags', () => {
+  it('removes #البحرين / #Bahrain / #هدايا_البحرين from tags and caption, keeps the branch phones, adds #السعودية', () => {
+    const r = fitToAlgorithm({
+      format: 'REEL_VIDEO', lang: 'ar', market: 'KSA', headline: 'قبعات الفريق', keyword: 'قبعات',
+      caption: 'فريقك له هوية تبين من أول نظرة؟ #البحرين\nقبعات بطباعة تعكس روح الفريق\nأرسله لقائد فريقك\n\n📞 سار 33316319 | سلماباد 34315316',
+      hashtags: ['#البحرين', '#طباعة_القبعات', '#Bahrain', '#هدايا_البحرين', '#قبعات_الفرق'], reelSeconds: 10,
+    });
+    expect(r.hashtags.join(' ')).not.toMatch(/بحرين|Bahrain/i);
+    expect(r.hashtags).toContain('#السعودية');
+    expect(r.caption).not.toContain('#البحرين');
+    expect(r.caption).toContain('سار 33316319 | سلماباد 34315316');
+    expect(r.fixes).toContain('حذف وسوم البحرين من حساب السعودية');
+  });
+  it('Bahrain accounts keep their tags', () => {
+    const r = fitToAlgorithm({ format: 'REEL_VIDEO', lang: 'ar', market: 'BH', headline: 'كوب', caption: 'أكواب مطبوعة في البحرين\nأرسلها لأحد يحتاجها', hashtags: ['#البحرين', '#أكواب', '#هدايا'], keyword: 'أكواب مطبوعة', reelSeconds: 10 });
+    expect(r.hashtags).toContain('#البحرين');
+  });
+});
