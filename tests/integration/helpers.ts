@@ -31,7 +31,7 @@ export function captureQueues() {
 
 export const logoPng = () => sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><circle cx="200" cy="200" r="170" fill="#d4af37"/><rect x="400" y="120" width="360" height="160" rx="24" fill="#0b1730"/></svg>')).png().toBuffer();
 
-export async function seedBase(opts: { accounts?: number; connected?: boolean; settings?: (s: Settings) => Settings; productCount?: number; autoRenderMode?: 'auto' | 'layered' | 'ai_full' } = {}) {
+export async function seedBase(opts: { accounts?: number; connected?: boolean; settings?: (s: Settings) => Settings; productCount?: number; autoRenderMode?: 'auto' | 'layered' | 'ai_full'; imageGate?: boolean } = {}) {
   for (const [name, permissions] of Object.entries(DEFAULT_ROLES)) await prisma.role.create({ data: { name, permissions } });
   const admin = await prisma.user.create({ data: { email: 'admin@test.bh', name: 'Admin', passwordHash: 'x', role: { connect: { name: 'ADMIN' } } } });
   const business = await prisma.business.create({ data: { nameAr: 'مطبعة إبداع المستقبل', nameEn: 'Future Creative Printing', locations: DEFAULT_LOCATIONS } });
@@ -43,7 +43,8 @@ export async function seedBase(opts: { accounts?: number; connected?: boolean; s
   const logo = await uploadLogo(business.id, await logoPng(), 'test');
   await approveLogo(logo.id, 'test');
   // tests exercise the layered path unless they opt in to the production default ('auto' method)
-  const layered = (x: Settings) => ({ ...x, ai: { ...x.ai, autoRenderMode: opts.autoRenderMode ?? 'layered' } }) as Settings;
+  // the picture quality gate is exercised by its own tests (the fake provider's pictures are flat placeholders)
+  const layered = (x: Settings) => ({ ...x, ai: { ...x.ai, autoRenderMode: opts.autoRenderMode ?? 'layered', imageQualityGate: opts.imageGate ?? false } }) as Settings;
   await updateSettings((s) => layered(opts.settings ? opts.settings(SettingsSchema.parse({})) : s));
   const accounts = [];
   for (let i = 0; i < (opts.accounts ?? 2); i++) {
