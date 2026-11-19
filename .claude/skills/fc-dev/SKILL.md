@@ -10,7 +10,7 @@ The owner reads Arabic: reply in Arabic, and keep code, commits and PR text in E
 
 ## 0. Ground rules (the owner's standing instructions)
 - Work on a **branch**, open a **PR**, and wait for **green CI** before asking to merge. Never push to `main` directly, and never merge without the owner's OK.
-- A PR stacked on another PR says so in its first line ("merge #N first"), and its base is that PR's branch.
+- **No stacked PRs.** Every PR is based on `main` and targets `main`, one feature at a time. A stack (#24 → #25 → … → #29) once merged into the intermediate branches, so four features never reached `main` and a release PR had to bring them in. If a feature needs an unmerged one, wait for the merge, or ship both in one PR.
 - Never ask for passwords or API keys in chat; keys go only into the app's settings forms. Never change deploy settings or server keys unasked.
 - No new npm packages, GitHub Apps or third-party installs without an explicit request. Major upgrades of next / prisma / react / typescript / zod are planned PRs.
 - Ask before anything that spends money (paid AI calls outside tests, paid GitHub features). New AI features ship **off by default**, or with a small and stated cost.

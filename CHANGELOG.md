@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- **Menu organised into groups:** Content, Publishing, Customers & sales, Growth & analysis, Studios, System. The ~30 pages were one long list in the sidebar and the phone «المزيد» (more) sheet. Fix: a page no longer lights up a sibling that only shares its start, such as «الحسابات الاجتماعية» (social accounts) on «خطة الحسابات» (accounts plan).
+- **Release train:** brings to `main` the work merged into intermediate branches. That is the print-studio design idea (#25), the accounts plan (#26), the professional education images (#27) and Google Drive cold storage (#29). Development rule from now on: no stacked PRs; every PR is based on `main`.
 - **Google Drive for designs, videos and database backups** (Settings → Integrations → Google archive):
   - **Confirmed copies.** The archive script (v2) returns the Drive id and size of every saved file, and the system records them. A script answer of `ok:false` is now retried; before, it was counted as delivered.
   - **Free server space** (off by default). Each night, designs published more than N days ago (default 45) are removed from the server, but only when Drive holds a copy of exactly the same size. The dashboard then opens them from Drive. Thumbnails, drafts, print and education files stay on the server.
