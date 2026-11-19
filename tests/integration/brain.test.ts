@@ -31,6 +31,8 @@ describe('🧠 account brain (learn → apply → explore)', () => {
     expect(MIN_N).toBe(3);
     const flat = [...Array.from({ length: 3 }, () => row('جملة', 100)), ...Array.from({ length: 3 }, () => row('سؤال؟', 95))];
     expect(learnRules(flat).find((r) => r.dim === 'hook')).toBeUndefined(); // a 5 % difference is noise
+    const tr = [...Array.from({ length: 3 }, () => ({ ...row('جملة', 500), trend: true })), ...Array.from({ length: 3 }, () => ({ ...row('جملة', 100), trend: false }))];
+    expect(learnRules(tr).find((r) => r.dim === 'trend')).toMatchObject({ best: 'trend', worst: 'regular' });
   });
 
   it('learns nightly from real numbers, shows it in the plan, and steers the next design (1 in 5 explores)', async () => {

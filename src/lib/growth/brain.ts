@@ -9,6 +9,7 @@ import { isQuestion, postScore, type PlanPost } from './account-plan';
  *    at least MIN_N posts and the winner is ≥ 30 % better on retained views (views × retention + sends/saves) —
  *    every rule carries its sample sizes, so the owner sees how sure it is.
  *  APPLY: every new design of that account gets the rules in its brief (they steer the copy and the idea).
+ *  It also learns whether «🔥 رادار الترند» posts beat regular ones on this account.
  *  EXPLORE: 1 design in 5 is deliberately made WITHOUT the rules (marked «تجربة»), so the brain keeps learning
  *    instead of freezing on an old pattern (epsilon-greedy, ε = 0.2).
  */
@@ -16,7 +17,7 @@ export const MIN_N = 3, MIN_LIFT = 0.3, EXPLORE = 0.2;
 export interface BrainRule { dim: string; best: string; worst: string; bestScore: number; worstScore: number; lift: number; nBest: number; nWorst: number; ar: string; prompt: string }
 export interface AccountBrain { accountId: string; at: string; posts: number; rules: BrainRule[] }
 
-type Row = { p: PlanPost; hour: number; occasion: boolean; captionLen: number; category: string };
+type Row = { p: PlanPost; hour: number; occasion: boolean; captionLen: number; category: string; trend?: boolean };
 const bhHour = (d: Date) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bahrain', hour: '2-digit', hour12: false }).format(d)) % 24;
 const FORMAT_AR: Record<string, string> = { REEL_VIDEO: 'الريلز', IMAGE_CAROUSEL: 'الكاروسيل', IMAGE_FEED: 'المنشور العمودي', IMAGE_SQUARE: 'المربع', IMAGE_STORY: 'الستوري' };
 
@@ -30,6 +31,8 @@ const DIMS: { id: string; of: (r: Row) => string | null; ar: (v: string) => stri
     prompt: (b) => (b === 'everyday' ? 'Prefer an everyday, evergreen angle over occasion greetings (they did better here).' : 'Tie the idea to a real occasion when one fits (occasion posts did better here).') },
   { id: 'caption', of: (r) => (r.captionLen <= 220 ? 'short' : 'long'), ar: (v) => (v === 'short' ? 'النص القصير' : 'النص الطويل'),
     prompt: (b) => (b === 'short' ? 'Keep the caption short: 3–4 short lines before the call to action.' : 'A fuller caption (5–6 lines) worked better here — explain the benefit clearly.') },
+  { id: 'trend', of: (r) => (r.trend === undefined ? null : r.trend ? 'trend' : 'regular'), ar: (v) => (v === 'trend' ? 'منشورات الترند' : 'المنشورات العادية'),
+    prompt: (b) => (b === 'trend' ? 'Trend-based posts did clearly better here — when the idea rides a current trend, make the trend obvious in the first second.' : '') },
   { id: 'category', of: (r) => r.category || null, ar: (v) => `منتجات «${v}»`, prompt: () => '' },
 ];
 
@@ -58,6 +61,7 @@ export async function learnBrains(now = new Date()) {
     where: { primary: true, result: { verifiedAt: { gte: since }, metricsFetchedAt: { not: null } } },
     include: { result: true, advertisement: { select: { caption: true, headline: true, format: true, options: true, product: { select: { category: { select: { nameAr: true } } } } } } },
   });
+  const fromTrend = new Set((await prisma.idea.findMany({ where: { source: 'trend', usedAdId: { in: jobs.map((j) => j.advertisementId) } }, select: { usedAdId: true } })).map((i) => i.usedAdId));
   const byAcc = new Map<string, Row[]>();
   for (const j of jobs) {
     const m = (j.result?.metrics ?? {}) as Record<string, number | undefined>;
@@ -65,7 +69,7 @@ export async function learnBrains(now = new Date()) {
     const p: PlanPost = { adId: j.advertisementId, hook: cap.split('\n').map((l) => l.trim()).find(Boolean) ?? '', headline: j.advertisement.headline, format: j.advertisement.format, publishedAt: '', product: '', category: '',
       views: m.views ?? 0, reach: m.reach ?? 0, likes: m.likes ?? 0, comments: m.comments ?? 0, saves: m.saves ?? 0, shares: m.shares ?? 0, retention: m.retentionPct ?? null, skip: m.skipRatePct ?? null };
     const occ = ((j.advertisement.options ?? {}) as { direction?: { occasion?: string | null } }).direction?.occasion;
-    byAcc.set(j.accountId, [...(byAcc.get(j.accountId) ?? []), { p, hour: bhHour(j.result?.verifiedAt ?? j.scheduledFor), occasion: !!occ && occ !== 'everyday', captionLen: cap.split('\n\n#')[0].length, category: j.advertisement.product.category.nameAr }]);
+    byAcc.set(j.accountId, [...(byAcc.get(j.accountId) ?? []), { p, hour: bhHour(j.result?.verifiedAt ?? j.scheduledFor), occasion: !!occ && occ !== 'everyday', captionLen: cap.split('\n\n#')[0].length, category: j.advertisement.product.category.nameAr, trend: fromTrend.has(j.advertisementId) }]);
   }
   const out: AccountBrain[] = [];
   for (const [accountId, rows] of byAcc) {

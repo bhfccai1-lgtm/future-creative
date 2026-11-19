@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **🔥 رادار الترند (trend radar)** — new page under «النمو والتحليل» (growth & analytics), off by default:
+  - **Real searches, not guesses:** every morning (06:20) it reads Google Trends' free daily feed for Bahrain and Saudi Arabia (UAE, Kuwait, Qatar and Oman are optional), with search volumes.
+  - **Safe by design:** deaths, accidents, disasters, wars, politics, crime and religious disputes are dropped before any AI sees them, and the AI double-checks the rest.
+  - **Ideas you can run:** one small AI text call links the safe trends to real products each account is allowed to sell. Each idea has a hook, a format and why it fits, and goes into «بنك الأفكار» (idea bank) as NEW. Ids or trends the model made up are rejected.
+  - **Nothing publishes by itself:** you press «اعتمد» (approve) and the schedule designs it. Unapproved trend ideas expire after 3 days.
+  - **Learns whether trends pay off:** the account brain gains a «منشورات الترند» (trend posts) dimension, and the smart assistant can answer «شنو الترند اليوم؟» (what's trending today?).
 - **🧠 دماغ الحساب (account brain)** — every account learns from its own real numbers:
   - **Learns every night (04:55):** the measured posts of the last 60 days are compared by opening (question or statement), format, time of day, occasion vs everyday, caption length and product category. A rule is kept only when both sides have at least 3 posts and the winner is at least 30 % better on retained views. Every rule shows its sample sizes.
   - **Applies automatically:** the account's rules go into the brief of every new design for that account. No extra AI call and no extra cost.
