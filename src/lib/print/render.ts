@@ -83,6 +83,8 @@ async function line(c: C, cv: Canvas, id: string, str: string, r: Rect, y: numbe
 
 async function image(c: C, cv: Canvas, slot: string, r: Rect, o: { radius?: number; fit?: 'cover' | 'contain'; id?: string } = {}) {
   const key = c.images[slot]; if (!key || r.w < 4 || r.h < 4) return false;
+  // a cut-out (transparent) picture is fitted whole — never cropped or put in a rounded frame
+  if (c.images[`${slot}_bg`] === 'transparent') o = { ...o, fit: 'contain', radius: 0 };
   try {
     const buf = await storage().get(key); const meta = await sharp(buf).metadata();
     let img = await sharp(buf).resize(Math.round(r.w), Math.round(r.h), { fit: o.fit ?? 'cover', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
@@ -362,7 +364,9 @@ async function renderInner(inp: DesignInput): Promise<PrintPage[]> {
     await setBg(c, `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${bg || '<rect width="100%" height="100%" fill="#ffffff"/>'}</svg>`, W, H);
     const st0 = { comps: cv.comps.length, placed: cv.placed.length };
     let y = sr.y + sr.h * (stamp ? 0.18 : 0.08);
-    y = await logo(c, cv, { x: sr.x, y, w: sr.w, h: sr.h * (stamp ? 0.3 : 0.4) }, colr) + sr.h * 0.04;
+    // a sticker with an AI cut-out picture: the picture is the hero, the name sits under it
+    if (!stamp && c.images.hero && await image(c, cv, 'hero', { x: sr.x, y, w: sr.w, h: sr.h * 0.58 })) y += sr.h * 0.6;
+    else y = await logo(c, cv, { x: sr.x, y, w: sr.w, h: sr.h * (stamp ? 0.3 : 0.4) }, colr) + sr.h * 0.04;
     y = await line(c, cv, 'headline', T(c, 'headline') || (c.logo ? b.business : ''), sr, y, { pt: Math.max(7, a.trim.w * 0.22), minPt: 6, weight: 'extrabold', color: stamp ? '#000' : p.ink, align: 'centre', maxH: sr.h * 0.3 });
     await line(c, cv, 'subline', T(c, 'subline') || T(c, 'phone'), sr, y, { pt: Math.max(6, a.trim.w * 0.12), minPt: 5.5, weight: 'bold', color: stamp ? '#000' : p.ink, align: 'centre', maxH: sr.y + sr.h - y });
     centreV(cv, st0, sr);
@@ -396,6 +400,8 @@ async function renderInner(inp: DesignInput): Promise<PrintPage[]> {
     const bg = background(c, W, H, 0, left); await setBg(c, `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${bg}</svg>`, W, H);
     await composeSheet(c, cv, left, { scale: scaleFor(half, a.trim.h) * 1.5, dark: false, contacts: false, body: false, noBand: true });
     const hasHero = await image(c, cv, 'hero', right, { radius: k * 4 });
+    // the picture's box is the right half (the art plan sizes the AI picture for it)
+    if (!hasHero) cv.placed.push({ id: 'hero:area', kind: 'shape', rect: { ...right }, fits: true });
     if (!hasHero) await composeSheet(c, cv, right, { scale: scaleFor(half, a.trim.h) * 1.3, dark: false, contacts: true, body: false });
     const png = await flatten(W, H, bg, cv);
     const mirrored = await sharp(png).flop().png().toBuffer();

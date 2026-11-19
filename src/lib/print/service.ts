@@ -21,6 +21,7 @@ import { buildMockup } from './mockup';
 import { runPrintQa, type QaReport } from './qa';
 import { buildPrintPdf } from './pdf';
 import { parseDieline, type Dieline } from './dieline';
+import { artPlan, extendToRatio } from './artdirection';
 
 /**
  * PRINT DESIGN STUDIO workflow:
@@ -113,7 +114,10 @@ export async function imagePlanPrint(id: string, user: User) {
     // pixels a photo needs to reach the target in this box
     const needPx = { w: Math.ceil((area.w / 25.4) * a.targetPpi), h: Math.ceil((area.h / 25.4) * a.targetPpi) };
     if (area.src) { const cp = Math.round(Math.min(area.src.w / area.w, area.src.h / area.h) * 25.4); current = { px: `${area.src.w}x${area.src.h}`, ppi: cp, verdict: verdict(cp), upscale: area.up ?? 1, source: area.source ?? 'ai' }; }
-    return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, 'medium', 1) * 1000) / 1000, prompt: heroPrompt(a, b, concept), areaMm: { w: Math.round(area.w), h: Math.round(area.h) }, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx };
+    const plan = artPlan(a, b, concept, { w: area.w, h: area.h });
+    const costs = { low: estimateImageCost(s, 'low'), medium: estimateImageCost(s, 'medium'), high: estimateImageCost(s, 'high') };
+    const variants = (imgs.hero_variants ?? '').split('|').filter(Boolean);
+    return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, plan.quality, 1) * 1000) / 1000, costs, prompt: plan.prompt, plan: { size: plan.size, quality: plan.quality, background: plan.background, extend: plan.extend, keepW: plan.keepW, keepH: plan.keepH, ratioBox: plan.ratioBox, notes: plan.notes }, variants, chosen: variants.indexOf(imgs.hero ?? ''), areaMm: { w: Math.round(area.w), h: Math.round(area.h) }, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx };
   }
   return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, 'medium', 1) * 1000) / 1000, prompt: heroPrompt(a, b, concept), areaMm: null, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx: null };
 }
@@ -139,24 +143,39 @@ export async function upscalePrint(id: string, user: User) {
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.upscale', targetType: 'print_project', targetId: id, details: { factor, native: `${m.width}x${m.height}` } });
   return { project: upd, factor };
 }
-export async function generateHero(id: string, user: User) {
-  const p = await loadPrint(id, user); const { a, b, concept, s } = await context(p);
+/** the AI picture planned for its exact box (art direction per size) — 1–3 variants, chosen quality, cost checked first */
+export async function generateHero(id: string, user: User, opts: { quality?: 'low' | 'medium' | 'high'; variants?: number } = {}) {
+  const p = await loadPrint(id, user); const ctx = await context(p); const { s } = ctx;
   const provider = await getAiProvider(s);
   if (provider.isDryRun) throw new AppError('NO_AI', 'توليد الصور يحتاج مفتاح OpenAI (وضع التجربة مفعّل).', 412);
-  await assertBudget(s, estimateImageCost(s, 'medium', 1));
-  const landscape = a.trim.w > a.trim.h * 1.15, portrait = a.trim.h > a.trim.w * 1.15;
-  const img = await provider.generateScene(heroPrompt(a, b, concept), { model: s.ai.imageModel, quality: 'medium', size: landscape ? '1536x1024' : portrait ? '1024x1536' : '1024x1024', seedHint: `${id}:hero:${Date.now()}` });
-  const meta = await sharp(img.png).metadata(); if (!meta.width) throw new AppError('BAD_IMAGE', 'لم يرجع النموذج صورة صالحة.', 502);
-  await recordUsage({ provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, 'medium') });
-  const key = `print/${id}/hero-${crypto.createHash('sha256').update(img.png).digest('hex').slice(0, 10)}.png`;
-  await storage().put(key, img.png, 'image/png');
-  const old = imagesOf(p).hero;
-  const { hero_original: oldOrig, hero_native: _n, hero_upscale: _u, hero_source: _s, ...restImgs } = imagesOf(p); void _n; void _u; void _s;
-  if (oldOrig && oldOrig !== old) await storage().remove(oldOrig).catch(() => undefined);
-  const upd = await prisma.printProject.update({ where: { id }, data: { images: { ...restImgs, hero: key, hero_source: 'ai' } as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'صورة جديدة بالذكاء الاصطناعي'), ...(p.status === 'approved' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
-  if (old) await storage().remove(old).catch(() => undefined);
-  await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.image', targetType: 'print_project', targetId: id, details: { model: img.model } });
+  const box = (await imagePlanPrint(id, user)).areaMm;
+  const plan = artPlan(ctx.a, ctx.b, ctx.concept, box);
+  const quality = opts.quality ?? plan.quality, n = Math.max(1, Math.min(3, opts.variants ?? 1));
+  await assertBudget(s, estimateImageCost(s, quality, n));
+  const made = await Promise.all(Array.from({ length: n }, async (_, k) => {
+    const img = await provider.generateScene(plan.prompt, { model: s.ai.imageModel, quality, size: plan.size, seedHint: `${id}:hero:${Date.now()}:${k}`, background: plan.background });
+    const meta = await sharp(img.png).metadata(); if (!meta.width) throw new AppError('BAD_IMAGE', 'لم يرجع النموذج صورة صالحة.', 502);
+    await recordUsage({ provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, quality) });
+    const out = plan.extend !== 'none' && plan.background === 'opaque' ? await extendToRatio(img.png, plan.ratioBox) : img.png;
+    const key = `print/${id}/hero-${k}-${crypto.createHash('sha256').update(out).digest('hex').slice(0, 10)}.png`;
+    await storage().put(key, out, 'image/png');
+    return { key, model: img.model };
+  }));
+  const prev = imagesOf(p);
+  for (const k of [prev.hero, prev.hero_original, ...(prev.hero_variants ?? '').split('|')]) if (k && !made.some((m) => m.key === k)) await storage().remove(k).catch(() => undefined);
+  const { hero_original: _o, hero_native: _n, hero_upscale: _u, hero_source: _s, hero_variants: _v, hero_bg: _b, hero_extended: _e, ...rest } = prev; void _o; void _n; void _u; void _s; void _v; void _b; void _e;
+  const images = { ...rest, hero: made[0].key, hero_source: 'ai', hero_bg: plan.background, ...(plan.extend !== 'none' && plan.background === 'opaque' ? { hero_extended: plan.extend } : {}), ...(n > 1 ? { hero_variants: made.map((m) => m.key).join('|') } : {}) };
+  const upd = await prisma.printProject.update({ where: { id }, data: { images: images as unknown as Prisma.InputJsonValue, versions: await snapshot(p, n > 1 ? `${n} صور بالذكاء الاصطناعي (${quality})` : `صورة بالذكاء الاصطناعي (${quality})`), ...(p.status === 'approved' || p.status === 'exported' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
+  await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.image', targetType: 'print_project', targetId: id, details: { model: made[0].model, quality, variants: n, size: plan.size, extend: plan.extend, background: plan.background } });
   return upd;
+}
+
+/** chooses one of the generated variants as the design's picture */
+export async function pickHero(id: string, index: number, user: User) {
+  const p = await loadPrint(id, user); const imgs = imagesOf(p);
+  const list = (imgs.hero_variants ?? '').split('|').filter(Boolean);
+  const key = list[index]; if (!key) throw new AppError('NOT_FOUND', 'البديل غير موجود.', 404);
+  return prisma.printProject.update({ where: { id }, data: { images: { ...imgs, hero: key } as unknown as Prisma.InputJsonValue, versions: await snapshot(p, `اختيار الصورة البديلة ${index + 1}`), ...(p.status === 'approved' || p.status === 'exported' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
 }
 
 async function renderAt(p: Awaited<ReturnType<typeof loadPrint>>, dpi: number, preview: boolean) {

@@ -244,7 +244,8 @@ export class OpenAiProvider implements AiProvider {
     return { best, scores, reason: String(parsed.reason ?? '').slice(0, 300), usage, model: res.model ?? model };
   }
 
-  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; references?: Buffer[] }) {
+  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; references?: Buffer[]; background?: 'transparent' | 'opaque' }) {
+    const bg = opts.background === 'transparent' ? { background: 'transparent', output_format: 'png' } : {};
     let res;
     try {
       // reference images (real product photo / reference design) → the edits endpoint with several input images
@@ -254,7 +255,7 @@ export class OpenAiProvider implements AiProvider {
           { model: opts.model, prompt, image, size: opts.size, quality: opts.quality, n: 1, input_fidelity: 'high' },
           (p) => this.client.images.edit(p as unknown as OpenAI.Images.ImageEditParamsNonStreaming), warnDrop('image-edit'));
       } else res = await callWithParamFallback(
-        { model: opts.model, prompt, size: opts.size, quality: opts.quality, n: 1 },
+        { model: opts.model, prompt, size: opts.size, quality: opts.quality, n: 1, ...bg },
         (p) => this.client.images.generate(p as unknown as OpenAI.Images.ImageGenerateParamsNonStreaming), warnDrop('image'));
     } catch (e) { throw mapError(e); }
     const item = res.data?.[0];

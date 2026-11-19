@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { storage } from '@/lib/storage';
 import { setAiProviderOverride } from '@/lib/ai';
 import { inspectPdf } from '@/lib/edu/pdf';
-import { adFromPrint, approvePrint, createPrint, exportPrint, generateHero, imagePlanPrint, mockupPrint, previewPrint, undoPrint, updatePrint, upscalePrint, uploadPrintAsset } from '@/lib/print/service';
+import { adFromPrint, approvePrint, createPrint, exportPrint, generateHero, imagePlanPrint, mockupPrint, pickHero, previewPrint, undoPrint, updatePrint, upscalePrint, uploadPrintAsset } from '@/lib/print/service';
 import { captured, captureQueues, FakeAiProvider, logoPng, resetDb, seedBase } from './helpers';
 
 beforeEach(async () => { await resetDb(); captureQueues(); });
@@ -210,5 +210,34 @@ describe('PRINT DESIGN STUDIO — online client proof', () => {
     await prisma.printProject.update({ where: { id: p.id }, data: { proofExpiresAt: new Date(Date.now() - 1000) } });
     expect((await publicProof(pr2.token)).expired).toBe(true);
     await expect(proofImage(pr2.token, 0)).rejects.toThrow(/صلاحية/);
+  });
+});
+
+describe('PRINT DESIGN STUDIO — AI pictures for every size', () => {
+  it('variants at the planned canvas, extended to a wide banner box, chosen by the user; stickers ask for transparency', async () => {
+    class SpyAi extends FakeAiProvider { calls: { size: string; quality: string; background?: string }[] = []; async generateScene(p: string, o: Parameters<FakeAiProvider['generateScene']>[1]) { this.calls.push({ size: o.size, quality: o.quality, background: o.background }); return super.generateScene(p, o); } }
+    const ai = new SpyAi(); setAiProviderOverride(ai);
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const bn = await createPrint({ productId: 'pvc_banner', activity: 'مطعم', business: 'Smash', texts: { headline: 'برجر مشوي على الفحم' } }, user);
+    const plan = await imagePlanPrint(bn.id, user);
+    expect(plan.plan!.size).toBe('1536x1024'); expect(plan.costs!.high).toBeGreaterThan(plan.costs!.low);
+    const g = await generateHero(bn.id, user, { quality: 'high', variants: 3 });
+    expect(ai.calls).toHaveLength(3); expect(ai.calls.every((c) => c.quality === 'high' && c.size === plan.plan!.size)).toBe(true);
+    const imgs = g.images as Record<string, string>;
+    const variants = imgs.hero_variants.split('|'); expect(variants).toHaveLength(3);
+    if (plan.plan!.extend === 'horizontal') {
+      const m = await sharp(await storage().get(imgs.hero)).metadata();
+      expect(m.width! / m.height!).toBeCloseTo(plan.plan!.ratioBox, 1);
+    }
+    const picked = await pickHero(bn.id, 2, user);
+    expect((picked.images as Record<string, string>).hero).toBe(variants[2]);
+    // a die-cut sticker: transparent background requested, placed whole as the sticker's hero
+    ai.calls.length = 0;
+    const st = await createPrint({ productId: 'diecut_sticker', activity: 'محل ألعاب', business: 'Toy', sizeId: 's75', texts: { headline: 'Toy Land' } }, user);
+    await generateHero(st.id, user);
+    expect(ai.calls[0].background).toBe('transparent');
+    const pv = await previewPrint(st.id, user);
+    expect(pv.qa.checks.find((c) => c.id === 'overflow')?.status).toBe('PASS');
   });
 });

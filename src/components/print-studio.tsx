@@ -20,7 +20,7 @@ interface Brief { productId: string; request: string; business: string; activity
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bahrain', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 const fmtDate = (d: string | Date) => DATE_FMT.format(new Date(d));
 type Verdict = 'ok' | 'acceptable' | 'low';
-interface ImagePlan { done: boolean; live: boolean; costUsd: number; areaMm: { w: number; h: number } | null; target: number; eye: number | null; viewM: number | null; ai: { px: string; ppi: number; verdict: Verdict } | null; current: { px: string; ppi: number; verdict: Verdict; upscale: number; source: 'ai' | 'upload' } | null; needPx: { w: number; h: number } | null }
+interface ImagePlan { done: boolean; live: boolean; costUsd: number; costs?: { low: number; medium: number; high: number }; plan?: { size: string; quality: 'low' | 'medium' | 'high'; background: string; extend: string; keepW: number; keepH: number; ratioBox: number; notes: string[] }; variants?: string[]; chosen?: number; areaMm: { w: number; h: number } | null; target: number; eye: number | null; viewM: number | null; ai: { px: string; ppi: number; verdict: Verdict } | null; current: { px: string; ppi: number; verdict: Verdict; upscale: number; source: 'ai' | 'upload' } | null; needPx: { w: number; h: number } | null }
 type Texts = { headline: string; subline: string; body: string; name: string; role: string; phone: string; email: string; website: string; address: string; cta: string; extra: string[] };
 const STATUS_STYLE: Record<Status, string> = { PASS: 'bg-emerald-100 text-emerald-800', NEEDS_REVISION: 'bg-amber-100 text-amber-800', BLOCKED: 'bg-red-100 text-red-800', NOT_VERIFIED: 'bg-slate-100 text-slate-700' };
 const STATUS_AR: Record<Status, string> = { PASS: 'ناجح', NEEDS_REVISION: 'يحتاج تعديل', BLOCKED: 'موقوف', NOT_VERIFIED: 'غير متحقق' };
@@ -288,7 +288,9 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
                 <div className="mb-2 font-extrabold">🎨 {L('صورة الذكاء الاصطناعي', 'AI picture')}</div>
                 <p className="text-[11px] text-slate-500">{L('مشهد حسب النشاط والاتجاه — بدون نصوص أو شعارات داخله. لا يُعاد توليد بقية التصميم.', 'A scene for the activity — no text or logos inside. The rest of the design is kept.')}</p>
                 {plan?.areaMm && <ResolutionInfo plan={plan} L={L} />}
-                {plan && (plan.live ? <button type="button" disabled={busy} onClick={() => act('image', L('يرسم الصورة…', 'Painting…'), L('أُضيفت الصورة ✓', 'Picture added ✓'))} className="mt-2 w-full rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{plan.done ? L('صورة أخرى', 'Another picture') : L('إنشاء الصورة', 'Generate')} (~${plan.costUsd})</button> : <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">{L('يحتاج مفتاح OpenAI — يظهر مكان الصورة في المعاينة فقط.', 'Needs an OpenAI key — the picture area shows in the preview only.')}</p>)}
+                {plan && (plan.live ? <HeroGenerator plan={plan} L={L} busy={busy} onGenerate={(quality, variants) => act('image', L('يرسم الصورة…', 'Painting…'), L('أُضيفت الصورة ✓', 'Picture added ✓'), { quality, variants })} /> : <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">{L('يحتاج مفتاح OpenAI — يظهر مكان الصورة في المعاينة فقط.', 'Needs an OpenAI key — the picture area shows in the preview only.')}</p>)}
+                {plan?.plan && <ul className="mt-2 list-disc space-y-0.5 ps-4 text-[11px] text-slate-500">{[`${L('لوحة النموذج', 'Model canvas')} ${plan.plan.size} · ${L('نسبة المساحة', 'box ratio')} ${plan.plan.ratioBox}:1`, ...plan.plan.notes].map((n, i) => <li key={i}>{n}</li>)}</ul>}
+                {(plan?.variants?.length ?? 0) > 1 && <div className="mt-2 grid grid-cols-3 gap-1.5">{plan!.variants!.map((k, i) => <button key={k} type="button" disabled={busy || plan!.chosen === i} onClick={() => act('pick', L('اختيار…', 'Choosing…'), L('اختيرت الصورة ✓', 'Chosen ✓'), { index: i })} className={`overflow-hidden rounded-lg border-2 ${plan!.chosen === i ? 'border-indigo-700' : 'border-transparent'}`}><img src={`/api/media/${k}`} alt={`${L('بديل', 'variant')} ${i + 1}`} className="aspect-square w-full bg-slate-100 object-contain" /></button>)}</div>}
                 {plan?.current && plan.current.verdict !== 'ok' && <button type="button" disabled={busy} onClick={() => act('upscale', L('تكبير الصورة…', 'Upscaling…'), L('كُبّرت الصورة — البكسلات أنعم (لا تفاصيل جديدة) ✓', 'Upscaled ✓'))} className="mt-2 w-full rounded-lg border border-indigo-300 px-3 py-2 text-xs font-bold text-indigo-800">{L('تكبير احترافي لتنعيم البكسلات', 'Professional upscale (smoother pixels)')}{plan.current.upscale > 1 ? ` (${L('الحالي', 'now')} ×${plan.current.upscale})` : ''}</button>}
                 <label className="mt-2 block text-xs font-bold">{L('أو ارفع صورة عالية الدقة (تصوير حقيقي)', 'Or upload a high-resolution photo')}{plan?.needPx && <span className="font-normal text-slate-500"> — {L('المطلوب لهذه المساحة', 'needed here')} <span dir="ltr">{plan.needPx.w}×{plan.needPx.h} px</span></span>}<input type="file" accept="image/jpeg,image/png,image/webp,image/tiff" className="mt-1 block w-full text-xs" onChange={(e) => e.target.files?.[0] && upload('hero', e.target.files[0])} /></label>
               </div>
@@ -426,6 +428,22 @@ function ProofPanel({ L, p, busy, onCreate }: { L: (a: string, e: string) => str
         <a href={url} target="_blank" rel="noreferrer" className="block text-center text-xs font-bold text-indigo-700 underline">{L('فتح صفحة العميل', 'Open client page')}</a>
         <p className="text-[11px] text-slate-500">{L('صالح حتى', 'Valid until')} <span dir="ltr">{fmtDate(p.proofExpiresAt!)}</span></p>
       </div>}
+    </div>
+  );
+}
+
+/** quality tier + number of variants, with the cost shown before anything is generated */
+function HeroGenerator({ plan, L, busy, onGenerate }: { plan: ImagePlan; L: (a: string, e: string) => string; busy: boolean; onGenerate: (q: 'low' | 'medium' | 'high', n: number) => void }) {
+  const [q, setQ] = useState<'low' | 'medium' | 'high'>(plan.plan?.quality ?? 'medium');
+  const [n, setN] = useState(1);
+  const cost = ((plan.costs?.[q] ?? plan.costUsd) * n).toFixed(3);
+  const QA: Record<string, [string, string]> = { low: ['اقتصادية', 'Draft'], medium: ['متوسطة', 'Standard'], high: ['عالية للطباعة', 'High (print)'] };
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex flex-wrap gap-1.5">{(['low', 'medium', 'high'] as const).map((x) => <button key={x} type="button" onClick={() => setQ(x)} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${q === x ? 'border-indigo-700 bg-indigo-700 text-white' : 'bg-white'}`}>{L(QA[x][0], QA[x][1])}{plan.plan?.quality === x ? ' ★' : ''}</button>)}</div>
+      <div className="flex items-center gap-2 text-[11px]"><span className="font-bold">{L('عدد البدائل', 'Variants')}</span>{[1, 2, 3].map((k) => <button key={k} type="button" onClick={() => setN(k)} className={`h-7 w-7 rounded-full border text-xs font-bold ${n === k ? 'bg-slate-900 text-white' : 'bg-white'}`}>{k}</button>)}</div>
+      <button type="button" disabled={busy} onClick={() => onGenerate(q, n)} className="w-full rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{plan.done ? L('صور جديدة', 'New pictures') : L('إنشاء الصورة', 'Generate')} · ~${cost}</button>
+      <p className="text-[10px] text-slate-500">★ {L('الجودة المقترحة لهذا المقاس', 'suggested for this size')}</p>
     </div>
   );
 }

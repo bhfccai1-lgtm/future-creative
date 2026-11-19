@@ -25,7 +25,7 @@ export function runPrintQa(a: Analysis, b: Brief, pages: PrintPage[], o: { expor
 
   // ── Visual QA
   const ov: string[] = [];
-  for (const p of art) for (let i = 0; i < p.placed.length; i++) for (let j = i + 1; j < p.placed.length; j++) { const x = p.placed[i], y = p.placed[j]; if (x.kind === 'image' || y.kind === 'image') continue; if (overlap(x.rect, y.rect)) ov.push(`${p.label}: ${x.id} × ${y.id}`); }
+  for (const p of art) for (let i = 0; i < p.placed.length; i++) for (let j = i + 1; j < p.placed.length; j++) { const x = p.placed[i], y = p.placed[j]; if (x.kind === 'image' || y.kind === 'image' || x.kind === 'shape' || y.kind === 'shape') continue; if (overlap(x.rect, y.rect)) ov.push(`${p.label}: ${x.id} × ${y.id}`); }
   add('visual', 'overlap', 'لا تزاحم أو تداخل بين العناصر', ov.length ? 'NEEDS_REVISION' : 'PASS', ov.slice(0, 3).join(' · ') || undefined);
   const p0 = art[0];
   if (p0) {
