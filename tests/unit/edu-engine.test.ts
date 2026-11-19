@@ -134,12 +134,20 @@ describe('EDUCATION MASTER — styles, auto-fit, balanced columns', () => {
 });
 
 describe('EDUCATION MASTER — form choices', () => {
-  it('subjects, grades and lesson ideas for quick picks (free text still allowed)', async () => {
-    const { SUBJECTS, GRADES, lessonIdeas } = await import('@/lib/edu/choices');
+  it('lesson ideas follow the subject AND the school stage; the official list comes only from what was entered', async () => {
+    const { SUBJECTS, GRADES, lessonIdeas, gradeIndex, stageOf, officialLessons } = await import('@/lib/edu/choices');
     expect(SUBJECTS.map((x) => x.ar)).toEqual(expect.arrayContaining(['اللغة العربية', 'الرياضيات', 'العلوم', 'التربية الإسلامية']));
     expect(GRADES).toHaveLength(13);
-    expect(lessonIdeas('الرياضيات')).toContain('الجمع والطرح');
-    expect(lessonIdeas('Science')).toContain('دورة الماء في الطبيعة');
-    expect(lessonIdeas('مادة غير معروفة')).toEqual([]);
+    expect(gradeIndex('الصف الرابع')).toBe(4); expect(gradeIndex('الصف الثاني عشر')).toBe(12); expect(gradeIndex('الصف الحادي عشر')).toBe(11); expect(gradeIndex('Grade 7')).toBe(7); expect(gradeIndex('رياض الأطفال')).toBe(0); expect(gradeIndex('٣')).toBe(3);
+    expect(stageOf('الصف الثاني')).toBe('lower'); expect(stageOf('الصف الخامس')).toBe('upper'); expect(stageOf('الصف الثامن')).toBe('intermediate'); expect(stageOf('الصف العاشر')).toBe('secondary');
+    expect(lessonIdeas('الرياضيات', 'الصف الثالث')).toContain('الجمع والطرح');
+    expect(lessonIdeas('الرياضيات', 'الصف الحادي عشر')).not.toContain('الجمع والطرح');
+    expect(lessonIdeas('اللغة العربية', 'الصف الرابع')).toContain('وطني');
+    expect(lessonIdeas('Science', '')).toContain('أجزاء النبات'); expect(lessonIdeas('Science', 'الصف الخامس')).toContain('دورة الماء في الطبيعة');
+    expect(lessonIdeas('مادة غير معروفة', 'الصف الرابع')).toEqual([]);
+    const entries = [{ subject: 'اللغة العربية', grade: 4, lessons: ['درس من الكتاب ١', 'درس من الكتاب ٢'] }];
+    expect(officialLessons(entries, 'اللغة العربية', 'الصف الرابع')).toEqual(['درس من الكتاب ١', 'درس من الكتاب ٢']);
+    expect(officialLessons(entries, 'اللغة العربية', 'الصف الخامس')).toEqual([]);
+    expect(officialLessons([], 'الرياضيات', 'الصف الرابع')).toEqual([]);
   });
 });

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from './ui';
 import { toast } from './toaster';
 import { apiCall } from '@/lib/client/api';
-import { GRADES, GRADES_EN, SUBJECTS, lessonIdeas } from '@/lib/edu/choices';
+import { GRADES, GRADES_EN, STAGE_AR, SUBJECTS, gradeIndex, lessonIdeas, officialLessons, stageOf, type CurriculumEntry } from '@/lib/edu/choices';
 import { EDU_TYPES, PRESETS, STYLES, STYLE_AR, STEPS, type EduContent, type EduSettings, type EduType, type StepState } from '@/lib/edu/types';
 
 /**
@@ -43,7 +43,8 @@ type Row = { id: string; title: string; type: EduType; updatedAt: string; source
 const blank = (type: EduType): Partial<EduSettings> => ({ type, lang: 'ar', subject: '', grade: '', lesson: '', objectives: '', student: '', classSection: '', school: '', size: PRESETS[type].size, orientation: PRESETS[type].orientation, sides: PRESETS[type].sides, columns: PRESETS[type].columns, style: 'auto', palette: 'blue', detail: 'medium', images: 'none', fontScale: 1, digits: 'arabic', equationDir: 'rtl', exerciseCount: 8, cardCount: 8, marginMm: 10, bleedMm: 0, answerKey: false, autoFit: true, aiBackground: false });
 const BADGE: Record<string, string> = { PASS: 'bg-emerald-100 text-emerald-800', WARNING: 'bg-amber-100 text-amber-800', FAIL: 'bg-red-100 text-red-800', done: 'bg-emerald-100 text-emerald-800', warning: 'bg-amber-100 text-amber-800', failed: 'bg-red-100 text-red-800', running: 'bg-sky-100 text-sky-800', pending: 'bg-slate-100 text-slate-500', skipped: 'bg-slate-100 text-slate-500' };
 
-export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[]; aiLive: boolean }) {
+export function EduStudio({ initialProjects, aiLive, curriculum: cur0 = { curriculumYear: '2026-2027', curriculum: [] }, canAdmin = false }: { initialProjects: Row[]; aiLive: boolean; curriculum?: { curriculumYear: string; curriculum: CurriculumEntry[] }; canAdmin?: boolean }) {
+  const [curriculum, setCurriculum] = useState(cur0);
   const [ui, setUi] = useState<Lang>('ar');
   const t = useCallback((k: string) => (T[k] ? T[k][ui === 'ar' ? 0 : 1] : k), [ui]);
   const [tab, setTab] = useState<'new' | 'mine' | 'templates' | 'preview' | 'export' | 'settings'>('new');
@@ -161,7 +162,16 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
               </Group></div>
               <div className="sm:col-span-2"><Group label={t('lesson')}>
                 <input className="input" required maxLength={160} value={form.lesson} onChange={(e) => set('lesson', e.target.value)} placeholder={ui === 'ar' ? 'اكتب عنوان الدرس أو اختر من الاقتراحات' : 'type the lesson or pick a suggestion'} />
-                {lessonIdeas(form.subject ?? '').length > 0 && <><div className="mt-2 text-[11px] font-bold text-slate-500">{ui === 'ar' ? 'اقتراحات دروس' : 'Lesson ideas'}</div><Chips items={lessonIdeas(form.subject ?? '').map((x) => ({ v: x, l: x }))} value={form.lesson ?? ''} onPick={(v) => set('lesson', v)} /></>}
+                {(() => {
+                  const official = officialLessons(curriculum.curriculum, form.subject ?? '', form.grade ?? '');
+                  const ideas = lessonIdeas(form.subject ?? '', form.grade ?? '').filter((x) => !official.includes(x));
+                  const st = stageOf(form.grade ?? '');
+                  return <>
+                    {official.length > 0 && <><div className="mt-2 flex items-center gap-1 text-[11px] font-bold text-emerald-700">📘 {ui === 'ar' ? `دروس كتاب الطالب ${curriculum.curriculumYear}` : `Textbook lessons ${curriculum.curriculumYear}`}</div><Chips items={official.map((x) => ({ v: x, l: x }))} value={form.lesson ?? ''} onPick={(v) => set('lesson', v)} /></>}
+                    {ideas.length > 0 && <><div className="mt-2 text-[11px] font-bold text-slate-500">{ui === 'ar' ? `اقتراحات عامة${st ? ` — ${STAGE_AR[st]}` : ''} (ليست القائمة الرسمية)` : `General ideas${st ? ` — ${st}` : ''} (not the official list)`}</div><Chips items={ideas.map((x) => ({ v: x, l: x }))} value={form.lesson ?? ''} onPick={(v) => set('lesson', v)} /></>}
+                    {!official.length && form.subject && gradeIndex(form.grade ?? '') !== null && <p className="mt-1 text-[11px] text-slate-400">{ui === 'ar' ? 'لا توجد قائمة رسمية مُدخلة لهذه المادة والصف — يضيفها المسؤول من «الإعدادات» من فهرس كتاب الطالب.' : 'No official list entered for this subject and grade yet (Settings).'}</p>}
+                  </>;
+                })()}
               </Group></div>
               <div className="sm:col-span-2"><Field label={t('objectives')}><textarea className="input" rows={2} maxLength={800} value={form.objectives} onChange={(e) => set('objectives', e.target.value)} /></Field></div>
               {has('student') && <Field label={t('student')}><input className="input" maxLength={80} value={form.student} onChange={(e) => set('student', e.target.value)} /></Field>}
@@ -312,6 +322,7 @@ export function EduStudio({ initialProjects, aiLive }: { initialProjects: Row[];
         </div>
       )}
 
+      {tab === 'settings' && <CurriculumEditor ui={ui} canAdmin={canAdmin} curriculum={curriculum} onSaved={setCurriculum} />}
       {tab === 'settings' && (
         <section className="space-y-3 rounded-2xl border bg-white p-4 text-sm">
           <Field label={ui === 'ar' ? 'لغة الواجهة' : 'Interface language'}><select className="input" value={ui} onChange={(e) => setUi(e.target.value as Lang)}><option value="ar">العربية (RTL)</option><option value="en">English (LTR)</option></select></Field>
@@ -407,3 +418,39 @@ function Chips({ items, value, onPick }: { items: { v: string; l: string }[]; va
     ))}</div>
   );
 }
+
+/** «منهج البحرين للسنة الحالية»: the official lesson list per subject + grade, typed once from the textbook contents */
+function CurriculumEditor({ ui, canAdmin, curriculum, onSaved }: { ui: Lang; canAdmin: boolean; curriculum: { curriculumYear: string; curriculum: CurriculumEntry[] }; onSaved: (c: { curriculumYear: string; curriculum: CurriculumEntry[] }) => void }) {
+  const [subject, setSubject] = useState<string>(SUBJECTS[0].ar);
+  const [grade, setGrade] = useState(4);
+  const [year, setYear] = useState(curriculum.curriculumYear);
+  const cur = curriculum.curriculum.find((e) => e.subject === subject && e.grade === grade);
+  const [text, setText] = useState(cur?.lessons.join('\n') ?? '');
+  const [source, setSource] = useState(cur?.source ?? '');
+  const [msg, setMsg] = useState('');
+  useEffect(() => { const e = curriculum.curriculum.find((x) => x.subject === subject && x.grade === grade); setText(e?.lessons.join('\n') ?? ''); setSource(e?.source ?? ''); setMsg(''); }, [subject, grade, curriculum]);
+  const save = async () => {
+    try {
+      const r = await apiCall<{ curriculumYear: string; curriculum: CurriculumEntry[] }>('/api/edu/curriculum', { method: 'PUT', body: { subject, grade, lessons: text.split('\n').map((s) => s.replace(/^[\s\d٠-٩.\-–•)]+/, '').trim()).filter(Boolean), source: source || undefined, curriculumYear: year } });
+      onSaved({ curriculumYear: r.curriculumYear, curriculum: r.curriculum }); setMsg(ui === 'ar' ? 'حُفظت القائمة ✓ — تظهر أولًا في «عنوان الدرس»' : 'Saved ✓');
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  const done = curriculum.curriculum.length;
+  return (
+    <section className="space-y-3 rounded-2xl border bg-white p-4 text-sm">
+      <div className="font-extrabold text-indigo-900">📘 {ui === 'ar' ? `دروس منهج البحرين ${curriculum.curriculumYear} (من كتاب الطالب)` : `Bahrain textbook lessons ${curriculum.curriculumYear}`}</div>
+      <p className="text-xs text-slate-600">{ui === 'ar' ? 'انسخ عناوين الدروس من فهرس كتاب الطالب لهذه السنة (سطر لكل درس). تظهر لكل المستخدمين أولًا عند اختيار المادة والصف. لا يضع النظام قائمة «رسمية» من عنده.' : 'Copy the lesson titles from this year\u2019s textbook contents (one per line).'} {done ? (ui === 'ar' ? `· مُدخل حاليًا: ${done} مادة/صف` : `· entered: ${done}`) : ''}</p>
+      {!canAdmin ? <p className="rounded bg-slate-50 p-2 text-xs text-slate-600">{ui === 'ar' ? 'الإدخال للمسؤول فقط.' : 'Admins only.'}</p> : <>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="text-xs font-bold">{ui === 'ar' ? 'المادة' : 'Subject'}<select className="input mt-1" value={subject} onChange={(e) => setSubject(e.target.value)}>{SUBJECTS.map((s) => <option key={s.ar} value={s.ar}>{ui === 'ar' ? s.ar : s.en}</option>)}</select></label>
+          <label className="text-xs font-bold">{ui === 'ar' ? 'الصف' : 'Grade'}<select className="input mt-1" value={grade} onChange={(e) => setGrade(Number(e.target.value))}>{GRADES.map((g, i) => <option key={g} value={i}>{ui === 'ar' ? g : GRADES_EN[i]}{curriculum.curriculum.some((x) => x.subject === subject && x.grade === i) ? ' ✓' : ''}</option>)}</select></label>
+          <label className="text-xs font-bold">{ui === 'ar' ? 'السنة الدراسية' : 'School year'}<input className="input ltr mt-1" value={year} maxLength={20} onChange={(e) => setYear(e.target.value)} /></label>
+        </div>
+        <textarea className="input" rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={ui === 'ar' ? 'الدرس الأول\nالدرس الثاني\n…' : 'Lesson 1\nLesson 2'} />
+        <input className="input text-xs" value={source} maxLength={200} onChange={(e) => setSource(e.target.value)} placeholder={ui === 'ar' ? 'المصدر (مثال: كتاب الطالب — الفصل الأول)' : 'Source (e.g. student book, term 1)'} />
+        <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={save} className="rounded-lg bg-indigo-700 px-4 py-2 text-xs font-bold text-white">{ui === 'ar' ? 'حفظ القائمة' : 'Save list'}</button>{msg && <span className="text-xs font-bold text-emerald-700">{msg}</span>}</div>
+      </>}
+    </section>
+  );
+}
+

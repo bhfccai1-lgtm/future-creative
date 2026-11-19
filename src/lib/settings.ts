@@ -202,6 +202,11 @@ export const SettingsSchema = z.object({
     quoteTerms: z.string().max(600).default('العرض صالح حتى التاريخ المذكور. يبدأ التنفيذ بعد اعتماد التصميم النهائي من العميل.'),
     reactivationDays: z.number().int().min(14).max(365).default(60),
   }).default({}),
+  /** EDUCATION MASTER: the official lesson list of the current school year, typed from the student textbooks' contents */
+  education: z.object({
+    curriculumYear: z.string().max(20).default('2026-2027'),
+    curriculum: z.array(z.object({ subject: z.string().max(60), grade: z.number().int().min(0).max(12), lessons: z.array(z.string().trim().min(1).max(160)).max(80), source: z.string().max(200).optional() })).max(200).default([]),
+  }).default({}),
   /** PRINT DESIGN STUDIO: what the shop REALLY offers (everything else is shown disabled, never assumed) */
   print: z.object({
     disabledProducts: z.array(z.string().max(40)).max(300).default([]),

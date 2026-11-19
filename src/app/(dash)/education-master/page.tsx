@@ -14,5 +14,5 @@ export default async function EducationMasterPage() {
     getSettings(),
   ]);
   const aiLive = !(await getAiProvider(s).then((p) => p.isDryRun).catch(() => true));
-  return <EduStudio initialProjects={JSON.parse(JSON.stringify(rows))} aiLive={aiLive} />;
+  return <EduStudio initialProjects={JSON.parse(JSON.stringify(rows))} aiLive={aiLive} curriculum={s.education} canAdmin={user.perms.includes('settings:ai')} />;
 }
