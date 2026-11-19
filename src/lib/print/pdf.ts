@@ -4,7 +4,7 @@
  * «CutContour» (die/through cut), «KissCut», «Fold» (crease, dashed). Colour: DeviceRGB, or DeviceCMYK when the art was
  * converted (built-in generic CMYK profile unless the printer's ICC profile is supplied). Not a PDF/X file.
  */
-export interface PdfPage { jpeg: Buffer; cmyk: boolean; gray?: boolean; widthPx: number; heightPx: number; mediaMm: { w: number; h: number }; bleedMm: number; cut?: string; kissCut?: string[]; folds?: number[] }
+export interface PdfPage { jpeg: Buffer; cmyk: boolean; gray?: boolean; widthPx: number; heightPx: number; mediaMm: { w: number; h: number }; bleedMm: number; cut?: string; kissCut?: string[]; folds?: number[]; foldPaths?: string[]; perfPaths?: string[] }
 const PT = 72 / 25.4;
 const f2 = (v: number) => (Math.round(v * 100) / 100).toString();
 
@@ -12,13 +12,14 @@ const f2 = (v: number) => (Math.round(v * 100) / 100).toString();
 export function pathToPdf(d: string, hMm: number): string {
   const out: string[] = []; let x = 0, y = 0, sx = 0, sy = 0;
   const P = (px: number, py: number) => `${f2(px * PT)} ${f2((hMm - py) * PT)}`;
-  for (const m of d.matchAll(/([MLHVAZ])([^MLHVAZ]*)/gi)) {
+  for (const m of d.matchAll(/([MLHVACZ])([^MLHVACZ]*)/gi)) {
     const c = m[1].toUpperCase(); const n = m[2].trim() ? m[2].trim().split(/[\s,]+/).map(Number) : [];
     if (c === 'M') { x = n[0]; y = n[1]; sx = x; sy = y; out.push(`${P(x, y)} m`); }
     else if (c === 'L') { x = n[0]; y = n[1]; out.push(`${P(x, y)} l`); }
     else if (c === 'H') { x = n[0]; out.push(`${P(x, y)} l`); }
     else if (c === 'V') { y = n[0]; out.push(`${P(x, y)} l`); }
     else if (c === 'Z') { out.push('h'); x = sx; y = sy; }
+    else if (c === 'C') { out.push(`${P(n[0], n[1])} ${P(n[2], n[3])} ${P(n[4], n[5])} c`); x = n[4]; y = n[5]; }
     else if (c === 'A') { const [rx, ry, , large, sweep, ex, ey] = n; out.push(...arc(x, y, rx, ry, large, sweep, ex, ey).map((b) => `${P(b[0], b[1])} ${P(b[2], b[3])} ${P(b[4], b[5])} c`)); x = ex; y = ey; }
   }
   return out.join(' ');
@@ -67,6 +68,8 @@ export function buildPrintPdf(pages: PdfPage[], meta: { title: string; producer:
     if (p.cut) stream += vec('CS1', p.cut);
     for (const kc of p.kissCut ?? []) stream += vec('CS2', kc);
     for (const fx of p.folds ?? []) stream += vec('CS3', `M${fx} 0 V${p.mediaMm.h}`, '[3 2] 0 d');
+    for (const fp of p.foldPaths ?? []) stream += vec('CS3', fp, '[3 2] 0 d');
+    for (const pp of p.perfPaths ?? []) stream += vec('CS1', pp, '[1 1] 0 d');
     obj(ids.page, [`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f2(W)} ${f2(H)}]${boxes} /Resources << /XObject << /Im0 ${ids.image} 0 R >> /ColorSpace << /CS1 4 0 R /CS2 5 0 R /CS3 6 0 R >> /ExtGState << /GS0 << /Type /ExtGState /OP true /op true /OPM 1 >> >> >> /Contents ${ids.content} 0 R >>`]);
     obj(ids.content, [`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`]);
     // Adobe-style CMYK JPEGs store inverted values → Decode array

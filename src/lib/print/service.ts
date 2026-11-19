@@ -20,6 +20,7 @@ import { renderDesign, type PrintPage } from './render';
 import { buildMockup } from './mockup';
 import { runPrintQa, type QaReport } from './qa';
 import { buildPrintPdf } from './pdf';
+import { parseDieline, type Dieline } from './dieline';
 
 /**
  * PRINT DESIGN STUDIO workflow:
@@ -177,7 +178,7 @@ export async function exportPrint(id: string, user: User) {
   for (const pg of prod) {
     const flat = sharp(pg.png).flatten({ background: '#ffffff' });
     const jpeg = await (icc ? flat.toColourspace('cmyk').withIccProfile(path.join(fontDir(), icc)) : flat.toColourspace('cmyk')).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
-    pdfPages.push({ jpeg, cmyk: true, widthPx: pg.widthPx, heightPx: pg.heightPx, mediaMm: { w: pg.trimMm.w + 2 * pg.bleedMm, h: pg.trimMm.h + 2 * pg.bleedMm }, bleedMm: pg.bleedMm, cut: pg.cut, kissCut: pg.kissCut, folds: pg.folds });
+    pdfPages.push({ jpeg, cmyk: true, widthPx: pg.widthPx, heightPx: pg.heightPx, mediaMm: { w: pg.trimMm.w + 2 * pg.bleedMm, h: pg.trimMm.h + 2 * pg.bleedMm }, bleedMm: pg.bleedMm, cut: pg.cut, kissCut: pg.kissCut, folds: pg.folds, foldPaths: pg.foldPaths, perfPaths: pg.perfPaths });
   }
   const pdf = buildPrintPdf(pdfPages, { title: safe, producer: 'PRINT DESIGN MASTER AI V6.0' });
   const check = inspectPdf(pdf);
@@ -190,7 +191,7 @@ export async function exportPrint(id: string, user: User) {
     await put(`${safe}${sfx}-preview.jpg`, await sharp(pg.png).flatten({ background: '#ffffff' }).resize({ width: 1600, height: 1600, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer(), 'image/jpeg', 'jpg', 'معاينة');
     if (pg.cut || pg.kissCut?.length) {
       const mw = pg.trimMm.w + 2 * pg.bleedMm, mh = pg.trimMm.h + 2 * pg.bleedMm;
-      const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${mw}mm" height="${mh}mm" viewBox="0 0 ${mw} ${mh}"><g id="CutContour" fill="none" stroke="#ff00ff" stroke-width="0.1">${pg.cut ? `<path d="${pg.cut}"/>` : ''}</g><g id="KissCut" fill="none" stroke="#00ffff" stroke-width="0.1">${(pg.kissCut ?? []).map((d) => `<path d="${d}"/>`).join('')}</g>${pg.folds?.length ? `<g id="Fold" stroke="#00aa00" stroke-width="0.1" stroke-dasharray="3 2">${pg.folds.map((x) => `<line x1="${x}" y1="0" x2="${x}" y2="${mh}"/>`).join('')}</g>` : ''}</svg>`;
+      const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${mw}mm" height="${mh}mm" viewBox="0 0 ${mw} ${mh}"><g id="CutContour" fill="none" stroke="#ff00ff" stroke-width="0.1">${pg.cut ? `<path d="${pg.cut}"/>` : ''}</g><g id="KissCut" fill="none" stroke="#00ffff" stroke-width="0.1">${(pg.kissCut ?? []).map((d) => `<path d="${d}"/>`).join('')}</g>${pg.folds?.length || pg.foldPaths?.length ? `<g id="Fold" fill="none" stroke="#00aa00" stroke-width="0.1" stroke-dasharray="3 2">${(pg.folds ?? []).map((x) => `<line x1="${x}" y1="0" x2="${x}" y2="${mh}"/>`).join('')}${(pg.foldPaths ?? []).map((d) => `<path d="${d}"/>`).join('')}</g>` : ''}${pg.perfPaths?.length ? `<g id="Perforation" fill="none" stroke="#ff00ff" stroke-width="0.1" stroke-dasharray="1 1">${pg.perfPaths.map((d) => `<path d="${d}"/>`).join('')}</g>` : ''}</svg>`;
       await put(`${safe}${sfx}-cut.svg`, Buffer.from(svg), 'application/octet-stream', 'svg', 'مسار القص Vector (مم)');
     }
     if (pg.white) await put(`${safe}${sfx}-white-ink.png`, pg.white, 'image/png', 'png', 'قناع الحبر الأبيض');
@@ -240,6 +241,15 @@ export async function adFromPrint(id: string, input: { accountIds: string[]; for
 
 export async function uploadPrintAsset(id: string, kind: 'logo' | 'dieline', buf: Buffer, user: User) {
   const p = await loadPrint(id, user);
+  if (kind === 'dieline') {
+    // the supplier's dieline is READ (cut / crease / perforation / glue / panels) — production is unblocked only if it parses
+    let dl: Dieline;
+    try { dl = parseDieline(buf.toString('utf8')); } catch (e) { throw new AppError('BAD_DIELINE', (e as Error).message, 422); }
+    const key = `print/${id}/dieline-${crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16)}.svg.bin`;
+    await storage().put(key, buf, 'application/octet-stream');
+    void p;
+    return updatePrint(id, { brief: { dielineKey: key, dieline: dl, frontPanel: 0 }, note: `رفع Dieline (${dl.wMm}×${dl.hMm} مم، ${dl.panels.length} وجه)` }, user);
+  }
   const meta = await sharp(buf).metadata().catch(() => null);
   if (kind === 'logo' && (!meta || !['png', 'jpeg', 'webp', 'svg'].includes(meta.format ?? ''))) throw new AppError('BAD_LOGO', 'الشعار يجب أن يكون صورة PNG/JPG/SVG.', 422);
   const key = `print/${id}/${kind}-${crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16)}.${kind === 'logo' ? 'png' : 'bin'}`;

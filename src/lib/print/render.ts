@@ -4,6 +4,7 @@ import type { Analysis, Brief } from './brief';
 import { FAMILIES, spineMm } from './catalog';
 import type { Concept } from './concepts';
 import { fitText, textImg, type TextImg } from './text';
+import { movePath } from './dieline';
 
 /**
  * UNIVERSAL DESIGN ENGINE — one composer per product family, all drawn at the exact final size in millimetres
@@ -20,7 +21,9 @@ export interface PrintPage {
   safe: Rect[];
   placed: Placed[];
   /** vector geometry in mm, origin = top-left of the media (trim + bleed) */
-  cut?: string; kissCut?: string[]; folds?: number[]; hidden?: { label: string; rect: Rect }[];
+  cut?: string; kissCut?: string[]; folds?: number[]; foldPaths?: string[]; perfPaths?: string[]; hidden?: { label: string; rect: Rect }[];
+  /** packaging: the main (front) panel and a side panel in px — used by the 3D mockup */
+  frontRect?: Rect; sideRect?: Rect;
   /** transparent material / dark fabric: white-ink mask (white = print white) */
   white?: Buffer; transparentBg?: boolean; note?: string;
   /** finishing separations (foil / spot UV / emboss): 100 % black where the finish goes, aligned with the artwork */
@@ -63,7 +66,9 @@ class Canvas {
   /** element id → its composite entry (same object: later moves apply) — the source of finishing separations */
   art = new Map<string, OverlayOptions>();
   put(img: { png: Buffer; w: number; h: number }, x: number, y: number) { this.comps.push({ input: img.png, left: Math.round(x), top: Math.round(y) }); return this.comps[this.comps.length - 1]; }
-  text(id: string, t: TextImg & { pt?: number }, x: number, y: number, text: string) { this.art.set(id, this.put(t, x, y)); this.placed.push({ id, kind: 'text', rect: { x: Math.round(x), y: Math.round(y), w: t.w, h: t.h }, fits: t.fits, missing: t.missing, text, pt: t.pt }); }
+  /** first element keeps its id (finishing targets the main logo/headline); repeats get #n */
+  mark(id: string, c: OverlayOptions) { this.art.set(this.art.has(id) ? `${id}#${this.art.size}` : id, c); }
+  text(id: string, t: TextImg & { pt?: number }, x: number, y: number, text: string) { this.mark(id, this.put(t, x, y)); this.placed.push({ id, kind: 'text', rect: { x: Math.round(x), y: Math.round(y), w: t.w, h: t.h }, fits: t.fits, missing: t.missing, text, pt: t.pt }); }
 }
 
 /** places an aligned text block inside rect starting at y; returns the next y */
@@ -96,7 +101,7 @@ async function logo(c: C, cv: Canvas, r: Rect, color: string, align: 'centre' | 
     const w = Math.max(1, Math.round((meta.width ?? 1) * s)), h = Math.max(1, Math.round((meta.height ?? 1) * s));
     const png = await sharp(c.logo).resize(w, h).png().toBuffer();
     const x = align === 'centre' ? r.x + (r.w - w) / 2 : c.rtl ? r.x + r.w - w : r.x;
-    cv.art.set('logo', cv.put({ png, w, h }, x, r.y + (r.h - h) / 2));
+    cv.mark('logo', cv.put({ png, w, h }, x, r.y + (r.h - h) / 2));
     cv.placed.push({ id: 'logo', kind: 'logo', rect: { x: Math.round(x), y: Math.round(r.y + (r.h - h) / 2), w, h }, fits: true, srcPx: { w: meta.width ?? 0, h: meta.height ?? 0 } });
     return r.y + r.h;
   }
@@ -145,15 +150,17 @@ async function composeSheet(c: C, cv: Canvas, r: Rect, o: { scale: number; dark:
   const head = T(c, 'headline') || c.b.business;
   y = await line(c, cv, 'headline', head, r, y, { pt: 30 * s, minPt: Math.min(minPt, 30 * s), weight: 'extrabold', color: band ? '#ffffff' : acc, align: centre, maxH: r.h * (band ? 0.16 : 0.24) }) + r.h * 0.015;
   if (band) y = Math.max(y, r.y + r.h * 0.3);
-  y = await line(c, cv, 'subline', T(c, 'subline'), r, y, { pt: 14 * s, weight: 'bold', color: col, align: centre, maxH: r.h * 0.12 }) + r.h * 0.03;
+  // reading sizes never below 7.5 pt at the final size, however small the panel
+  const rd = (v: number) => Math.max(7.5, v);
+  y = await line(c, cv, 'subline', T(c, 'subline'), r, y, { pt: rd(14 * s), weight: 'bold', color: col, align: centre, maxH: r.h * 0.12 }) + r.h * 0.03;
   // bottom anchor: CTA + contacts
   const gap = c.k * 2.4 * s;
   const tail: { id: string; str: string; pt: number; weight: 'regular' | 'bold' | 'extrabold'; color: string; pill?: boolean }[] = [];
-  if (T(c, 'cta')) tail.push({ id: 'cta', str: T(c, 'cta'), pt: 15 * s, weight: 'extrabold', color: acc, pill: true });
-  if (o.contacts !== false) { const cts = contactsOf(c); if (cts.length) tail.push({ id: 'contacts', str: cts.join(' · '), pt: 10 * s, weight: 'bold', color: col }); }
+  if (T(c, 'cta')) tail.push({ id: 'cta', str: T(c, 'cta'), pt: rd(15 * s), weight: 'extrabold', color: acc, pill: true });
+  if (o.contacts !== false) { const cts = contactsOf(c); if (cts.length) tail.push({ id: 'contacts', str: cts.join(' · '), pt: rd(10 * s), weight: 'bold', color: col }); }
   const mid: typeof tail = [];
-  if (o.body !== false && T(c, 'body')) mid.push({ id: 'body', str: T(c, 'body'), pt: 12 * s, weight: 'regular', color: col });
-  for (const [i, e] of c.b.texts.extra.entries()) mid.push({ id: `extra:${i}`, str: `• ${e}`, pt: 12.5 * s, weight: 'bold', color: col });
+  if (o.body !== false && T(c, 'body')) mid.push({ id: 'body', str: T(c, 'body'), pt: rd(12 * s), weight: 'regular', color: col });
+  for (const [i, e] of c.b.texts.extra.entries()) mid.push({ id: `extra:${i}`, str: `• ${e}`, pt: rd(12.5 * s), weight: 'bold', color: col });
   const render = async (xs: typeof tail, yy: number) => Promise.all(xs.map(async (bl) => fitText(bl.str, { maxPt: bl.pt, minPt: Math.max(7, bl.pt * 0.7), kmm: c.k, w: r.w, h: r.h * 0.4, weight: bl.weight, color: readable(c, bl.color, { x: r.x, y: yy, w: r.w, h: c.k * 8 }), align: centre === 'centre' ? 'centre' : undefined })));
   const tailImg = await render(tail, r.y + r.h - c.k * 10);
   const tailH = tailImg.reduce((a, t) => a + t.h + gap, 0);
@@ -400,6 +407,36 @@ async function renderInner(inp: DesignInput): Promise<PrintPage[]> {
     const png = await flatten(W, H, '', cv, true);
     const white = b.conditions.darkFabric ? await sharp(png).extractChannel(3).threshold(32).toColourspace('b-w').png().toBuffer() : undefined;
     return [page(en ? 'Print artwork (transparent)' : 'تصميم الطباعة (خلفية شفافة)', png, cv, [sr], { transparentBg: true, white })];
+  }
+
+  if (fam === 'packaging' && b.dieline) {
+    // the supplier's dieline: one flat sheet; the main design on the chosen front panel, contacts on the matching back panel,
+    // the brand on the side panels; art kept inside cut + bleed; cut / crease / perforation stay separate vectors
+    const d = b.dieline, cv = new Canvas();
+    const px = (p: { x: number; y: number; w: number; h: number }, inset = 0): Rect => ({ x: Math.round((bl + p.x + inset) * k), y: Math.round((bl + p.y + inset) * k), w: Math.round((p.w - 2 * inset) * k), h: Math.round((p.h - 2 * inset) * k) });
+    const panels = d.panels.length ? d.panels : [{ x: 0, y: 0, w: d.wMm, h: d.hMm }];
+    const front = panels[Math.min(b.frontPanel, panels.length - 1)];
+    const same = (p: typeof front) => p !== front && Math.abs(p.w - front.w) < 2 && Math.abs(p.h - front.h) < 2;
+    const back = panels.find(same);
+    const sides = panels.filter((p) => p !== front && p !== back && Math.abs(p.h - front.h) < 2 && p.w < front.w);
+    const safes = panels.map((p) => px(p, sf));
+    const bg = background(c, W, H, B, px(front, sf));
+    await setBg(c, `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${bg}</svg>`, W, H);
+    await composeSheet(c, cv, px(front, sf), { scale: scaleFor(front.w, front.h), dark: false, heroSlot: 'hero', contacts: false, body: false });
+    if (back) {
+      const r = px(back, sf); let y = r.y + r.h * 0.12;
+      y = await logo(c, cv, { ...r, y, h: r.h * 0.16 }, c.cc.palette.primary) + k * 4;
+      if (T(c, 'body')) y = await line(c, cv, 'back:body', T(c, 'body'), r, y, { pt: Math.max(7.5, 10 * scaleFor(back.w, back.h)), color: c.cc.palette.ink, align: 'centre' }) + k * 3;
+      for (const [i, e] of c.b.texts.extra.entries()) y = await line(c, cv, `back:${i}`, `• ${e}`, r, y, { pt: Math.max(7.5, 10 * scaleFor(back.w, back.h)), weight: 'bold', color: c.cc.palette.ink, align: 'centre' }) + k * 1.5;
+      await line(c, cv, 'back:contacts', contactsOf(c).join(' · '), r, r.y + r.h - k * 12, { pt: 8.5, minPt: 7, color: c.cc.palette.ink, align: 'centre' });
+    }
+    for (const [i, sp] of sides.entries()) { const r = px(sp, sf); if (r.w > k * 12 && r.h > k * 12) await logo(c, cv, { x: r.x, y: r.y + r.h * 0.4, w: r.w, h: Math.min(r.h * 0.2, r.w * 0.6) }, c.cc.palette.primary).then(() => { const l = cv.placed[cv.placed.length - 1]; if (l && (l.id === 'logo' || l.id === 'wordmark')) l.id = `${l.id}:side${i}`; }); }
+    const cutMm = d.cut.map((p) => movePath(p, bl, bl));
+    let png = await flatten(W, H, bg, cv);
+    const mask = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${cutMm.map((p) => `<path d="${scaleP(p, k)}" fill="#fff" stroke="#fff" stroke-width="${2 * bl * k}" stroke-linejoin="round"/>`).join('')}</svg>`;
+    png = await sharp(png).composite([{ input: Buffer.from(mask), blend: 'dest-in' }]).png().toBuffer();
+    const glue = d.glue.map((g) => ({ label: en ? 'Glue area — nothing important' : 'منطقة لصق — لا عناصر مهمة', rect: px(g) }));
+    return [page(en ? 'Dieline (flat)' : 'العبوة مفرودة على Dieline المورد', png, cv, safes, { cut: cutMm.join(' '), foldPaths: d.fold.map((p) => movePath(p, bl, bl)), perfPaths: d.perf.map((p) => movePath(p, bl, bl)), hidden: glue.length ? glue : undefined, frontRect: px(front), sideRect: sides[0] ? px(sides[0]) : undefined, transparentBg: true })];
   }
 
   // sheet · large_format · flat_gift · packaging (preview) — one composition, scaled to the product

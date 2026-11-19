@@ -80,7 +80,10 @@ export async function buildMockup(kind: FamilySpec['mockup'], pages: PrintPage[]
     const m = await mug(pages[0].png); const s = await shadowed(m.png, m.w, m.h, 20, 0.0); layers.push({ input: s.png, ...center(s, W / 2, H * 0.5) });
   } else if (kind === 'box' || kind === 'bag') {
     bg = scene('#e5e7eb', '#9ca3af');
-    const b = await box(front); layers.push({ input: (await shadowed(b.png, b.w, b.h, 24, 0.0)).png, ...center({ w: b.w + 144, h: b.h + 144 }) });
+    // with a real dieline: the front panel as the box face (pixels of the approved flat), otherwise the whole artwork
+    const fr = pages[0].frontRect;
+    const face = fr ? await sharp(pages[0].png).extract({ left: fr.x, top: fr.y, width: Math.min(fr.w, pages[0].widthPx - fr.x), height: Math.min(fr.h, pages[0].heightPx - fr.y) }).flatten({ background: '#ffffff' }).png().toBuffer() : front;
+    const b = await box(face); layers.push({ input: (await shadowed(b.png, b.w, b.h, 24, 0.0)).png, ...center({ w: b.w + 144, h: b.h + 144 }) });
   } else if (kind === 'stickers' || kind === 'label' || kind === 'stamp') {
     bg = scene('#f1f5f9', '#cbd5e1');
     const a = await fitBox(front, 340, 340);

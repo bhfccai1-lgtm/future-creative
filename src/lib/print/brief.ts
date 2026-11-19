@@ -22,6 +22,10 @@ export const BriefSchema = z.object({
   }).default({}),
   logoKey: z.string().max(300).optional(),
   dielineKey: z.string().max(300).optional(),
+  /** the parsed supplier dieline (mm): cut / fold / perforation paths, glue zones, panels */
+  dieline: z.object({ wMm: z.number(), hMm: z.number(), cut: z.array(z.string().max(20000)).max(50), fold: z.array(z.string().max(20000)).max(200), perf: z.array(z.string().max(20000)).max(100), glue: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).max(20), panels: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).max(60), warnings: z.array(z.string()).max(20) }).optional(),
+  /** which panel carries the main design (index into dieline.panels, largest first) */
+  frontPanel: z.number().int().min(0).max(59).default(0),
   material: z.string().max(40).optional(),
   finishes: z.array(z.string().max(40)).max(8).default([]),
   method: z.string().max(40).optional(),
@@ -73,17 +77,18 @@ export function analyze(b: Brief, cap: Capabilities): Analysis {
   // size
   const parsed = extractContacts(b.request).mm;
   let size = product.sizes.find((s) => s.id === b.sizeId) ?? null;
-  let trim = b.customMm ?? (size ? { w: size.w, h: size.h } : parsed ?? null);
+  let trim = b.dieline ? { w: b.dieline.wMm, h: b.dieline.hMm } : b.customMm ?? (size ? { w: size.w, h: size.h } : parsed ?? null);
+  if (b.dieline) { assumptions.push(`المقاس من Dieline المورد: ${b.dieline.wMm}×${b.dieline.hMm} مم (مفرود) · ${b.dieline.panels.length} وجه · ${b.dieline.fold.length} خط ثني`); for (const w of b.dieline.warnings) warnings.push(`Dieline: ${w}`); }
   if (!trim || !trim.w || !trim.h) {
     size = product.sizes.find((s) => s.w > 0) ?? null;
     if (product.family === 'packaging' || !size) { trim = { w: 200, h: 200 }; blockers.push(product.family === 'packaging' ? 'لا يوجد Dieline معتمد من المورد — معاينة فقط' : 'مقاس القالب غير معروف لهذا المنتج — أرفق قالب المورد'); }
     else { trim = { w: size.w, h: size.h }; assumptions.push(`المقاس: ${size.ar} (الافتراضي لهذا المنتج)`); }
   }
-  if (b.orientation === 'landscape' && trim.h > trim.w && product.family !== 'wrap') trim = { w: trim.h, h: trim.w };
+  if (!b.dieline && b.orientation === 'landscape' && trim.h > trim.w && product.family !== 'wrap') trim = { w: trim.h, h: trim.w };
   if (b.orientation === 'portrait' && trim.w > trim.h && ['sheet', 'multipage'].includes(product.family) && !b.customMm) trim = { w: trim.h, h: trim.w };
   // production requirements the system cannot invent
   for (const r of fam.requires ?? []) {
-    if (r === 'dieline' && !b.dielineKey) { if (!blockers.some((x) => x.includes('Dieline'))) blockers.push('لا يوجد Dieline معتمد من المورد — معاينة فقط'); }
+    if (r === 'dieline' && !b.dieline) { if (!blockers.some((x) => x.includes('Dieline'))) blockers.push('لا يوجد Dieline معتمد من المورد — معاينة فقط'); }
     if (r === 'product_template' && !size && !b.customMm) blockers.push('قالب منطقة الطباعة للمنتج غير معروف');
     if (r === 'product_template' && size) assumptions.push(`منطقة الطباعة: ${size.ar} — تأكد من مطابقتها لقالب المورد`);
     if (r === 'print_area') assumptions.push('منطقة الطباعة حسب المقاس المختار — تأكد من مقاس القطعة');

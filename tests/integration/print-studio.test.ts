@@ -115,3 +115,25 @@ describe('PRINT DESIGN STUDIO — finishing plates', () => {
     expect(ex.qa.checks.find((c) => c.id === 'finishing:gold_foil')?.status).toBe('PASS');
   });
 });
+
+describe('PRINT DESIGN STUDIO — packaging with the supplier dieline', () => {
+  it('uploading a valid SVG dieline unblocks production; the PDF carries the creases; a bad file is refused', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const p = await createPrint({ productId: 'gift_box', activity: 'متجر هدايا', business: 'Gift Co', texts: { headline: 'هدية مميزة' } }, user);
+    await expect(uploadPrintAsset(p.id, 'dieline', Buffer.from('not an svg'), user)).rejects.toThrow(/SVG/);
+    const u = await uploadPrintAsset(p.id, 'dieline', readFileSync('tests/fixtures/tuck-box-dieline.svg'), user);
+    expect((u.brief as { dieline?: { panels: unknown[] } }).dieline?.panels.length).toBeGreaterThan(3);
+    const pv = await previewPrint(p.id, user);
+    expect(pv.qa.checks.some((c) => c.status === 'BLOCKED')).toBe(false);
+    await approvePrint(p.id, user);
+    const ex = await exportPrint(p.id, user);
+    const pdfFile = ex.files.find((f) => f.kind === 'pdf' && f.name.endsWith('-print.pdf'))!;
+    expect(pdfFile).toBeTruthy();
+    const pdf = (await storage().get(pdfFile.key)).toString('latin1');
+    expect(pdf).toContain('/Separation /Fold'); expect(pdf.match(/\[3 2\] 0 d/g)?.length).toBeGreaterThanOrEqual(6);
+    const svgOut = (await storage().get(ex.files.find((f) => f.kind === 'svg')!.key)).toString();
+    expect(svgOut).toContain('id="Fold"');
+  });
+});
