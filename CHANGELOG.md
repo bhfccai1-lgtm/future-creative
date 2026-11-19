@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **«واتساب الذكي» (smart WhatsApp)** — the official WhatsApp Cloud API (Settings → Integrations):
+  - **Your assistant on WhatsApp.** Your number talks to the smart assistant: questions, designs, plan ideas. An action runs only when you reply «تأكيد» (confirm) within 15 minutes; «إلغاء» (cancel) cancels it.
+  - **Customer messages → leads.** Every customer who writes becomes a lead in «العملاء والطلبات» (customers & orders), with a notification. Later messages are added to the same lead, so there are no duplicates.
+  - **Optional welcome reply,** at most once every 24 hours per customer.
+  - **Security.** Webhooks are verified with the Meta App Secret (X-Hub-Signature-256), and each message is handled only once. Tokens are stored encrypted. The page shows the Callback URL and Verify token to copy into Meta.
 - **New «المساعد الذكي» (smart assistant)** — one chat instead of 30 pages, the first item in the menu. Write in Gulf Arabic («شنو وضع النظام؟», «أي حساب أداؤه أفضل؟», «صمم ريل لحساب الأكواب عن العيد الوطني»):
   - **Tools:** the model plans and uses read-only tools: system health, accounts, one account's plan, the approval queue, products. It answers from the real results and never invents numbers.
   - **Actions** (design now, approve plan ideas) are **only proposed**. Nothing runs until you press «تأكيد» (confirm). The proposal is signed, valid for 15 minutes, tied to your user, and your permission is checked again.

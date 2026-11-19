@@ -191,6 +191,16 @@ export const SettingsSchema = z.object({
       showOnProductPage: z.boolean().default(true),
       inCatalog: z.boolean().default(true),
     })).max(10).default([]),
+    /** WhatsApp Cloud API (Meta): the owner's copilot + customer messages → leads */
+    cloud: z.object({
+      enabled: z.boolean().default(false),
+      phoneNumberId: z.string().regex(/^\d*$/).default(''),
+      graphVersion: z.string().regex(/^v\d+\.\d+$/).default('v23.0'),
+      /** numbers (international digits) that talk to the smart assistant; everyone else is a customer */
+      ownerNumbers: z.array(z.string().regex(/^\d{10,15}$/)).max(5).default([]),
+      autoAck: z.boolean().default(false),
+      ackText: z.string().max(600).default('هلا والله 🌷 وصلتنا رسالتك، وبنرد عليك بأقرب وقت. مطبعة إبداع المستقبل — سار 33316319 | سلماباد 34315316'),
+    }).prefault({}),
     statusPack: z.object({
       enabled: z.boolean().default(false),
       maxPerDay: z.number().int().min(1).max(10).default(3),
@@ -259,7 +269,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

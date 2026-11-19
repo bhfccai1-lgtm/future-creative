@@ -36,6 +36,7 @@ export const PUT = api('settings:integrations', async (req, { user }) => {
     numbers: numbers ?? s.whatsapp.numbers,
     catalog: b.catalog ? { ...s.whatsapp.catalog, ...b.catalog } : s.whatsapp.catalog,
     statusPack: b.statusPack ?? s.whatsapp.statusPack,
+    cloud: s.whatsapp.cloud,
   } }), user.email);
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'settings.whatsapp', details: { numbers: numbers?.length ?? null, catalog: b.catalog?.enabled ?? null, statusPack: b.statusPack?.enabled ?? null, token: b.token ? (b.token === '__delete__' ? 'deleted' : 'set') : 'unchanged' } });
   return NextResponse.json(await status());
