@@ -236,6 +236,8 @@ export const SettingsSchema = z.object({
     driveOffload: z.boolean().default(false),
     offloadAfterDays: z.number().int().min(7).max(365).default(45),
     keepDriveBackups: z.number().int().min(3).max(365).default(30),
+    /** smart Drive: nightly performance sheet + «⭐ أفضل التصاميم» + the monthly report on day 1 */
+    driveSmart: z.boolean().default(false),
     lastOffload: z.object({ at: z.string(), removed: z.number(), freedMb: z.number() }).nullable().default(null),
   }).prefault({}),
   metricool: z.object({

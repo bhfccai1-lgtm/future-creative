@@ -95,7 +95,7 @@ describe('Google Drive as cold storage', () => {
 
   it('the v2 script returns Drive ids and stores database backups', () => {
     const src = appsScriptSource({ folderId: 'F1', sheetId: 'S1', host: 'example.test', keepBackups: 12 });
-    expect(src).toContain('const VERSION = 2;'); expect(src).toContain('const KEEP_BACKUPS = 12;');
+    expect(src).toMatch(/const VERSION = [2-9];/); expect(src).toContain('const KEEP_BACKUPS = 12;');
     expect(src).toMatch(/file\.getId\(\)/); expect(src).toMatch(/function backupPart/);
   });
 });

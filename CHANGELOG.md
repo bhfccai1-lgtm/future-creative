@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **✨ Drive الذكي (smart Drive)** — archive script v3, Settings → Integrations → Google archive (off by default):
+  - **Live performance sheet:** every night the «published» sheet gets each design's real numbers: views, reach, saves, shares, comments, retention, skip and a performance score.
+  - **«⭐ أفضل التصاميم» (best designs):** the best 3 designs of each account (last 30 days, at least 20 views) are copied once into a per-account folder, a portfolio ready to share with new customers.
+  - **Monthly smart report** in Google Docs → «التقارير» (reports), on day 1 of each month. The AI writes it from the real numbers in one small text call and labels interpretations; without a key it is written from the numbers alone, and the raw numbers are always appended.
+  - **Buttons:** «زامن الآن» (sync now) and «أنشئ التقرير الشهري الآن» (create this month's report now).
 - **«واتساب الذكي» (smart WhatsApp)** — the official WhatsApp Cloud API (Settings → Integrations):
   - **Your assistant on WhatsApp.** Your number talks to the smart assistant: questions, designs, plan ideas. An action runs only when you reply «تأكيد» (confirm) within 15 minutes; «إلغاء» (cancel) cancels it.
   - **Customer messages → leads.** Every customer who writes becomes a lead in «العملاء والطلبات» (customers & orders), with a notification. Later messages are added to the same lead, so there are no duplicates.

@@ -28,7 +28,7 @@ export async function queueGoogleArchive(adId: string, publicUrl: string | null)
 }
 
 /** v2: returns the Drive id + size of every saved file (needed before a local copy may be removed) and stores DB backups. */
-export const SCRIPT_VERSION = 2;
+export const SCRIPT_VERSION = 3;
 
 /** The Apps Script the owner deploys as a web app. Folder/sheet ids and the system host are filled in. */
 export function appsScriptSource(o: { folderId: string; sheetId: string; host: string; keepBackups?: number }) {
@@ -44,6 +44,9 @@ function doPost(e) {
     const p = JSON.parse(e.postData.contents);
     if (p.event === 'test.ping') return out({ ok: true, test: true, version: VERSION });
     if (p.event === 'backup.part') return backupPart(p.data || {});
+    if (p.event === 'metrics.update') return metricsUpdate(p.data || {});
+    if (p.event === 'best.copy') return bestCopy(p.data || {});
+    if (p.event === 'report.doc') return reportDoc(p.data || {});
     if (p.event !== 'archive.google') return out({ ok: false, error: 'unknown event' });
     const d = p.data || {};
     const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -86,6 +89,57 @@ function backupPart(d) {
     all.slice(KEEP_BACKUPS).forEach(function (f) { f.setTrashed(true); });
   }
   return out({ ok: true, id: file.getId(), size: file.getSize() });
+}
+// v3 — live performance columns in the «published» sheet (matched by design id, column G)
+var METRIC_HEADERS = ['المشاهدات', 'الوصول', 'الحفظ', 'المشاركات', 'التعليقات', 'الإكمال٪', 'التخطي٪', 'درجة الأداء', 'آخر تحديث'];
+function metricsUpdate(d) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('published');
+  if (!sheet) return out({ ok: true, updated: 0 });
+  sheet.getRange(1, 10, 1, METRIC_HEADERS.length).setValues([METRIC_HEADERS]);
+  const last = sheet.getLastRow(); if (last < 2) return out({ ok: true, updated: 0 });
+  const ids = sheet.getRange(2, 7, last - 1, 1).getValues().map(function (r) { return String(r[0]); });
+  let n = 0;
+  (d.rows || []).forEach(function (r) {
+    const i = ids.indexOf(String(r.adId)); if (i < 0) return;
+    sheet.getRange(i + 2, 10, 1, METRIC_HEADERS.length).setValues([[r.views, r.reach, r.saves, r.shares, r.comments, r.retention === null ? '' : r.retention, r.skip === null ? '' : r.skip, r.score, d.at || '']]);
+    n++;
+  });
+  return out({ ok: true, updated: n });
+}
+// v3 — «⭐ أفضل التصاميم»: a copy of the best performers per account (an always-ready portfolio to share)
+function bestCopy(d) {
+  const root = DriveApp.getFolderById(FOLDER_ID);
+  const bi = root.getFoldersByName('⭐ أفضل التصاميم');
+  const best = bi.hasNext() ? bi.next() : root.createFolder('⭐ أفضل التصاميم');
+  const ai = best.getFoldersByName(d.account || 'other');
+  const folder = ai.hasNext() ? ai.next() : best.createFolder(d.account || 'other');
+  const copied = [];
+  (d.fileIds || []).forEach(function (id) {
+    const f = DriveApp.getFileById(id);
+    const name = (d.prefix ? d.prefix + ' — ' : '') + f.getName();
+    if (folder.getFilesByName(name).hasNext()) return;
+    copied.push(f.makeCopy(name, folder).getId());
+  });
+  return out({ ok: true, copied: copied.length, folderUrl: folder.getUrl() });
+}
+// v3 — the monthly smart report as a Google Doc in «التقارير»
+function reportDoc(d) {
+  const root = DriveApp.getFolderById(FOLDER_ID);
+  const ri = root.getFoldersByName('التقارير');
+  const reports = ri.hasNext() ? ri.next() : root.createFolder('التقارير');
+  const ex = reports.getFilesByName(d.title); if (ex.hasNext()) ex.next().setTrashed(true);
+  const doc = DocumentApp.create(d.title);
+  const body = doc.getBody();
+  body.setAttributes({ [DocumentApp.Attribute.FONT_FAMILY]: 'Tajawal' });
+  (d.blocks || []).forEach(function (b) {
+    const p = b.type === 'h1' ? body.appendParagraph(b.text).setHeading(DocumentApp.ParagraphHeading.HEADING1)
+      : b.type === 'h2' ? body.appendParagraph(b.text).setHeading(DocumentApp.ParagraphHeading.HEADING2)
+      : b.type === 'li' ? body.appendListItem(b.text) : body.appendParagraph(b.text);
+    p.setLeftToRight(false).setAlignment(DocumentApp.HorizontalAlignment.RIGHT);
+  });
+  doc.saveAndClose();
+  const file = DriveApp.getFileById(doc.getId()); file.moveTo(reports);
+  return out({ ok: true, id: file.getId(), url: file.getUrl() });
 }
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 `;

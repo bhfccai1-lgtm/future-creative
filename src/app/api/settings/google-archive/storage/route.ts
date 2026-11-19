@@ -20,10 +20,10 @@ export const GET = api('settings:integrations', async () => {
   return NextResponse.json({ settings: s, stats: { files: rows.length, onDrive, offloaded, freedMb: Math.round(freed / 1e6), localMb: Math.round(localBytes / 1e6) } });
 });
 
-const Body = z.object({ driveOffload: z.boolean(), offloadAfterDays: z.number().int().min(7).max(365), keepDriveBackups: z.number().int().min(3).max(365) });
+const Body = z.object({ driveOffload: z.boolean(), offloadAfterDays: z.number().int().min(7).max(365), keepDriveBackups: z.number().int().min(3).max(365), driveSmart: z.boolean().optional() });
 export const PUT = api('settings:integrations', async (req, { user }) => {
   const b = Body.parse(await req.json());
-  if (b.driveOffload && !(await getSecret('GOOGLE_ARCHIVE_URL'))) throw new AppError('NOT_CONFIGURED', 'اربط أرشيف Google أولًا (رابط السكربت).', 412);
+  if ((b.driveOffload || b.driveSmart) && !(await getSecret('GOOGLE_ARCHIVE_URL'))) throw new AppError('NOT_CONFIGURED', 'اربط أرشيف Google أولًا (رابط السكربت).', 412);
   const s = await updateSettings((x) => ({ ...x, storage: { ...x.storage, ...b } }), user.email);
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'settings.storage.update', details: b });
   return NextResponse.json({ settings: s.storage });

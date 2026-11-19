@@ -51,6 +51,7 @@ async function main() {
   await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
   await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
+  await sched.upsertJobScheduler('drive-smart', { pattern: '40 4 * * *', tz: TZ }, { name: 'drive-smart' }); // only acts when enabled in settings
   await sched.upsertJobScheduler('drive-offload', { pattern: '10 4 * * *', tz: TZ }, { name: 'drive-offload' }); // only acts when enabled in settings
   await sched.upsertJobScheduler('foreign-posts', { pattern: '35 */2 * * *', tz: TZ }, { name: 'foreign-posts' }); // read-only Metricool watch
   await sched.upsertJobScheduler('webhooks', { every: 60_000 }, { name: 'webhooks' }); // n8n outbox delivery
@@ -107,6 +108,14 @@ async function main() {
       if (job.name === 'ideas-weekly') return (await import('../lib/ideas/bank')).weeklyIdeas();
       if (job.name === 'winners') return (await import('../lib/growth/winners')).boostWinners();
       if (job.name === 'campaigns') return runCampaignCycle();
+      if (job.name === 'drive-smart') {
+        if (!(await getSettings()).storage.driveSmart) return { skipped: true };
+        const ds = await import('../lib/integrations/drive-smart');
+        const out: Record<string, unknown> = { metrics: await ds.syncMetricsToDrive(), best: await ds.curateBest() };
+        const day = Number(new Intl.DateTimeFormat('en', { timeZone: TZ, day: 'numeric' }).format(new Date()));
+        if (day === 1) out.report = await ds.monthlyReport();
+        return out;
+      }
       if (job.name === 'drive-offload') {
         const st = (await getSettings()).storage;
         if (!st.driveOffload) return { skipped: true };
