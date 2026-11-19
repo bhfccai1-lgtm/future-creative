@@ -41,7 +41,7 @@ Legend: ✅ implemented and covered by automated tests · 🟡 implemented, but 
 | Creating drafts in Metricool | ❌ | The system keeps its own approval queue. All provider posts are created with `draft:false` after approval. |
 | Direct official platform adapters (Meta Graph, TikTok, YouTube, LinkedIn, Pinterest, X) | ❌ | `PublishingAdapter` interface ready; not implemented. |
 | Signed webhook to trigger reconciliation | ✅ | Generic HMAC endpoint. Metricool does not need to call it, because polling every 5 minutes covers the same ground. |
-| Google Drive archive | ❌ | Not implemented. Use `scripts/backup.sh` with rclone. |
+| Google Drive archive + cold storage | ✅ / 🟡 | The Apps Script (v2) archives every published design and returns each file's Drive id and size. Optional nightly offload removes the server copy of designs published more than N days ago, only after Drive confirms the same size; they are then opened from Drive. A daily database backup goes to Drive with `scripts/drive-backup.sh`. 🟡 Needs the owner's Google account and the updated script. |
 
 ## Operations
 | Feature | Status | Notes |

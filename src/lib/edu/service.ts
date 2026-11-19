@@ -107,12 +107,19 @@ export async function generateImages(id: string, user: User, opts: { only?: stri
   let steps = mark(stepsOf(p), 'images', 'running', `${todo.length} صورة…`);
   await prisma.eduProject.update({ where: { id }, data: { steps: steps as unknown as Prisma.InputJsonValue } });
   const failed: string[] = []; const flagged: string[] = []; let generated = 0, retried = 0;
-  const queue = [...todo];
-  const worker = async () => {
-    for (let slot = queue.shift(); slot; slot = queue.shift()) {
+  // the cover is painted first and becomes the STYLE REFERENCE of the other illustrations (palette, light, finish),
+  // so the whole brochure looks like one piece; realistic gallery photos do not follow the cartoon reference
+  let styleRef: Buffer | null = null;
+  const cover = todo.find((x) => x.kind === 'cover');
+  const queue = cover ? todo.filter((x) => x !== cover) : [...todo];
+  const photoSlot = (x: (typeof todo)[number]) => x.kind === 'gallery' && /photograph/.test(x.prompt);
+  const paint = async (slot: (typeof todo)[number]) => {
       try {
+        const ref = styleRef && slot.kind !== 'cover' && !photoSlot(slot) ? [styleRef] : undefined;
+        const prompt = ref ? `${slot.prompt} Match the colour palette, lighting and rendering style of the reference image exactly (it is the cover of the same brochure); draw a NEW picture of the subject described above, do not copy the reference.` : slot.prompt;
         // quality gate: no text inside (lessons are printed by the engine), not soft — one automatic retry on failure
-        const img = await generateChecked(provider, settings, slot.prompt, { model: settings.ai.imageModel, quality, size: slot.size, seedHint: `${id}:${slot.id}:${Date.now()}` });
+        const img = await generateChecked(provider, settings, prompt, { model: settings.ai.imageModel, quality, size: slot.size, seedHint: `${id}:${slot.id}:${Date.now()}`, ...(ref ? { references: ref } : {}) });
+        if (slot.kind === 'cover') styleRef = await sharp(img.png).resize(768, 768, { fit: 'inside' }).png().toBuffer();
         const meta = await sharp(img.png).metadata();
         if (!meta.width || !meta.height) throw new Error('صورة غير صالحة');
         have[`q:${slot.id}`] = qualitySummary(img.quality, { attempts: img.attempts });
@@ -123,8 +130,10 @@ export async function generateImages(id: string, user: User, opts: { only?: stri
         if (have[slot.id]) await storage().remove(have[slot.id]).catch(() => undefined);
         have[slot.id] = key; generated++;
       } catch (e) { failed.push(`${slot.label}: ${(e as Error).message.slice(0, 100)}`); }
-    }
   };
+  if (cover) await paint(cover);
+  else if (have.cover) { try { styleRef = await sharp(await storage().get(have.cover)).resize(768, 768, { fit: 'inside' }).png().toBuffer(); } catch { styleRef = null; } }
+  const worker = async () => { for (let slot = queue.shift(); slot; slot = queue.shift()) await paint(slot); };
   await Promise.all([worker(), worker(), worker()]);
   const gate = `${retried ? ` · أُعيد توليد ${retried} لفشلها في فحص الجودة` : ''}${flagged.length ? ` · تحتاج مراجعة: ${flagged[0]}` : ''}`;
   steps = mark(steps, 'images', failed.length || flagged.length ? (generated ? 'warning' : 'failed') : 'done', failed.length ? `تم ${generated} — تعذّر ${failed.length}: ${failed[0]}${gate}` : `${generated} صورة بالذكاء الاصطناعي — فُحصت (بلا نصوص، حادة)${gate}`);
