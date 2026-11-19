@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **GitHub — «هل أدمج؟» (should I merge?) on every pull request:** one comment, updated in place, says ⏳ wait while CI runs, ✅ safe to merge when every check is green, or ⛔ do not merge with the failing job and its log. It works for Dependabot PRs too and needs no repository settings.
+- **GitHub — main health:** when CI fails on `main`, an issue «🔴 main معطّل» (main is broken) opens with the failing jobs and what it means; the server will not update to a red version. The first green run closes it.
+- **GitHub — one-click release:** Actions → «Publish release» → choose patch / minor / major. It prepares the changelog and version, commits, runs CI on that exact commit, and publishes the tag and Release only when it is green. A server with automatic updates installs it within 10 minutes. It refuses to start when `main` is red or «Unreleased» is empty.
 - **Image quality gate for social-media designs** (it already guarded the print studio and EDUCATION MASTER). Every AI scene for a layered design and every extra Reel shot is checked before composing:
   - text the image model drew by mistake (read by vision), softness and exposure;
   - a failing scene is regenerated once with the reason added to the prompt, only within the AI budget;
