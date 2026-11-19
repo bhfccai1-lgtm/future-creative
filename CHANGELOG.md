@@ -1,6 +1,15 @@
 # Changelog
 
 ## Unreleased
+- **New page «خطة الحسابات» (accounts plan)** — a content strategist for every account, built from the real Metricool numbers the system imports for its own publications (last 30 days):
+  - **Overview:** totals and a table ranking every account by views, saves, retention and skip rate, with its most important problem.
+  - **The best post** and the metric it stood out in.
+  - **Openings against skips:** question openings compared with statement or product openings, against the 3-second skip rate.
+  - **Posting against views:** posting frequency compared with views per post.
+  - **Problems, each with its fix:** Reels shown to many people but skipped; no comments or shares; posting more while views drop; posts in the wrong language; Bahrain hashtags on the Saudi account; too many product types.
+  - **5 ideas built on what worked:** a sequel to the best post, a product-first opening with the one feature a customer sees (the name on the mug's curve, the sticker peel, the canvas edge…), the next occasion, a guide worth saving, and before/after.
+  - **Ready to copy:** a bio and 3 reply messages in the account's language.
+  - **Execute in one click:** «اعتمد في بنك الأفكار» (approve into the idea bank) is free now — the automatic schedule designs the approved ideas in its own slots. «صمّم الآن» (design now) designs one idea immediately into the approval queue. Both follow the normal approval rules, and the ideas are recomputed on the server. Interpretations are labelled as such, and nothing is published from the page.
 - **Print studio — «فكرتك للتصميم» (your design idea) and idea suggestions for the AI picture:**
   - A box above «إنشاء الصورة» (generate image) where you describe the scene: subject, angle, light, material.
   - Your idea becomes the core of the picture prompt, and the chosen direction (A/B/C) becomes secondary. The print rules stay: no text inside the picture, the exact crop and the safe margins.
