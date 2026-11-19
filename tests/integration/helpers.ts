@@ -71,7 +71,7 @@ export class FakeAiProvider implements AiProvider {
   async describeStyle() { return { text: 'Deep navy and glossy gold palette, warm cinematic light, gold 3D lettering.', usage: { inputTokens: 900, outputTokens: 120 }, model: 'fake-vision' }; }
   async readText() { return { text: this.readTextResult ?? this.lastCopy, /* default: the drawn text reads back correctly */ usage: { inputTokens: 300, outputTokens: 40 }, model: 'fake-vision' }; }
   async suggestIdeas(req: BriefRequest, model: string, count: number) { return { ...(await this.inner.suggestIdeas(req, model, count)), model: 'fake-text' }; }
-  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string; references?: Buffer[] }) {
+  async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string; references?: Buffer[]; background?: 'transparent' | 'opaque' }) {
     this.sceneCalls++; this.lastScenePrompt = prompt; this.lastReferences = opts.references;
     const f = this.failScene.shift(); if (f) throw f;
     return { ...(await this.inner.generateScene(prompt, opts)), model: 'fake-image' };
