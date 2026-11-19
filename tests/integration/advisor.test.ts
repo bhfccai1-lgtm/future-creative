@@ -1,7 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-// the advisor reads the REAL disk; tests must not depend on the free space of the machine running them
-vi.mock('node:fs/promises', async (orig) => ({ ...(await orig<typeof import('node:fs/promises')>()), statfs: async () => ({ bavail: 60_000_000, blocks: 100_000_000, bsize: 4096 }) }));
+import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { updateSettings } from '@/lib/settings';
 import { runAdvisor, recordHealthSnapshot, healthHistory, QC_FIX } from '@/lib/ops/advisor';
