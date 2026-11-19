@@ -28,6 +28,8 @@ export interface QcInput {
   hashtags?: string[];
   /** Carousel: total images (cover included) and rendering problems. */
   carousel?: { images: number; problems: string[] } | null;
+  /** «مؤشر الخوارزمية» after the automatic fixes (pipeline algorithm gate) */
+  algorithm?: { score: number; grade: string; remaining: string[] } | null;
   /** Gemini Veo requested for this reel: whether it was really used (otherwise FFmpeg fallback). */
   aiVideo?: { used: boolean; model: string | null; note: string | null } | null;
 }
@@ -93,6 +95,8 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
   if (q.aiLayoutIssues) checks.push({ id: 'ai_layout', label: 'تخطيط الملصق: المنتج كامل والمنطقة السفلية خالية', passed: q.aiLayoutIssues.length === 0, severity: 'WARNING', detail: q.aiLayoutIssues.join('؛ ') || undefined });
   const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
   checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });
+
+  if (q.algorithm) checks.push({ id: 'algorithm_index', label: 'مؤشر الخوارزمية B أو أعلى (≥ 70)', passed: q.algorithm.score >= 70, severity: 'WARNING', detail: `${q.algorithm.score}/100 (${q.algorithm.grade})${q.algorithm.remaining.length ? ` — ينقص: ${q.algorithm.remaining.join('؛ ')}` : ''}` });
 
   // Dry-run media is a preview only: it may pass design QC but can never be published.
   checks.push({ id: 'real_ai_media', label: 'المحتوى مولد فعليًا (ليس معاينة تجريبية)', passed: !q.dryRun, severity: 'BLOCKER', detail: q.dryRun ? 'وضع التجربة (Dry-run) — غير قابل للنشر' : undefined });

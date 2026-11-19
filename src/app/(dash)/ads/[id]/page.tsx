@@ -66,7 +66,7 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
           {video && <p className="text-xs text-slate-500 ltr">MP4 · {video.width}×{video.height} · {video.durationSec?.toFixed(1)}s · {(video.bytes / 1e6).toFixed(1)}MB</p>}
         </div>
         <div className="space-y-6">
-          <AlgorithmCard algo={algorithmScore(algoInputFromAd(ad, (await peakHoursFor(ad.account).catch(() => null))?.hours))} />
+          <AlgorithmCard algo={algorithmScore(algoInputFromAd(ad, (await peakHoursFor(ad.account).catch(() => null))?.hours))} gate={((ad.options ?? {}) as { algorithm?: { before: number; after: number; fixes: string[] } }).algorithm ?? null} />
           <Card title={`فحص الجودة ${qc ? (qc.passed ? '— ناجح' : '— فشل') : ''}`}>
             {qc ? (
               <ul className="space-y-1 text-sm">
@@ -122,7 +122,7 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
 }
 
 const GRADE: Record<string, string> = { A: 'bg-emerald-600', B: 'bg-sky-600', C: 'bg-amber-500', D: 'bg-red-600' };
-function AlgorithmCard({ algo }: { algo: ReturnType<typeof algorithmScore> }) {
+function AlgorithmCard({ algo, gate }: { algo: ReturnType<typeof algorithmScore>; gate: { before: number; after: number; fixes: string[] } | null }) {
   const todo = algo.signals.filter((x) => !x.ok);
   return (
     <Card title="📈 مؤشر الخوارزمية — جاهزية التصميم للوصول" collapsible>
@@ -130,6 +130,12 @@ function AlgorithmCard({ algo }: { algo: ReturnType<typeof algorithmScore> }) {
         <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-2xl font-extrabold text-white ${GRADE[algo.grade]}`}>{algo.score}</div>
         <p className="text-sm leading-6 text-slate-600">مبني على إشارات أعلنتها إنستغرام: مدة المشاهدة وأول ثانيتين، الإرسال لصديق والحفظ، الأصالة، البحث بالكلمات، والوقت. {todo.length ? `${todo.length} تحسين ممكن:` : 'جاهز ✓'}</p>
       </div>
+      {gate && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-sm text-emerald-900">
+          <b>⚙️ صُمّم حسب المؤشر تلقائيًا:</b> {gate.before} ← {gate.after}
+          {gate.fixes.length ? <ul className="mt-1 list-inside list-disc text-xs">{gate.fixes.map((f) => <li key={f}>{f}</li>)}</ul> : <span className="text-xs"> — النص كان مطابقًا بلا تعديل</span>}
+        </div>
+      )}
       <ul className="space-y-1.5 text-sm">{algo.signals.map((x) => (
         <li key={x.id} className={x.ok ? 'text-slate-700' : 'text-amber-800'}>
           {x.ok ? '✅' : '⚠️'} {x.label} <span className="text-xs text-slate-400">({x.points}/{x.max})</span>

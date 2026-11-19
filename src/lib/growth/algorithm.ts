@@ -100,3 +100,79 @@ export function algoInputFromAd(ad: {
     hour: job ? bhHour(job.scheduledFor) : null, peakHours,
   };
 }
+
+/**
+ * «التصميم حسب مؤشر الخوارزمية» — the ALGORITHM GATE run on every new design BEFORE it is saved: the deterministic
+ * signals are fixed automatically (the AI's wording is kept; lines are only removed, split or added), the score is
+ * measured before and after, and what could not be fixed safely (format, headline length, reel duration) is reported.
+ */
+export interface AlgoFitInput {
+  format: MediaFormat; lang: string; caption: string; hashtags: string[]; headline: string;
+  keyword?: string | null; market?: 'BH' | 'KSA'; reelSeconds?: number | null; slides?: number;
+}
+export interface AlgoFit {
+  caption: string; hashtags: string[];
+  before: number; after: number; grade: AlgoScore['grade'];
+  fixes: string[]; remaining: { id: string; label: string; tip?: string }[];
+}
+const tag = (t: string) => `#${t.trim().replace(/^#/, '').replace(/\s+/g, '_')}`;
+/** the caption as published: text + the (max 5) hashtags, exactly like buildCaption */
+const published = (caption: string, hashtags: string[]) => [caption.trim(), [...new Set(hashtags.map(tag))].slice(0, 5).join(' ')].filter(Boolean).join('\n\n');
+
+export function fitToAlgorithm(i: AlgoFitInput): AlgoFit {
+  const ar = i.lang !== 'en';
+  const ksa = i.market === 'KSA';
+  const place = ksa ? (ar ? 'السعودية' : 'Saudi Arabia') : (ar ? 'البحرين' : 'Bahrain');
+  const keywords = i.keyword ? [i.keyword] : [];
+  const score = (c: string, h: string[]) => algorithmScore({ format: i.format, caption: published(c, h), hashtags: [...new Set(h.map(tag))].slice(0, 5), headline: i.headline, reelSeconds: i.reelSeconds, slides: i.slides, keywords });
+  const before = score(i.caption, i.hashtags).score;
+  const fixes: string[] = [];
+  let caption = i.caption, hashtags = [...new Set(i.hashtags.map(tag))];
+
+  // 1) engagement bait out
+  if (baitPhrases(caption).length) { caption = stripBait(caption); fixes.push('حذف «طُعم التفاعل»'); }
+  // 2) the first line must show before «more»: split a long first line at its first sentence break
+  let lines = caption.split('\n');
+  const fi = lines.findIndex((l) => l.trim());
+  if (fi >= 0 && [...lines[fi].trim()].length > 125) {
+    const m = lines[fi].trim().match(/^(.{20,125}?[.!؟?،,…])\s+(.+)$/u);
+    if (m) { lines.splice(fi, 1, m[1], m[2]); caption = lines.join('\n'); fixes.push('تقسيم السطر الأول ليظهر كاملًا قبل «المزيد»'); }
+  }
+  // 3) search: product keyword (and the place) in the first two lines
+  const s1 = score(caption, hashtags).signals;
+  const miss = (id: string) => s1.some((x) => x.id === id && !x.ok);
+  if (i.keyword && miss('search_keyword')) {
+    lines = caption.split('\n');
+    const at = Math.max(0, lines.findIndex((l) => l.trim())) + 1;
+    // local search reads the opening too: the place goes with the keyword unless the first two lines already name one
+    const withPlace = !LOCATION.test(lines.filter((l) => l.trim()).slice(0, 2).join(' '));
+    lines.splice(at, 0, ar ? `✨ ${i.keyword}${withPlace ? ` في ${place}` : ''}` : `✨ ${i.keyword}${withPlace ? ` in ${place}` : ''}`);
+    caption = lines.join('\n'); fixes.push(withPlace ? 'إضافة كلمة البحث والمكان في السطر الثاني' : 'إضافة كلمة البحث في السطر الثاني');
+  }
+  // 4) local search: the place somewhere (a local hashtag is the lightest touch)
+  if (!LOCATION.test(published(caption, hashtags))) {
+    hashtags = [tag(place.replace(/\s+/g, '')), ...hashtags]; fixes.push(`إضافة وسم المكان ${tag(place.replace(/\s+/g, ''))}`);
+  }
+  // 5) sends / saves: one natural line before the call to action
+  if (!SAVE_SHARE.test(caption)) {
+    lines = caption.split('\n');
+    const line = i.format === 'IMAGE_CAROUSEL' ? (ar ? 'احفظها لطلبك القادم 📌' : 'Save this for your next order 📌') : (ar ? 'أرسلها لأحد يحتاجها 💌' : 'Send this to someone who needs it 💌');
+    // before the last paragraph (the CTA + phones) when there is one, otherwise at the end
+    const lastBlank = lines.map((l) => l.trim()).lastIndexOf('');
+    if (lastBlank > 0) lines.splice(lastBlank, 0, line); else lines.push(line);
+    caption = lines.join('\n'); fixes.push('إضافة دعوة طبيعية للإرسال/الحفظ');
+  }
+  // 6) 3–5 precise hashtags
+  if (hashtags.length > 5) { hashtags = hashtags.slice(0, 5); fixes.push('تقليص الوسوم إلى 5'); }
+  if (hashtags.length < 3) {
+    const extra = [i.keyword ? tag(i.keyword) : null, tag(place.replace(/\s+/g, ''))].filter((x): x is string => !!x && !hashtags.includes(x));
+    const add = extra.slice(0, 3 - hashtags.length);
+    if (add.length) { hashtags = [...hashtags, ...add]; fixes.push('إكمال الوسوم إلى 3 على الأقل'); }
+  }
+  caption = caption.replace(/\n{3,}/g, '\n\n').trim();
+  const final = score(caption, hashtags);
+  return {
+    caption, hashtags, before, after: final.score, grade: final.grade, fixes,
+    remaining: final.signals.filter((x) => !x.ok).map((x) => ({ id: x.id, label: x.label, tip: x.tip })),
+  };
+}

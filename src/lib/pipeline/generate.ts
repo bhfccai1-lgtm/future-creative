@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { baitPhrases, stripBait } from '../growth/algorithm';
+import { fitToAlgorithm, type AlgoFit } from '../growth/algorithm';
 import { pickFromWeek, programContentTypes } from '../growth/program';
 import { findBanned, stripBanned } from '../creative/banned';
 import type { Advertisement, MediaFormat, Prisma } from '@prisma/client';
@@ -235,11 +235,21 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       else { avoidIdeas.unshift(r.brief.ideaKey, r.brief.idea); avoidHeadlines.unshift(r.brief.headline); }
     }
     if (!brief) throw new AppError('NO_UNIQUE_IDEA', 'تعذر إيجاد فكرة إعلانية غير مكررة خلال فترة المنع لهذا الحساب.', 409);
-    // engagement bait («منشن صديقك», «اكتب نعم», «like if»…) is demoted by Instagram → removed before anything is saved
-    if (baitPhrases(brief.caption).length) brief = { ...brief, caption: stripBait(brief.caption) };
     // STEP 07 auto-fix: a caption without a call to action gets the official one + the verified branch numbers
     if (captionIssues(brief.caption, { cta: ctaFor(business, lang), hashtags: brief.hashtags }).some((x) => x.includes('دعوة'))) {
       brief = { ...brief, caption: `${brief.caption.trim()}\n\n${ctaFor(business, lang)} 📞 ${contactLines(business, lang).map((c) => `${c.label} ${c.phone}`).join(' · ')}` };
+    }
+    // ── ALGORITHM GATE: the design is BUILT to the algorithm index, not just scored afterwards — bait removed, first line
+    // visible before «more», product keyword + place in the first two lines, a natural send/save line, 3–5 hashtags ──
+    const algoFit: AlgoFit = fitToAlgorithm({
+      format, lang, caption: brief.caption, hashtags: brief.hashtags, headline: brief.headline,
+      keyword: lang === 'en' ? (product.titleEn ?? product.titleAr) : product.titleAr, market: marketOf(account) === 'KSA' ? 'KSA' : 'BH',
+      reelSeconds: format === 'REEL_VIDEO' ? reelDuration : null, slides: format === 'IMAGE_CAROUSEL' ? (brief.slides?.length ?? 0) + 2 : undefined,
+    });
+    brief = { ...brief, caption: algoFit.caption, hashtags: algoFit.hashtags };
+    {
+      const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(o ?? {}), algorithm: { before: algoFit.before, after: algoFit.after, grade: algoFit.grade, fixes: algoFit.fixes, remaining: algoFit.remaining } } as unknown as Prisma.InputJsonValue } });
     }
 
     const briefRow = await prisma.creativeBrief.create({
@@ -545,6 +555,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, voicePronunciation: (audioNote?.pronunciation as { accuracy: number | null; missed?: string[] } | undefined) ?? null, ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
       aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,
+      algorithm: { score: algoFit.after, grade: algoFit.grade, remaining: algoFit.remaining.map((r) => r.label) },
     });
 
     await storeFingerprints(account.id, ad.id, [
