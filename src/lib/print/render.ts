@@ -23,6 +23,10 @@ export interface PrintPage {
   cut?: string; kissCut?: string[]; folds?: number[]; hidden?: { label: string; rect: Rect }[];
   /** transparent material / dark fabric: white-ink mask (white = print white) */
   white?: Buffer; transparentBg?: boolean; note?: string;
+  /** finishing separations (foil / spot UV / emboss): 100 % black where the finish goes, aligned with the artwork */
+  separations?: { finish: string; ids: string[]; png: Buffer; minPt: number | null }[];
+  /** internal: element composites of this page (not serialised) */
+  _art?: Map<string, OverlayOptions>;
 }
 export interface DesignInput { a: Analysis; b: Brief; concept: Concept; dpi: number; images?: Record<string, string>; logo?: Buffer | null; preview?: boolean }
 
@@ -56,8 +60,10 @@ const blank = () => sharp({ create: { width: 1, height: 1, channels: 4, backgrou
 
 class Canvas {
   svg: string[] = []; comps: OverlayOptions[] = []; placed: Placed[] = [];
-  put(img: { png: Buffer; w: number; h: number }, x: number, y: number) { this.comps.push({ input: img.png, left: Math.round(x), top: Math.round(y) }); }
-  text(id: string, t: TextImg & { pt?: number }, x: number, y: number, text: string) { this.put(t, x, y); this.placed.push({ id, kind: 'text', rect: { x: Math.round(x), y: Math.round(y), w: t.w, h: t.h }, fits: t.fits, missing: t.missing, text, pt: t.pt }); }
+  /** element id → its composite entry (same object: later moves apply) — the source of finishing separations */
+  art = new Map<string, OverlayOptions>();
+  put(img: { png: Buffer; w: number; h: number }, x: number, y: number) { this.comps.push({ input: img.png, left: Math.round(x), top: Math.round(y) }); return this.comps[this.comps.length - 1]; }
+  text(id: string, t: TextImg & { pt?: number }, x: number, y: number, text: string) { this.art.set(id, this.put(t, x, y)); this.placed.push({ id, kind: 'text', rect: { x: Math.round(x), y: Math.round(y), w: t.w, h: t.h }, fits: t.fits, missing: t.missing, text, pt: t.pt }); }
 }
 
 /** places an aligned text block inside rect starting at y; returns the next y */
@@ -90,7 +96,7 @@ async function logo(c: C, cv: Canvas, r: Rect, color: string, align: 'centre' | 
     const w = Math.max(1, Math.round((meta.width ?? 1) * s)), h = Math.max(1, Math.round((meta.height ?? 1) * s));
     const png = await sharp(c.logo).resize(w, h).png().toBuffer();
     const x = align === 'centre' ? r.x + (r.w - w) / 2 : c.rtl ? r.x + r.w - w : r.x;
-    cv.put({ png, w, h }, x, r.y + (r.h - h) / 2);
+    cv.art.set('logo', cv.put({ png, w, h }, x, r.y + (r.h - h) / 2));
     cv.placed.push({ id: 'logo', kind: 'logo', rect: { x: Math.round(x), y: Math.round(r.y + (r.h - h) / 2), w, h }, fits: true, srcPx: { w: meta.width ?? 0, h: meta.height ?? 0 } });
     return r.y + r.h;
   }
@@ -193,13 +199,41 @@ const rectPath = (x: number, y: number, w: number, h: number, r = 0) => r ? `M${
 const circlePath = (cx: number, cy: number, rx: number, ry = rx) => `M${cx - rx} ${cy} A${rx} ${ry} 0 1 0 ${cx + rx} ${cy} A${rx} ${ry} 0 1 0 ${cx - rx} ${cy} Z`;
 const n1 = (v: number) => Math.round(v * 100) / 100;
 
+/** which elements carry the finish: the client's choice (default: logo + headline / the name on a card back) */
+export const FINISH_TARGETS: Record<string, string[]> = { logo: ['logo', 'wordmark'], headline: ['headline'], logo_headline: ['logo', 'wordmark', 'headline'], name: ['name', 'logo', 'wordmark'] };
+const SEPARATED = ['gold_foil', 'silver_foil', 'spot_uv', 'emboss', 'deboss'];
+
 export async function renderDesign(inp: DesignInput): Promise<PrintPage[]> {
+  const pages = await renderInner(inp);
+  const finishes = inp.b.finishes.filter((f) => SEPARATED.includes(f) && inp.a.product.finishes.includes(f));
+  if (finishes.length) {
+    const want = FINISH_TARGETS[inp.b.finishTarget] ?? FINISH_TARGETS.logo_headline;
+    for (const pg of pages) {
+      if (!pg._art || pg.note === 'mirrored') continue;
+      const ids = want.filter((id) => pg._art!.has(id));
+      if (!ids.length) continue;
+      const layers: OverlayOptions[] = [];
+      for (const id of ids) {
+        const c = pg._art.get(id)!;
+        // the element's own alpha → solid black (same position, same size): a pixel-exact plate
+        const black = await sharp(c.input as Buffer).ensureAlpha().linear([0, 0, 0, 1], [0, 0, 0, 0]).png().toBuffer();
+        layers.push({ input: black, left: c.left, top: c.top });
+      }
+      const png = await sharp({ create: { width: pg.widthPx, height: pg.heightPx, channels: 3, background: '#ffffff' } }).composite(layers).flatten({ background: '#ffffff' }).toColourspace('b-w').png().toBuffer();
+      const pts = pg.placed.filter((x) => ids.includes(x.id) && x.pt).map((x) => x.pt!);
+      pg.separations = finishes.map((finish) => ({ finish, ids, png, minPt: pts.length ? Math.min(...pts) : null }));
+    }
+  }
+  return pages;
+}
+
+async function renderInner(inp: DesignInput): Promise<PrintPage[]> {
   const { a, b } = inp;
   const c: C = { k: inp.dpi / 25.4, a, b, cc: inp.concept, rtl: b.lang !== 'en', images: inp.images ?? {}, logo: inp.logo ?? null, preview: inp.preview };
   const fam = a.product.family, bl = a.bleedMm, sf = a.safeMm, k = c.k;
   const W = Math.round((a.trim.w + 2 * bl) * k), H = Math.round((a.trim.h + 2 * bl) * k), B = Math.round(bl * k);
   const safeR = (x0 = 0, w = a.trim.w): Rect => ({ x: Math.round((bl + x0 + sf) * k), y: Math.round((bl + sf) * k), w: Math.round((w - 2 * sf) * k), h: Math.round((a.trim.h - 2 * sf) * k) });
-  const page = (label: string, png: Buffer, cv: Canvas, safe: Rect[], extra: Partial<PrintPage> = {}): PrintPage => ({ label, png, widthPx: W, heightPx: H, dpi: inp.dpi, trimMm: a.trim, bleedMm: bl, safeMm: sf, safe, placed: cv.placed, ...extra });
+  const page = (label: string, png: Buffer, cv: Canvas, safe: Rect[], extra: Partial<PrintPage> = {}): PrintPage => ({ label, png, widthPx: W, heightPx: H, dpi: inp.dpi, trimMm: a.trim, bleedMm: bl, safeMm: sf, safe, placed: cv.placed, _art: cv.art, ...extra });
   const trimCut = rectPath(n1(bl), n1(bl), n1(a.trim.w), n1(a.trim.h));
   const scaleFor = (wMm: number, hMm: number) => Math.max(0.35, Math.min(8, Math.sqrt((wMm * hMm) / (148 * 210))));
   const en = b.lang === 'en';

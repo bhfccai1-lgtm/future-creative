@@ -14,7 +14,7 @@ import { enq } from '../queue/queues';
 import { inspectPdf } from '../edu/pdf';
 import { fontDir } from '../render/fonts';
 import { BriefSchema, analyze, type Analysis, type Brief } from './brief';
-import { FAMILIES, available, type Capabilities } from './catalog';
+import { FAMILIES, FINISHES, available, type Capabilities } from './catalog';
 import { buildConcepts, bestConcept, type Concept, type ConceptKey } from './concepts';
 import { renderDesign, type PrintPage } from './render';
 import { buildMockup } from './mockup';
@@ -134,6 +134,15 @@ export async function previewPrint(id: string, user: User) {
     const key = `print/${id}/preview/${i}.png`;
     await storage().put(key, await sharp(pg.png).flatten({ background: pg.transparentBg ? '#9ca3af' : '#ffffff' }).png().toBuffer(), 'image/png');
     out.push({ key, v: stamp, label: pg.label, widthPx: pg.widthPx, heightPx: pg.heightPx, dpi: pg.dpi, trimMm: pg.trimMm, bleedMm: pg.bleedMm, folds: pg.folds ?? [], cut: pg.cut ?? null, kissCut: pg.kissCut?.length ?? 0, hidden: pg.hidden ?? [], safe: pg.safe, note: pg.note ?? null });
+    // finishing preview: the artwork dimmed + the finish in its colour (foil gold / silver, UV gloss, emboss relief)
+    for (const [j, sp] of (pg.separations ?? []).entries()) {
+      const tint = sp.finish === 'gold_foil' ? '#c9a227' : sp.finish === 'silver_foil' ? '#9ca3af' : sp.finish === 'spot_uv' ? '#2563eb' : '#7c3aed';
+      const mask = await sharp(sp.png).negate().toColourspace('b-w').png().toBuffer();
+      const color = await sharp({ create: { width: pg.widthPx, height: pg.heightPx, channels: 3, background: tint } }).joinChannel(mask).png().toBuffer();
+      const fk = `print/${id}/preview/${i}-${j}-${sp.finish}.png`;
+      await storage().put(fk, await sharp(pg.png).flatten({ background: '#ffffff' }).modulate({ brightness: 1.25, saturation: 0.3 }).composite([{ input: color }]).png().toBuffer(), 'image/png');
+      out.push({ key: fk, v: stamp, label: `${pg.label} — ${FINISHES[sp.finish]?.ar ?? sp.finish}`, widthPx: pg.widthPx, heightPx: pg.heightPx, dpi: pg.dpi, trimMm: pg.trimMm, bleedMm: pg.bleedMm, folds: [], cut: null, kissCut: 0, hidden: [], safe: pg.safe, note: `طبقة ${FINISHES[sp.finish]?.ar ?? sp.finish}: ${sp.ids.join('، ')}` });
+    }
   }
   const qa = runPrintQa(a, b, pages, { approved: p.status === 'approved' || p.status === 'exported', iccProfile: iccName(await getSettings()) });
   await prisma.printProject.update({ where: { id }, data: { qa: qa as unknown as Prisma.InputJsonValue } });
@@ -185,6 +194,13 @@ export async function exportPrint(id: string, user: User) {
       await put(`${safe}${sfx}-cut.svg`, Buffer.from(svg), 'application/octet-stream', 'svg', 'مسار القص Vector (مم)');
     }
     if (pg.white) await put(`${safe}${sfx}-white-ink.png`, pg.white, 'image/png', 'png', 'قناع الحبر الأبيض');
+    // finishing plates: one aligned PNG + one PDF (same media size and TrimBox) per finish
+    for (const sp of pg.separations ?? []) {
+      const ar = FINISHES[sp.finish]?.ar ?? sp.finish;
+      await put(`${safe}${sfx}-${sp.finish}.png`, await sharp(sp.png).withMetadata({ density: pg.dpi }).png().toBuffer(), 'image/png', 'png', `طبقة ${ar} — أسود = مكان التشطيب`);
+      const gj = await sharp(sp.png).toColourspace('b-w').jpeg({ quality: 95 }).toBuffer();
+      await put(`${safe}${sfx}-${sp.finish}.pdf`, buildPrintPdf([{ jpeg: gj, cmyk: false, gray: true, widthPx: pg.widthPx, heightPx: pg.heightPx, mediaMm: { w: pg.trimMm.w + 2 * pg.bleedMm, h: pg.trimMm.h + 2 * pg.bleedMm }, bleedMm: pg.bleedMm, cut: pg.cut }], { title: `${safe}-${sp.finish}`, producer: 'PRINT DESIGN MASTER AI V6.0' }), 'application/pdf', 'pdf', `طبقة ${ar} (مطابقة لموضع التصميم)`);
+    }
   }
   // editable source: re-opens in the studio and renders identically
   await put(`${safe}.fcprint.json`, Buffer.from(JSON.stringify({ format: 'fc-print/1', brief: b, conceptKey: concept.key, images: imagesOf(p), approvedHash: p.approvedHash }, null, 2)), 'application/octet-stream', 'source', 'المصدر القابل للتعديل');

@@ -30,6 +30,8 @@ export const BriefSchema = z.object({
   viewM: z.number().min(0.2).max(100).optional(),
   /** the printer's logo/numbers are placed in a CLIENT product only when the client agreed */
   shopBrandingConsent: z.boolean().default(false),
+  /** elements that receive foil / spot UV / emboss */
+  finishTarget: z.enum(['logo_headline', 'logo', 'headline', 'name']).default('logo_headline'),
 });
 export type Brief = z.infer<typeof BriefSchema>;
 

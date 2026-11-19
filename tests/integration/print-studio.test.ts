@@ -97,3 +97,21 @@ describe('PRINT DESIGN STUDIO — workflow', () => {
     expect(usage === -1 || usage >= 1).toBe(true);
   });
 });
+
+describe('PRINT DESIGN STUDIO — finishing plates', () => {
+  it('exports an aligned PNG + PDF plate per finish and shows a tinted preview', async () => {
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const p = await createPrint({ ...brief, finishes: ['gold_foil'], finishTarget: 'logo_headline' }, user);
+    const pv = await previewPrint(p.id, user);
+    expect(pv.pages.some((x) => x.label.includes('فويل ذهبي'))).toBe(true);
+    await approvePrint(p.id, user);
+    const ex = await exportPrint(p.id, user);
+    const plate = ex.files.find((f) => f.name.endsWith('gold_foil.pdf'))!;
+    const ins = inspectPdf(await storage().get(plate.key));
+    expect(ins.ok).toBe(true); expect(ins.pages[0].wMm).toBeCloseTo(96, 0);
+    expect((await storage().get(plate.key)).toString('latin1')).toContain('/DeviceGray');
+    expect(ex.files.some((f) => f.name.endsWith('gold_foil.png'))).toBe(true);
+    expect(ex.qa.checks.find((c) => c.id === 'finishing:gold_foil')?.status).toBe('PASS');
+  });
+});

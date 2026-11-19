@@ -4,7 +4,7 @@
  * «CutContour» (die/through cut), «KissCut», «Fold» (crease, dashed). Colour: DeviceRGB, or DeviceCMYK when the art was
  * converted (built-in generic CMYK profile unless the printer's ICC profile is supplied). Not a PDF/X file.
  */
-export interface PdfPage { jpeg: Buffer; cmyk: boolean; widthPx: number; heightPx: number; mediaMm: { w: number; h: number }; bleedMm: number; cut?: string; kissCut?: string[]; folds?: number[] }
+export interface PdfPage { jpeg: Buffer; cmyk: boolean; gray?: boolean; widthPx: number; heightPx: number; mediaMm: { w: number; h: number }; bleedMm: number; cut?: string; kissCut?: string[]; folds?: number[] }
 const PT = 72 / 25.4;
 const f2 = (v: number) => (Math.round(v * 100) / 100).toString();
 
@@ -70,7 +70,7 @@ export function buildPrintPdf(pages: PdfPage[], meta: { title: string; producer:
     obj(ids.page, [`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f2(W)} ${f2(H)}]${boxes} /Resources << /XObject << /Im0 ${ids.image} 0 R >> /ColorSpace << /CS1 4 0 R /CS2 5 0 R /CS3 6 0 R >> /ExtGState << /GS0 << /Type /ExtGState /OP true /op true /OPM 1 >> >> >> /Contents ${ids.content} 0 R >>`]);
     obj(ids.content, [`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`]);
     // Adobe-style CMYK JPEGs store inverted values → Decode array
-    obj(ids.image, [`<< /Type /XObject /Subtype /Image /Width ${p.widthPx} /Height ${p.heightPx} /ColorSpace /${p.cmyk ? 'DeviceCMYK /Decode [1 0 1 0 1 0 1 0]' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpeg.length} >>\nstream\n`, p.jpeg, '\nendstream']);
+    obj(ids.image, [`<< /Type /XObject /Subtype /Image /Width ${p.widthPx} /Height ${p.heightPx} /ColorSpace /${p.gray ? 'DeviceGray' : p.cmyk ? 'DeviceCMYK /Decode [1 0 1 0 1 0 1 0]' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpeg.length} >>\nstream\n`, p.jpeg, '\nendstream']);
   });
   const xref = size;
   push(`xref\n0 ${next}\n0000000000 65535 f \n`);

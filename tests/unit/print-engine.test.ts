@@ -161,4 +161,28 @@ describe('PRINT DESIGN MASTER — layout, geometry and prepress', () => {
     const jpg = await buildMockup('cards', pages);
     const m = await sharp(jpg).metadata(); expect(m.width).toBe(1600); expect(m.format).toBe('jpeg');
   });
+  it('finishing plates: gold foil on logo + headline is a pixel-aligned 100 % black plate; QA checks fine type', async () => {
+    const { a, b, pages } = await design('business_card', { sizeId: 'bc90x50', finishes: ['gold_foil', 'spot_uv'], finishTarget: 'logo_headline', texts: { ...T, headline: 'قهوة مختصة' } }, 300);
+    const front = pages[0];
+    expect(front.separations?.map((s) => s.finish)).toEqual(['gold_foil', 'spot_uv']);
+    const sp = front.separations![0];
+    expect(sp.ids).toEqual(expect.arrayContaining(['headline']));
+    const m = await sharp(sp.png).metadata(); expect(m.width).toBe(front.widthPx); expect(m.height).toBe(front.heightPx);
+    // black exactly where the headline is, white far away from it
+    const h = front.placed.find((x) => x.id === 'headline')!;
+    const { data } = await sharp(sp.png).extract({ left: h.rect.x, top: h.rect.y, width: h.rect.w, height: h.rect.h }).greyscale().raw().toBuffer({ resolveWithObject: true });
+    expect(Math.min(...data)).toBeLessThan(30);
+    const corner = await sharp(sp.png).extract({ left: 2, top: 2, width: 4, height: 4 }).greyscale().raw().toBuffer();
+    expect(Math.min(...corner)).toBeGreaterThan(240);
+    const qa = runPrintQa(a, b, pages);
+    expect(qa.checks.find((x) => x.id === 'finishing:gold_foil')?.status).toBe('PASS');
+    // emboss needs ≥ 10 pt: a small tagline-only target is flagged
+    const e = await design('business_card', { finishes: ['emboss'], finishTarget: 'name', texts: { ...T, name: 'أحمد' } }, 150);
+    const qe = runPrintQa(e.a, e.b, e.pages).checks.find((x) => x.id === 'finishing:emboss')!;
+    expect(['PASS', 'NEEDS_REVISION']).toContain(qe.status);
+    // a finish the product does not support is ignored (no plate)
+    const f = await design('flyer', { finishes: ['gold_foil'] }, 40);
+    expect(f.pages[0].separations).toBeUndefined();
+  });
 });
+

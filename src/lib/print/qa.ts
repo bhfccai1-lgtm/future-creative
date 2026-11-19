@@ -86,7 +86,14 @@ export function runPrintQa(a: Analysis, b: Brief, pages: PrintPage[], o: { expor
   if (a.product.family === 'folded') add('print', 'folds', 'خطوط الطي وترتيب الألواح', pages.every((p) => p.folds?.length) ? 'PASS' : 'NEEDS_REVISION', pages[0]?.note);
   if (a.product.family === 'multipage') add('print', 'binding', 'الصفحات والتجليد', a.pages % 4 === 0 ? 'PASS' : 'NEEDS_REVISION', `${a.pages} صفحة · ${pages[0]?.label ?? ''}`);
   const sepFin = b.finishes.filter((f) => FINISHES[f]?.separation);
-  if (sepFin.length) add('print', 'finishing', 'فصل طبقات التشطيب (فويل/Spot UV/بارز)', 'NOT_VERIFIED', `${sepFin.map((f) => FINISHES[f].ar).join('، ')}: لم تُنشأ طبقة الفصل آليًا بعد — يجهزها فني ما قبل الطباعة`);
+  for (const f of sepFin.filter((x) => a.product.finishes.includes(x))) {
+    const seps = pages.flatMap((p) => (p.separations ?? []).filter((s) => s.finish === f).map((s) => ({ p, s })));
+    if (!seps.length) { add('print', `finishing:${f}`, `طبقة ${FINISHES[f].ar}`, 'NEEDS_REVISION', 'لا يوجد عنصر يحمل التشطيب (اختر الشعار أو العنوان في «عناصر التشطيب»)'); continue; }
+    // fine type does not hold foil / emboss / spot UV well: ≥ 8 pt for foil and UV, ≥ 10 pt for emboss/deboss
+    const minAllowed = /emboss|deboss/.test(f) ? 10 : 8;
+    const thin = seps.filter(({ s }) => s.minPt !== null && s.minPt < minAllowed);
+    add('print', `finishing:${f}`, `طبقة ${FINISHES[f].ar} (فصل مستقل 100٪ أسود)`, thin.length ? 'NEEDS_REVISION' : 'PASS', `${seps.map(({ p, s }) => `${p.label}: ${s.ids.join('، ')}`).join(' · ')}${thin.length ? ` — نص أصغر من ${minAllowed} نقطة لا يثبت عليه التشطيب جيدًا` : ''} · لم يُطبَّق ترحيل/تضييق (trap) — يراجعه فني الإنتاج حسب الجهاز`);
+  }
   if (pages.some((p) => p.note === 'mirrored')) add('print', 'mirror', 'نسخة معكوسة للإنتاج', 'PASS', 'مرفقة كملف منفصل — استخدمها فقط إذا تطلبها الجهاز');
   if (pages.some((p) => p.white)) add('print', 'white', 'طبقة الحبر الأبيض', 'PASS', 'قناع أبيض منفصل (PNG) من شكل العمل');
   for (const w of a.warnings) add('print', `warn:${w.slice(0, 20)}`, 'تنبيه إنتاج', w.includes('PDF/X') ? 'NOT_VERIFIED' : 'NEEDS_REVISION', w);
