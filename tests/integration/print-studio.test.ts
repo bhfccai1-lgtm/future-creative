@@ -296,3 +296,29 @@ describe('PRINT DESIGN STUDIO — production tracking', () => {
     expect(lead.status).toBe('WON'); expect(lead.wonAt).toBeTruthy();
   });
 });
+
+describe('PRINT DESIGN STUDIO — orders board & daily reminder', () => {
+  it('sorts jobs into what needs a person; the reminder only fires when something is due', async () => {
+    const { printBoard, printFollowUps } = await import('@/lib/print/board');
+    const { createProof, decideProof } = await import('@/lib/print/proof');
+    const { setStage } = await import('@/lib/print/production');
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create', 'ads:approve'] };
+    expect((await printFollowUps()).items).toBe(0);
+    const a = await createPrint({ ...brief, business: 'A' }, user); await createProof(a.id, user); // awaiting the client
+    const b = await createPrint({ ...brief, business: 'B' }, user); const pb = await createProof(b.id, user);
+    await decideProof(pb.token, { decision: 'changes', name: 'علي', note: 'غيّر اللون' }, '2.2.2.2'); // changes requested
+    const c = await createPrint({ ...brief, business: 'C' }, user); await approvePrint(c.id, user); // needs files
+    const d = await createPrint({ ...brief, business: 'D' }, user); await approvePrint(d.id, user); await exportPrint(d.id, user); await setStage(d.id, 'ready', user);
+    const later = new Date(Date.now() + 3 * 86400_000);
+    const board = await printBoard(null, later);
+    expect(board.awaitingClient.map((x) => x.id)).toEqual([a.id]);
+    expect(board.changesRequested[0]).toMatchObject({ id: b.id }); expect(board.changesRequested[0].note).toContain('غيّر اللون');
+    expect(board.needFiles.map((x) => x.id)).toEqual([c.id]);
+    expect(board.readyNotCollected.map((x) => x.id)).toEqual([d.id]); expect(board.stages.ready).toBe(1);
+    const r = await printFollowUps(later);
+    expect(r.items).toBeGreaterThanOrEqual(4);
+    const n = await prisma.notification.findFirstOrThrow({ where: { code: 'PRINT_FOLLOW_UP' } });
+    expect(n.message).toContain('بروفة بلا رد'); expect(n.message).toContain('جاهز ولم يُستلم');
+  });
+});

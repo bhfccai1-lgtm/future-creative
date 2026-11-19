@@ -77,10 +77,19 @@ export function PrintStudio({ initial, accounts, caps: caps0, canAdmin, shop }: 
   );
 }
 
+interface BoardItem { id: string; title: string; days: number; note?: string }
+interface Board { stages: Record<string, number>; awaitingClient: BoardItem[]; changesRequested: BoardItem[]; needFiles: BoardItem[]; stuck: BoardItem[]; readyNotCollected: BoardItem[] }
 function Dashboard({ rows, L, onOpen, onNew }: { rows: Row[]; L: (a: string, e: string) => string; onOpen: (id: string) => void; onNew: () => void }) {
   const counts = useMemo(() => rows.reduce<Record<string, number>>((a, r) => ({ ...a, [r.status]: (a[r.status] ?? 0) + 1 }), {}), [rows]);
+  const [board, setBoard] = useState<Board | null>(null);
+  useEffect(() => { call<{ board: Board }>('/api/print/board').then((r) => setBoard(r.board)).catch(() => setBoard(null)); }, [rows]);
+  const lists: [keyof Board, string, string, string][] = [['changesRequested', 'العميل طلب تعديلات', 'Changes requested', 'border-amber-300 bg-amber-50'], ['awaitingClient', 'بروفات بانتظار رد العميل', 'Proofs awaiting the client', 'border-sky-200 bg-sky-50'], ['needFiles', 'معتمد — جهّز ملفات الإنتاج', 'Approved — prepare files', 'border-indigo-200 bg-indigo-50'], ['stuck', 'متوقف في مرحلة منذ يومين+', 'Stuck 2+ days', 'border-red-200 bg-red-50'], ['readyNotCollected', 'جاهز ولم يُستلم', 'Ready, not collected', 'border-emerald-200 bg-emerald-50']];
   return (
     <section className="space-y-3">
+      {board && <div className="space-y-2">
+        <div className="grid grid-cols-5 gap-1 text-center">{STAGES_UI.map(([k, ar, en]) => <div key={k} className="rounded-lg border bg-white p-1.5"><div className="text-lg font-extrabold">{board.stages[k] ?? 0}</div><div className="text-[10px] leading-tight text-slate-500">{L(ar, en)}</div></div>)}</div>
+        {lists.filter(([k]) => (board[k] as BoardItem[]).length).map(([k, ar, en, cls]) => <div key={k} className={`rounded-xl border p-2 ${cls}`}><div className="text-xs font-extrabold">{L(ar, en)} ({(board[k] as BoardItem[]).length})</div><ul className="mt-1 space-y-0.5">{(board[k] as BoardItem[]).slice(0, 6).map((it) => <li key={it.id}><button type="button" onClick={() => onOpen(it.id)} className="flex w-full justify-between gap-2 text-start text-xs"><span className="min-w-0 truncate font-bold underline">{it.title}{it.note ? <span className="font-normal text-slate-600"> — {it.note}</span> : null}</span><span className="shrink-0 text-slate-500">{it.days ? `${it.days} ${L('يوم', 'd')}` : L('اليوم', 'today')}</span></button></li>)}</ul></div>)}
+      </div>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{(['designed', 'approved', 'exported'] as const).map((s) => (<div key={s} className="rounded-xl border bg-white p-3"><div className="text-2xl font-extrabold">{counts[s] ?? 0}</div><div className="text-xs text-slate-500">{L(PROJ_STATUS[s][0], PROJ_STATUS[s][1])}</div></div>))}
         <button type="button" onClick={onNew} className="rounded-xl bg-indigo-700 p-3 text-sm font-extrabold text-white">+ {L('تصميم احترافي جديد', 'New professional design')}</button></div>
       {!rows.length ? <p className="rounded-xl border border-dashed bg-white p-6 text-center text-sm text-slate-500">{L('لا توجد مشاريع بعد — ابدأ بتصميم جديد.', 'No projects yet.')}</p> : (
