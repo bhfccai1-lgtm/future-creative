@@ -129,6 +129,19 @@ export function fitToAlgorithm(i: AlgoFitInput): AlgoFit {
   const fixes: string[] = [];
   let caption = i.caption, hashtags = [...new Set(i.hashtags.map(tag))];
 
+  // 0) Saudi accounts never carry Bahrain hashtags (#البحرين, #هدايا_البحرين, #Bahrain…): the model sometimes adds
+  //    them out of habit. Only hashtags are touched — the branch phone line (سار | سلماباد) stays as it is.
+  if (ksa) {
+    const BH_TAG = /(بحرين|bahrain|المنامة|manama|سلماباد|salmabad)/i;
+    const inline = caption.match(/#[^\s#]+/g)?.filter((h) => BH_TAG.test(h)) ?? [];
+    const before0 = hashtags.length;
+    hashtags = hashtags.filter((h) => !BH_TAG.test(h));
+    for (const h of inline) caption = caption.split(h).join('');
+    caption = caption.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n');
+    if (inline.length || hashtags.length < before0) fixes.push('حذف وسوم البحرين من حساب السعودية');
+    if (!hashtags.some((h) => /سعودي|saudi|ksa/i.test(h))) hashtags = [tag('السعودية'), ...hashtags];
+  }
+
   // 1) engagement bait out
   if (baitPhrases(caption).length) { caption = stripBait(caption); fixes.push('حذف «طُعم التفاعل»'); }
   // 2) the first line must show before «more»: split a long first line at its first sentence break
