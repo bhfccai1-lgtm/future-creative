@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **New «المساعد الذكي» (smart assistant)** — one chat instead of 30 pages, the first item in the menu. Write in Gulf Arabic («شنو وضع النظام؟», «أي حساب أداؤه أفضل؟», «صمم ريل لحساب الأكواب عن العيد الوطني»):
+  - **Tools:** the model plans and uses read-only tools: system health, accounts, one account's plan, the approval queue, products. It answers from the real results and never invents numbers.
+  - **Actions** (design now, approve plan ideas) are **only proposed**. Nothing runs until you press «تأكيد» (confirm). The proposal is signed, valid for 15 minutes, tied to your user, and your permission is checked again.
+  - **Costs:** every AI call is budgeted and recorded.
+  - **Without an AI key:** it still answers status, approvals and accounts for free.
 - **Menu organised into groups:** Content, Publishing, Customers & sales, Growth & analysis, Studios, System. The ~30 pages were one long list in the sidebar and the phone «المزيد» (more) sheet. Fix: a page no longer lights up a sibling that only shares its start, such as «الحسابات الاجتماعية» (social accounts) on «خطة الحسابات» (accounts plan).
 - **Release train:** brings to `main` the work merged into intermediate branches. That is the print-studio design idea (#25), the accounts plan (#26), the professional education images (#27) and Google Drive cold storage (#29). Development rule from now on: no stacked PRs; every PR is based on `main`.
 - **Google Drive for designs, videos and database backups** (Settings → Integrations → Google archive):
