@@ -806,11 +806,14 @@ model PrintProject {
   proofExpiresAt DateTime?
   proofKeys      Json?
   clientDecision Json?
+  /** the customer record (العملاء والطلبات) this design and its quote belong to */
+  leadId         String?
   createdBy    String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([createdBy, updatedAt])
+  @@index([leadId])
   @@map("print_projects")
 }
 

@@ -241,3 +241,30 @@ describe('PRINT DESIGN STUDIO — AI pictures for every size', () => {
     expect(pv.qa.checks.find((c) => c.id === 'overflow')?.status).toBe('PASS');
   });
 });
+
+describe('PRINT DESIGN STUDIO — quote from the design', () => {
+  it('writes the item from the specs, prices typed by the shop, saved on the customer record, one WhatsApp message with the proof link', async () => {
+    const { quoteDraft, quoteFromPrint, quoteMessage, specLine } = await import('@/lib/print/quote');
+    const { createProof } = await import('@/lib/print/proof');
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create', 'ads:approve'] };
+    const p = await createPrint({ ...brief, finishes: ['gold_foil'] }, user);
+    const d = await quoteDraft(p.id, user);
+    expect(d.desc).toContain('بطاقات الأعمال'); expect(d.desc).toContain('90×50'); expect(d.desc).toContain('وجهان'); expect(d.desc).toContain('فويل ذهبي');
+    expect(d.lead).toBeNull();
+    await expect(quoteFromPrint(p.id, { quantity: 500, unitPrice: 0.04 }, user)).rejects.toThrow(/عميل/); // no customer chosen
+    await createProof(p.id, user);
+    const q = await quoteFromPrint(p.id, { newLead: { name: 'سارة أحمد', contact: '36001234' }, quantity: 500, unitPrice: 0.04, designFee: 5 }, user);
+    expect(q.quote.items).toHaveLength(2); expect(q.quote.items[0]).toMatchObject({ qty: 500, unit: 0.04 });
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: q.leadId } });
+    expect(lead.status).toBe('QUOTED'); expect(lead.valueBhd).toBeCloseTo(25, 3); expect(lead.name).toBe('سارة أحمد');
+    expect((await prisma.printProject.findUniqueOrThrow({ where: { id: p.id } })).leadId).toBe(q.leadId);
+    const m = (await quoteMessage(p.id, user, 'https://shop.example'))!;
+    expect(m.text).toContain('25.000 د.ب'); expect(m.text).toContain('https://shop.example/proof/'); expect(m.wa).toMatch(/^https:\/\/wa\.me\/97336001234\?text=/);
+    expect(m.text).toContain('33316319');
+    // updating keeps the same customer and quote number
+    const q2 = await quoteFromPrint(p.id, { quantity: 1000, unitPrice: 0.035 }, user);
+    expect(q2.leadId).toBe(q.leadId); expect(q2.quote.no).toBe(q.quote.no);
+    expect(specLine((await prisma.printProject.findUniqueOrThrow({ where: { id: p.id } })).analysis as never, (await import('@/lib/print/brief')).BriefSchema.parse(p.brief))).toBe(d.desc);
+  });
+});

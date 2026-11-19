@@ -231,7 +231,7 @@ const List = ({ cls, title, items }: { cls: string; title: string; items: string
 function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: { id: string; L: (a: string, e: string) => string; ui: Lang; accounts: Account[]; run: <T>(label: string, fn: () => Promise<T>, ok?: string) => Promise<T | null>; busy: boolean; onChanged: () => void; onDeleted: () => void }) {
   const [p, setP] = useState<Project | null>(null);
   const [pv, setPv] = useState<{ pages: PageInfo[]; qa: Qa; analysis: Analysis; concepts: Concept[]; concept: string } | null>(null);
-  const [sub, setSub] = useState<'design' | 'mockup' | 'prepress' | 'qa' | 'proof' | 'ad' | 'export' | 'history'>('design');
+  const [sub, setSub] = useState<'design' | 'mockup' | 'prepress' | 'qa' | 'proof' | 'quote' | 'ad' | 'export' | 'history'>('design');
   const [page, setPage] = useState(0);
   const [guides, setGuides] = useState(true);
   const [plan, setPlan] = useState<ImagePlan | null>(null);
@@ -255,7 +255,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
         <div className="min-w-0"><div className="truncate text-lg font-extrabold">{p.title}</div><div className="text-xs text-slate-500">{ui === 'ar' ? pv.analysis.product.ar : pv.analysis.product.en} · <span dir="ltr">{pv.analysis.trim.w}×{pv.analysis.trim.h} mm</span> · {L(PROJ_STATUS[p.status]?.[0] ?? p.status, PROJ_STATUS[p.status]?.[1] ?? p.status)}</div></div>
         <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${STATUS_STYLE[pv.qa.overall]}`}>QA: {L(STATUS_AR[pv.qa.overall], pv.qa.overall)}</span>
       </div>
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">{([['design', 'محرر الجهات', 'Front / Back Editor'], ['mockup', 'استوديو المعاينة', 'Mockup Studio'], ['prepress', 'ما قبل الطباعة', 'Prepress Center'], ['qa', 'الجودة والاعتماد', 'Quality Control'], ['proof', 'بروفة العميل', 'Client proof'], ['ad', 'الإعلان', 'Social Advertising'], ['export', 'التصدير', 'Export Center'], ['history', 'السجل', 'Project History']] as const).map(([k, ar, en]) => <button key={k} type="button" onClick={() => setSub(k)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${sub === k ? 'bg-slate-900 text-white' : 'border bg-white'}`}>{L(ar, en)}</button>)}</div>
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">{([['design', 'محرر الجهات', 'Front / Back Editor'], ['mockup', 'استوديو المعاينة', 'Mockup Studio'], ['prepress', 'ما قبل الطباعة', 'Prepress Center'], ['qa', 'الجودة والاعتماد', 'Quality Control'], ['proof', 'بروفة العميل', 'Client proof'], ['quote', 'عرض السعر', 'Quote'], ['ad', 'الإعلان', 'Social Advertising'], ['export', 'التصدير', 'Export Center'], ['history', 'السجل', 'Project History']] as const).map(([k, ar, en]) => <button key={k} type="button" onClick={() => setSub(k)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${sub === k ? 'bg-slate-900 text-white' : 'border bg-white'}`}>{L(ar, en)}</button>)}</div>
 
       {(sub === 'design' || sub === 'prepress') && cur && (
         <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
@@ -354,6 +354,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
       </div>}
 
       {sub === 'proof' && <ProofPanel L={L} p={p} busy={busy} onCreate={() => act('proof', L('تجهيز البروفة…', 'Preparing proof…'), L('رابط البروفة جاهز ✓', 'Proof link ready ✓'))} />}
+      {sub === 'quote' && <QuotePanel L={L} id={id} busy={busy} run={run} />}
       {sub === 'ad' && <AdPanel L={L} accounts={accounts} approved={approved} busy={busy} onCreate={(body) => act('ad', L('تجهيز الإعلان…', 'Preparing the ad…'), L('أُرسل الإعلان لطابور الموافقات ✓', 'Sent to approvals ✓'), body)} />}
 
       {sub === 'history' && <div className="space-y-2 rounded-2xl border bg-white p-3 text-xs">
@@ -444,6 +445,52 @@ function HeroGenerator({ plan, L, busy, onGenerate }: { plan: ImagePlan; L: (a: 
       <div className="flex items-center gap-2 text-[11px]"><span className="font-bold">{L('عدد البدائل', 'Variants')}</span>{[1, 2, 3].map((k) => <button key={k} type="button" onClick={() => setN(k)} className={`h-7 w-7 rounded-full border text-xs font-bold ${n === k ? 'bg-slate-900 text-white' : 'bg-white'}`}>{k}</button>)}</div>
       <button type="button" disabled={busy} onClick={() => onGenerate(q, n)} className="w-full rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{plan.done ? L('صور جديدة', 'New pictures') : L('إنشاء الصورة', 'Generate')} · ~${cost}</button>
       <p className="text-[10px] text-slate-500">★ {L('الجودة المقترحة لهذا المقاس', 'suggested for this size')}</p>
+    </div>
+  );
+}
+
+/** quote from the design: specs written by the system, quantity and PRICES typed by the shop; one WhatsApp message with the proof link */
+interface QuoteView { desc: string; quantity: number | null; lead: { id: string; name: string | null; contact: string | null; quote: { no: number; items: { desc: string; qty: number; unit: number }[]; discount: number } | null } | null; message: { text: string; wa: string | null; hasProof: boolean } | null; leads: { id: string; name: string | null; contact: string | null; status: string }[]; canQuote: boolean }
+function QuotePanel({ L, id, busy, run }: { L: (a: string, e: string) => string; id: string; busy: boolean; run: <T>(label: string, fn: () => Promise<T>, ok?: string) => Promise<T | null> }) {
+  const [v, setV] = useState<QuoteView | null>(null);
+  const [leadId, setLeadId] = useState(''); const [name, setName] = useState(''); const [contact, setContact] = useState('');
+  const [qty, setQty] = useState(''); const [unit, setUnit] = useState(''); const [fee, setFee] = useState(''); const [disc, setDisc] = useState(''); const [notes, setNotes] = useState('');
+  const [copied, setCopied] = useState(false);
+  const load = useCallback(async () => { const r = await call<QuoteView>(`/api/print/projects/${id}/quote`); setV(r); setLeadId(r.lead?.id ?? ''); if (r.quantity) setQty(String(r.quantity)); }, [id]);
+  useEffect(() => { void load(); }, [load]);
+  if (!v) return <p className="text-sm text-slate-500">…</p>;
+  if (!v.canQuote) return <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{L('عروض الأسعار لمن يملك صلاحية المبيعات.', 'Quotes need the sales permission.')}</p>;
+  const num = (s: string) => Number(s.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[٫,]/g, '.'));
+  const total = Math.max(0, (num(qty) || 0) * (num(unit) || 0) + (num(fee) || 0) - (num(disc) || 0));
+  const save = async () => {
+    const body = { ...(leadId ? { leadId } : { newLead: { name, contact: contact || undefined } }), quantity: Math.round(num(qty)), unitPrice: num(unit), designFee: num(fee) || undefined, discount: num(disc) || undefined, notes: notes || undefined };
+    const r = await run(L('حفظ عرض السعر…', 'Saving quote…'), () => call(`/api/print/projects/${id}/quote`, { method: 'POST', body: JSON.stringify(body) }), L('حُفظ عرض السعر في سجل العميل ✓', 'Quote saved ✓'));
+    if (r) await load();
+  };
+  return (
+    <div className="space-y-3 rounded-2xl border bg-white p-3 text-sm">
+      <div className="rounded-lg bg-slate-50 p-2 text-xs"><b>{L('البند', 'Item')}:</b> {v.desc}</div>
+      <label className="block text-xs font-bold">{L('العميل', 'Customer')}<select className="input mt-1 text-xs" value={leadId} onChange={(e) => setLeadId(e.target.value)}><option value="">{L('+ عميل جديد', '+ New customer')}</option>{v.leads.map((l) => <option key={l.id} value={l.id}>{l.name || l.contact || l.id.slice(0, 6)}{l.contact ? ` · ${l.contact}` : ''}</option>)}</select></label>
+      {!leadId && <div className="grid grid-cols-2 gap-2"><input className="input text-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder={L('اسم العميل', 'Name')} /><input className="input ltr text-xs" inputMode="tel" value={contact} onChange={(e) => setContact(e.target.value)} placeholder={L('واتساب', 'WhatsApp')} /></div>}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs font-bold">{L('الكمية', 'Quantity')}<input className="input ltr mt-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} /></label>
+        <label className="text-xs font-bold">{L('سعر الوحدة (د.ب)', 'Unit price (BHD)')}<input className="input ltr mt-1" inputMode="decimal" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="0.050" /></label>
+        <label className="text-xs font-bold">{L('رسوم التصميم (اختياري)', 'Design fee (optional)')}<input className="input ltr mt-1" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} /></label>
+        <label className="text-xs font-bold">{L('خصم (اختياري)', 'Discount (optional)')}<input className="input ltr mt-1" inputMode="decimal" value={disc} onChange={(e) => setDisc(e.target.value)} /></label>
+      </div>
+      <input className="input text-xs" value={notes} maxLength={500} onChange={(e) => setNotes(e.target.value)} placeholder={L('ملاحظات العرض (مدة التنفيذ تُكتب هنا إن اتُّفق عليها)', 'Notes')} />
+      <div className="flex items-center justify-between rounded-lg bg-indigo-50 p-2 text-xs font-bold text-indigo-900"><span>{L('الإجمالي', 'Total')}</span><span dir="ltr">{total.toFixed(3)} BHD</span></div>
+      <button type="button" disabled={busy || !(num(qty) >= 1) || !(num(unit) >= 0) || unit === '' || (!leadId && name.trim().length < 2)} onClick={save} className="w-full rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:bg-slate-300">{v.lead?.quote ? L('تحديث عرض السعر', 'Update quote') : L('حفظ عرض السعر', 'Save quote')}</button>
+      <p className="text-[11px] text-slate-500">{L('النظام لا يضع أسعارًا — السعر والكمية منك. العرض يُحفظ في «العملاء والطلبات» برقم متسلسل.', 'The system never prices — you type the price.')}</p>
+      {v.lead?.quote && <div className="space-y-2 border-t pt-2">
+        <div className="text-xs font-bold">{L('عرض السعر رقم', 'Quote no.')} {v.lead.quote.no} — {v.lead.name ?? ''}</div>
+        <div className="flex flex-wrap gap-2">
+          <a href={`/q/${v.lead.id}`} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-1.5 text-xs font-bold">{L('عرض السعر للطباعة / PDF', 'Printable quote / PDF')}</a>
+          {v.message?.wa ? <a href={v.message.wa} target="_blank" rel="noreferrer" className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">{L('إرسال للعميل عبر واتساب', 'Send via WhatsApp')}</a> : v.message && <button type="button" className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white" onClick={async () => { try { await navigator.clipboard.writeText(v.message!.text); setCopied(true); } catch { setCopied(false); } }}>{copied ? L('نُسخ ✓', 'Copied ✓') : L('نسخ الرسالة', 'Copy message')}</button>}
+        </div>
+        {v.message && !v.message.hasProof && <p className="text-[11px] text-amber-700">{L('لا يوجد رابط بروفة صالح — أنشئه من «بروفة العميل» ليُرفق في نفس الرسالة.', 'No valid proof link — create one to include it.')}</p>}
+        {v.message && <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 font-sans text-[11px] text-slate-700">{v.message.text}</pre>}
+      </div>}
     </div>
   );
 }
