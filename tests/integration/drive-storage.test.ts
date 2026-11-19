@@ -1,0 +1,101 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { prisma } from '@/lib/db';
+import { setSecret } from '@/lib/settings';
+import { storage } from '@/lib/storage';
+import { generateAdvertisement } from '@/lib/pipeline/generate';
+import { appsScriptSource, backfillArchive, driveFallback, offloadArchivedMedia, queueGoogleArchive, uploadBackupToDrive } from '@/lib/integrations/google-archive';
+import { deliverPending } from '@/lib/integrations/events';
+import { captureQueues, resetDb, seedBase } from './helpers';
+
+beforeEach(async () => { await resetDb(); captureQueues(); });
+const URL_ = 'https://script.google.com/macros/s/AKfycbTESTTESTTESTTESTTEST/exec';
+
+async function publishedAd(daysAgo: number) {
+  const { accounts } = await seedBase();
+  const { advertisement: ad } = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED' });
+  await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'PUBLISHED' } });
+  const at = new Date(Date.now() - daysAgo * 86400_000);
+  const job = await prisma.publicationJob.create({ data: { idempotencyKey: `k-${ad.id}`, advertisementId: ad.id, accountId: accounts[0].id, provider: 'metricool', state: 'PUBLISHED', scheduledFor: at } });
+  await prisma.publicationResult.create({ data: { jobId: job.id, verifiedAt: at } });
+  return prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, include: { media: true } });
+}
+/** the script's answer: echoes every file with a Drive id and its real size */
+const scriptAnswer = (sizeFix = 0) => (async (_u: string, init: { body: string }) => {
+  const files = (JSON.parse(init.body).data.files as { mediaId: string; name: string; bytes: number }[]).map((f, i) => ({ mediaId: f.mediaId, name: f.name, id: `drive-${i}-${f.mediaId}`, size: f.bytes + sizeFix, url: `https://drive.google.com/file/d/drive-${i}/view` }));
+  return new Response(JSON.stringify({ ok: true, version: 2, files }), { status: 200 });
+}) as unknown as typeof fetch;
+
+describe('Google Drive as cold storage', () => {
+  it('the archive answer stores Drive ids; an ok:false answer is retried, not counted as delivered', async () => {
+    const ad = await publishedAd(60);
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    await queueGoogleArchive(ad.id, null);
+    const bad = await deliverPending((async () => new Response('{"ok":false,"error":"quota"}', { status: 200 })) as unknown as typeof fetch);
+    expect(bad).toMatchObject({ delivered: 0, failed: 1 });
+    expect((await prisma.webhookDelivery.findFirstOrThrow()).status).toBe('PENDING');
+    await prisma.webhookDelivery.updateMany({ data: { nextAttemptAt: new Date(0) } });
+    const ok = await deliverPending(scriptAnswer());
+    expect(ok.delivered).toBe(1);
+    const final = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: ad.id, role: 'FINAL' } });
+    expect((final.meta as { drive?: { id: string; size: number } }).drive).toMatchObject({ size: final.bytes });
+  });
+
+  it('offload removes the server file ONLY when Drive confirmed the same size and the design is old; the dashboard then opens Drive', async () => {
+    const ad = await publishedAd(60);
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    await queueGoogleArchive(ad.id, null); await deliverPending(scriptAnswer());
+    const final = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: ad.id, role: 'FINAL' } });
+    expect(await offloadArchivedMedia({ afterDays: 90 })).toMatchObject({ removed: 0 }); // not old enough
+    const r = await offloadArchivedMedia({ afterDays: 45 });
+    expect(r.removed).toBe(1); expect(r.freedBytes).toBe(final.bytes);
+    expect(await storage().exists(final.storageKey)).toBe(false);
+    expect(await driveFallback(final.storageKey)).toMatch(/^https:\/\/drive\.google\.com\/file\/d\/drive-0-/);
+    const thumb = await prisma.mediaAsset.findFirst({ where: { advertisementId: ad.id, role: { notIn: ['FINAL', 'VIDEO', 'SLIDE'] } } });
+    if (thumb) expect(await storage().exists(thumb.storageKey)).toBe(true); // layers / thumbnails stay
+    expect((await offloadArchivedMedia({ afterDays: 45 })).removed).toBe(0); // idempotent
+  });
+
+  it('a size mismatch keeps the server file', async () => {
+    const ad = await publishedAd(60);
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    await queueGoogleArchive(ad.id, null); await deliverPending(scriptAnswer(-5));
+    const r = await offloadArchivedMedia({ afterDays: 45 });
+    expect(r).toMatchObject({ removed: 0, skipped: 1 });
+    const final = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: ad.id, role: 'FINAL' } });
+    expect(await storage().exists(final.storageKey)).toBe(true);
+  });
+
+  it('backfill queues only designs without a Drive copy', async () => {
+    const ad = await publishedAd(10);
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    expect((await backfillArchive()).queued).toBe(1);
+    expect((await backfillArchive()).queued).toBe(0); // already pending
+    await deliverPending(scriptAnswer());
+    expect((await backfillArchive()).queued).toBe(0); // now on Drive
+    void ad;
+  });
+
+  it('database backups go to Drive in ≤20 MB parts, each size verified', async () => {
+    await seedBase();
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    const seen: { name: string; last: boolean; bytes: number }[] = [];
+    const f = (async (_u: string, init: { body: string }) => {
+      const d = JSON.parse(init.body).data; const bytes = Buffer.from(d.base64, 'base64').length;
+      seen.push({ name: d.name, last: d.last, bytes });
+      return new Response(JSON.stringify({ ok: true, id: `id-${seen.length}`, size: bytes }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const data = Buffer.alloc(45 * 1024 * 1024, 7);
+    const r = await uploadBackupToDrive(data, { backup: '20261119-020000', name: 'db.dump', fetchImpl: f });
+    expect(r.parts.map((p) => p.name)).toEqual(['db.dump.part01', 'db.dump.part02', 'db.dump.part03']);
+    expect(seen.map((x) => x.last)).toEqual([false, false, true]);
+    expect(seen.reduce((a, x) => a + x.bytes, 0)).toBe(data.length);
+    const wrong = (async () => new Response(JSON.stringify({ ok: true, id: 'x', size: 1 }), { status: 200 })) as unknown as typeof fetch;
+    await expect(uploadBackupToDrive(Buffer.alloc(5000, 1), { backup: 'b', name: 'db.dump', fetchImpl: wrong })).rejects.toThrow(/size mismatch/);
+  });
+
+  it('the v2 script returns Drive ids and stores database backups', () => {
+    const src = appsScriptSource({ folderId: 'F1', sheetId: 'S1', host: 'example.test', keepBackups: 12 });
+    expect(src).toContain('const VERSION = 2;'); expect(src).toContain('const KEEP_BACKUPS = 12;');
+    expect(src).toMatch(/file\.getId\(\)/); expect(src).toMatch(/function backupPart/);
+  });
+});
