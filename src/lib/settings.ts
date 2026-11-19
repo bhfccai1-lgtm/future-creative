@@ -18,8 +18,8 @@ export const SettingsSchema = z.object({
     /** Minimum minutes between two posts on the same account (campaigns + automatic schedule + manual). */
     minGapMinutes: z.number().int().min(0).max(720).default(30),
     /** Same-brand cross-promotion: a new feed/reel/carousel is shared as a branded story on the accounts chosen per account. */
-    crossPromo: z.object({ enabled: z.boolean().default(false), maxPerTargetPerDay: z.number().int().min(1).max(6).default(2), delayMinutes: z.number().int().min(0).max(720).default(45) }).default({}),
-  }).default({}),
+    crossPromo: z.object({ enabled: z.boolean().default(false), maxPerTargetPerDay: z.number().int().min(1).max(6).default(2), delayMinutes: z.number().int().min(0).max(720).default(45) }).prefault({}),
+  }).prefault({}),
   killSwitchReason: z.string().nullable().default(null),
   /** Idea bank: weekly rated ideas per active account; approved ideas feed automatic generation. */
   /** occasions the owner switched off — never picked automatically, hidden from the calendar suggestions */
@@ -30,7 +30,7 @@ export const SettingsSchema = z.object({
     useBank: z.boolean().default(true),
     /** auto-approve ideas the AI rates at least this high (0 = always review yourself) */
     autoApproveMinScore: z.number().min(0).max(10).default(0),
-  }).default({}),
+  }).prefault({}),
   /** Fast-reach engine: learned peak hours per account + boosting proven winners. Off by default. */
   growth: z.object({
     peakHours: z.object({
@@ -39,14 +39,14 @@ export const SettingsSchema = z.object({
       maxDelayHours: z.number().int().min(1).max(6).default(3),
       /** how many peak hours per day (top ranked) */
       count: z.number().int().min(2).max(10).default(6),
-    }).default({}),
+    }).prefault({}),
     winners: z.object({
       enabled: z.boolean().default(false),
       /** reach at least this multiple of the account median (or top shares+saves) */
       minMultiple: z.number().min(1.2).max(10).default(2),
       maxPerWeek: z.number().int().min(1).max(14).default(3),
-    }).default({}),
-  }).default({}),
+    }).prefault({}),
+  }).prefault({}),
   duplicateWindowDays: z.number().int().min(1).max(365).default(30),
   scheduleLeadMinutes: z.number().int().min(5).max(240).default(20),
   /** Benefit badges shown on the gold poster design (admin-approved wording — keep them verifiable). */
@@ -54,7 +54,7 @@ export const SettingsSchema = z.object({
     ar: z.array(z.string().max(24)).max(4).default(['تصاميم مخصصة', 'جودة طباعة عالية', 'مناسبات خاصة', 'هدايا الشركات']),
     en: z.array(z.string().max(24)).max(4).default(['Custom designs', 'Premium print', 'Special occasions', 'Corporate gifts']),
     ml: z.array(z.string().max(32)).max(4).default(['കസ്റ്റം ഡിസൈനുകൾ', 'മികച്ച പ്രിന്റ്', 'പ്രത്യേക അവസരങ്ങൾ', 'കോർപ്പറേറ്റ് ഗിഫ്റ്റുകൾ']),
-  }).default({}),
+  }).prefault({}),
   ai: z.object({
     dryRun: z.boolean().default(true),
     textModel: z.string().default('gpt-4.1-mini'),
@@ -67,7 +67,7 @@ export const SettingsSchema = z.object({
       IMAGE_SQUARE: z.enum(['', 'low', 'medium', 'high']).default(''),
       IMAGE_CAROUSEL: z.enum(['', 'low', 'medium', 'high']).default(''),
       REEL_VIDEO: z.enum(['', 'low', 'medium', 'high']).default(''),
-    }).default({}),
+    }).prefault({}),
     monthlyBudgetUsd: z.number().min(0).default(50),
     alertThresholdPct: z.number().min(1).max(100).default(80),
     maxDailyAds: z.number().int().min(0).default(48),
@@ -89,7 +89,7 @@ export const SettingsSchema = z.object({
     /** the reference design's style in words (made once at upload) — this text, never the image, guides each poster */
     styleReferenceBrief: z.string().max(1500).default(''),
     /** a reference design per format group (vertical = story & reel, feed, square, carousel); falls back to the general one */
-    styleRefsByFormat: z.record(z.enum(['vertical', 'feed', 'square', 'carousel']), z.object({ key: z.string().max(200).nullable().default(null), brief: z.string().max(1500).default('') })).default({}),
+    styleRefsByFormat: z.partialRecord(z.enum(['vertical', 'feed', 'square', 'carousel']), z.object({ key: z.string().max(200).nullable().default(null), brief: z.string().max(1500).default('') })).prefault({}),
     /** send the real product photo + reference design to the image model (images.edit) */
     useReferences: z.boolean().default(true),
     /** big visual idea (CONCEPTS) rotated per account on top of the photo recipe */
@@ -101,7 +101,7 @@ export const SettingsSchema = z.object({
     /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */
     conceptTournament: z.boolean().default(true),
     /** FreeLLMAPI (self-hosted, free provider tiers) — used ONLY for idea suggestions; copy, poster and text checks stay on OpenAI */
-    freeLlm: z.object({ enabled: z.boolean().default(false), model: z.string().max(120).default('auto') }).default({}),
+    freeLlm: z.object({ enabled: z.boolean().default(false), model: z.string().max(120).default('auto') }).prefault({}),
     /** full-AI text still wrong after the re-draws → re-render the design with system-typeset (verified) Arabic text */
     verifiedTextFallback: z.boolean().default(true),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
@@ -116,7 +116,7 @@ export const SettingsSchema = z.object({
       nativeAudio: z.boolean().default(true),
       /** If Veo fails, still deliver an FFmpeg reel (flagged in QC) instead of failing the design. */
       fallbackToFfmpeg: z.boolean().default(true),
-    }).default({}),
+    }).prefault({}),
     /** Reel sound: voice-over voice, synthesised sound effects, music level under the voice, default audio for reels. */
     audio: z.object({
       /** speaker persona id (see audio/voices.ts) or 'auto' = chosen from the product category */
@@ -134,7 +134,7 @@ export const SettingsSchema = z.object({
       captions: z.boolean().default(true),
       /** owner's pronunciation dictionary: written form → how it must be read (diacritics / Arabic spelling) */
       lexicon: z.array(z.object({ from: z.string().min(1).max(60), to: z.string().min(1).max(80) })).max(150).default([]),
-    }).default({}),
+    }).prefault({}),
     // USD estimates — editable because provider pricing changes. Verify against current OpenAI pricing.
     pricing: z.object({
       textInputPer1M: z.number().default(0.4),
@@ -142,8 +142,8 @@ export const SettingsSchema = z.object({
       imageLow: z.number().default(0.016),
       imageMedium: z.number().default(0.063),
       imageHigh: z.number().default(0.25),
-    }).default({}),
-  }).default({}),
+    }).prefault({}),
+  }).prefault({}),
   /** n8n / automation: signed outbound events + token-authenticated inbound API. Off by default. */
   n8n: z.object({
     enabled: z.boolean().default(false),
@@ -163,7 +163,7 @@ export const SettingsSchema = z.object({
     /** Google Drive archive folder id and Google Sheets id for n8n templates 06 (archive) and 04 (ideas). Not secrets. */
     gdriveFolderId: z.string().default(''),
     gsheetId: z.string().default(''),
-  }).default({}),
+  }).prefault({}),
   /** WhatsApp: official Meta catalogue sync (Catalog Batch API) + a daily «status pack» delivered to Telegram for manual posting.
    *  WhatsApp has no official API for Status, so the system never posts to Status itself. */
   whatsapp: z.object({
@@ -177,7 +177,7 @@ export const SettingsSchema = z.object({
       lastSyncAt: z.string().nullable().default(null),
       lastSyncOk: z.boolean().default(false),
       lastSyncMessage: z.string().nullable().default(null),
-    }).default({}),
+    }).prefault({}),
     /** WhatsApp numbers shown to customers (product page, catalogue text, status pack). Empty = the branch phones (+973). */
     numbers: z.array(z.object({
       label: z.string().min(1).max(40),
@@ -193,20 +193,20 @@ export const SettingsSchema = z.object({
       maxPerDay: z.number().int().min(1).max(10).default(3),
       /** accounts whose verified posts feed the pack (empty = all) */
       accountIds: z.array(z.string()).default([]),
-    }).default({}),
-  }).default({}),
+    }).prefault({}),
+  }).prefault({}),
   /** «المبيعات»: monthly target, quote defaults, reactivation of past customers. Prices are always typed by a person. */
   sales: z.object({
     monthlyTargetBhd: z.number().min(0).max(10_000_000).default(0),
     quoteValidityDays: z.number().int().min(1).max(90).default(7),
     quoteTerms: z.string().max(600).default('العرض صالح حتى التاريخ المذكور. يبدأ التنفيذ بعد اعتماد التصميم النهائي من العميل.'),
     reactivationDays: z.number().int().min(14).max(365).default(60),
-  }).default({}),
+  }).prefault({}),
   /** EDUCATION MASTER: the official lesson list of the current school year, typed from the student textbooks' contents */
   education: z.object({
     curriculumYear: z.string().max(20).default('2026-2027'),
     curriculum: z.array(z.object({ subject: z.string().max(60), grade: z.number().int().min(0).max(12), lessons: z.array(z.string().trim().min(1).max(160)).max(80), source: z.string().max(200).optional() })).max(200).default([]),
-  }).default({}),
+  }).prefault({}),
   /** PRINT DESIGN STUDIO: what the shop REALLY offers (everything else is shown disabled, never assumed) */
   print: z.object({
     disabledProducts: z.array(z.string().max(40)).max(300).default([]),
@@ -217,7 +217,7 @@ export const SettingsSchema = z.object({
     pdfx: z.enum(['none', 'x1a', 'x4']).default('none'),
     /** file name of the printer's ICC profile in the fonts/profile dir; empty = built-in generic CMYK */
     iccProfile: z.string().max(120).default(''),
-  }).default({}),
+  }).prefault({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
@@ -227,7 +227,7 @@ export const SettingsSchema = z.object({
     requestsPerMinute: z.number().int().min(1).max(600).default(30),
     /** Instagram/Facebook: put hashtags in the first comment instead of the caption. */
     hashtagsInFirstComment: z.boolean().default(false),
-  }).default({}),
+  }).prefault({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

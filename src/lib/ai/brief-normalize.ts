@@ -51,7 +51,7 @@ export function normalizeBrief(raw: unknown, defaultCta: string): { brief: Recor
 
 const FIELD_AR: Record<string, string> = { headline: 'العنوان', badge: 'كلمة الشارة', supportingCopy: 'السطر الداعم', cta: 'عبارة الحث', caption: 'نص المنشور', hashtags: 'الوسوم', sceneDescription: 'وصف المشهد', idea: 'الفكرة', slides: 'الشرائح' };
 /** Arabic, field-specific message for a schema problem that normalisation could not fix. */
-export function briefIssueAr(issue: { path: (string | number)[]; message: string; code?: string }) {
+export function briefIssueAr(issue: { path: PropertyKey[]; message: string; code?: string }) {
   const f = String(issue.path[0] ?? '');
   return `حقل «${FIELD_AR[f] ?? f}» في رد الذكاء الاصطناعي غير صالح (${issue.code === 'invalid_type' ? 'مفقود أو بنوع خاطئ' : issue.message})`;
 }
