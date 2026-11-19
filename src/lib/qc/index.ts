@@ -2,6 +2,7 @@ import { captionIssues } from '../creative/caption-quality';
 import sharp from 'sharp';
 import type { LayerManifest } from '../render/compose';
 import type { Lang } from '../render/fonts';
+import { proofSummary } from '../creative/ai-proofread';
 import { checkContrast, checkLanguage, checkLayout, checkLogoPixels, findClaims, findWrongPhones, lintText, type QcCheck } from './checks';
 import type { DupFinding } from '../dedup';
 import type { VideoProbe } from '../video/probe';
@@ -30,6 +31,8 @@ export interface QcInput {
   carousel?: { images: number; problems: string[] } | null;
   /** «مؤشر الخوارزمية» after the automatic fixes (pipeline algorithm gate) */
   algorithm?: { score: number; grade: string; remaining: string[] } | null;
+  /** AI proofreading result (only when `useAiReview` is on) */
+  aiProofread?: { applied: { wrong: string; fix: string; reason: string }[]; flagged: { wrong: string; fix: string; reason: string }[]; error?: string } | null;
   /** Gemini Veo requested for this reel: whether it was really used (otherwise FFmpeg fallback). */
   aiVideo?: { used: boolean; model: string | null; note: string | null } | null;
 }
@@ -96,6 +99,7 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
   const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
   checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });
 
+  if (q.aiProofread) checks.push({ id: 'ai_proofread', label: 'مراجعة لغوية بالذكاء الاصطناعي (الأخطاء المؤكدة صُحّحت قبل الرسم)', passed: !q.aiProofread.error && q.aiProofread.flagged.length === 0, severity: 'WARNING', detail: q.aiProofread.error ? `تعذّرت المراجعة: ${q.aiProofread.error}` : (proofSummary(q.aiProofread) || 'لا أخطاء') });
   if (q.algorithm) checks.push({ id: 'algorithm_index', label: 'مؤشر الخوارزمية B أو أعلى (≥ 70)', passed: q.algorithm.score >= 70, severity: 'WARNING', detail: `${q.algorithm.score}/100 (${q.algorithm.grade})${q.algorithm.remaining.length ? ` — ينقص: ${q.algorithm.remaining.join('؛ ')}` : ''}` });
 
   // Dry-run media is a preview only: it may pass design QC but can never be published.
