@@ -1,0 +1,101 @@
+{
+  "version": 2,
+  "skills": {
+    "ad-creative": {
+      "source": "coreyhaines31/marketingskills",
+      "commit": "73573e94a06a39965978b3fa1f9c1eace8cebc7c",
+      "sourceType": "github",
+      "skillPath": "skills/ad-creative/SKILL.md",
+      "computedHash": "fef5df74b2887cf8e054accdfbdb01a489c6193f9ff99dbcce66b6a6f630eb25",
+      "installMode": "copy"
+    },
+    "api-security-testing": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/api-security-testing/SKILL.md",
+      "computedHash": "32f365479f3446fff784b2ccc48b5115cd06e27be980de90824638779d78c48b",
+      "installMode": "copy"
+    },
+    "application-security-testing": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/application-security-testing/SKILL.md",
+      "computedHash": "28c343b8c5cf3dd8daf7dda199d387761132b80f47648eb8aeb08502e158c446",
+      "installMode": "copy"
+    },
+    "ci-security-scanning-with-strix": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/ci-security-scanning-with-strix/SKILL.md",
+      "computedHash": "13949ab1e24f8cac87a11b221e55e52e6bfcf712ccd9eaeefeae4e3608c70d44",
+      "installMode": "copy"
+    },
+    "copywriting": {
+      "source": "coreyhaines31/marketingskills",
+      "commit": "73573e94a06a39965978b3fa1f9c1eace8cebc7c",
+      "sourceType": "github",
+      "skillPath": "skills/copywriting/SKILL.md",
+      "computedHash": "6b86be15d7e8397c27d339fbcbf72718854f96f096ca617889e45b5b8174c393",
+      "installMode": "copy"
+    },
+    "find-security-vulnerabilities-in-code": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/find-security-vulnerabilities-in-code/SKILL.md",
+      "computedHash": "d9ea567e93b8add3991b0c43c1b9f3ea604c6c53e0f88ef4bcec3be9e616efac",
+      "installMode": "copy"
+    },
+    "fix-security-vulnerabilities-with-strix": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/fix-security-vulnerabilities-with-strix/SKILL.md",
+      "computedHash": "7febe815c271b39c688d583efef9a4f9674eaed063264f7218c7c67aacbd7abe",
+      "installMode": "copy"
+    },
+    "managed-pentesting-with-strix": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/managed-pentesting-with-strix/SKILL.md",
+      "computedHash": "72ff2e9e61e426a08550196c260884ba43f7949f498c56ee896588d2792d8eb8",
+      "installMode": "copy"
+    },
+    "owasp-top-10-testing": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/owasp-top-10-testing/SKILL.md",
+      "computedHash": "dc3518dd62ce6b048dad7a969adfe88ea8e4d8bb8fd9c8a1627b443c8a508996",
+      "installMode": "copy"
+    },
+    "penetration-testing-with-strix": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/penetration-testing-with-strix/SKILL.md",
+      "computedHash": "54ba2e5fabb69e319421fdf6c8bdbd43650b66d0ed592b920f57e60e25d9e809",
+      "installMode": "copy"
+    },
+    "product-marketing": {
+      "source": "coreyhaines31/marketingskills",
+      "commit": "73573e94a06a39965978b3fa1f9c1eace8cebc7c",
+      "sourceType": "github",
+      "skillPath": "skills/product-marketing/SKILL.md",
+      "computedHash": "2b7f80ab415280e3e0a0bcc112af8e24059169642c70fb36e18e44a79f80f505",
+      "installMode": "copy"
+    },
+    "web-app-penetration-testing": {
+      "source": "usestrix/strix",
+      "commit": "85e569b2217a9be15e792674761f9a03fe3a77eb",
+      "sourceType": "github",
+      "skillPath": "skills/web-app-penetration-testing/SKILL.md",
+      "computedHash": "12d42989bda70f680c0c7b60aa8882f635d59aa7bc24e76eb78cbdf63085cba7",
+      "installMode": "copy"
+    }
+  }
+}
