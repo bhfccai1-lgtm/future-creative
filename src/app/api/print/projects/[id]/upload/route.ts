@@ -8,7 +8,7 @@ type P = { params: Promise<{ id: string }> };
 export const POST = api<P>('ads:create', async (req, { params, user }) => {
   const form = await req.formData(); const file = form.get('file'); const kind = String(form.get('kind') ?? 'logo');
   if (!(file instanceof File)) throw new AppError('NO_FILE', 'أرفق الملف.', 422);
-  if (file.size > 15 * 1024 * 1024) throw new AppError('TOO_BIG', 'الحد الأقصى 15 ميغابايت.', 413);
-  if (kind !== 'logo' && kind !== 'dieline') throw new AppError('BAD_KIND', 'نوع غير معروف.', 422);
+  if (kind !== 'logo' && kind !== 'dieline' && kind !== 'hero') throw new AppError('BAD_KIND', 'نوع غير معروف.', 422);
+  if (file.size > (kind === 'hero' ? 60 : 15) * 1024 * 1024) throw new AppError('TOO_BIG', 'الملف كبير جدًا.', 413);
   return NextResponse.json({ ok: true, project: await uploadPrintAsset((await params).id, kind, Buffer.from(await file.arrayBuffer()), printUser(user)) });
 });

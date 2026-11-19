@@ -186,5 +186,11 @@ export function ppiForDistance(meters: number) {
   // ×2.5 over the acuity limit as a practical safety margin for print (clamped 50–300)
   return Math.max(50, Math.min(300, Math.round((acuity * 2.5) / 10) * 10));
 }
+/** the eye's own limit at a viewing distance (1 arc-minute): above this, more pixels cannot be seen */
+export function acuityPpi(meters: number) { return Math.max(10, Math.round(1 / (meters * 39.37 * Math.tan((1 / 60) * (Math.PI / 180))))); }
+/** the largest picture an image model returns (long side, px) */
+export const AI_MAX_PX = 1536;
+/** effective PPI of an image of `px` pixels printed `mm` wide */
+export const effectivePpi = (px: number, mm: number) => (mm > 0 ? Math.round((px / mm) * 25.4) : 0);
 /** spine thickness (mm) for perfect binding: leaves × paper caliper */
 export const spineMm = (pages: number, caliperMm = 0.1) => Math.round((Math.ceil(pages / 2) * caliperMm) * 10) / 10;

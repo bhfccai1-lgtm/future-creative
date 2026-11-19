@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { storage } from '@/lib/storage';
 import { setAiProviderOverride } from '@/lib/ai';
 import { inspectPdf } from '@/lib/edu/pdf';
-import { adFromPrint, approvePrint, createPrint, exportPrint, generateHero, mockupPrint, previewPrint, undoPrint, updatePrint, uploadPrintAsset } from '@/lib/print/service';
+import { adFromPrint, approvePrint, createPrint, exportPrint, generateHero, imagePlanPrint, mockupPrint, previewPrint, undoPrint, updatePrint, upscalePrint, uploadPrintAsset } from '@/lib/print/service';
 import { captured, captureQueues, FakeAiProvider, logoPng, resetDb, seedBase } from './helpers';
 
 beforeEach(async () => { await resetDb(); captureQueues(); });
@@ -90,9 +90,9 @@ describe('PRINT DESIGN STUDIO — workflow', () => {
     const g = await generateHero(r.id, user);
     expect((g.images as Record<string, string>).hero).toMatch(/^print\//);
     const pv = await previewPrint(r.id, user);
-    // a 1024-px AI picture on a 2-metre roll-up is honestly flagged (effective PPI below the target for 3 m)
     const ppi = pv.qa.checks.find((c) => c.id === 'ppi')!;
-    expect(ppi.status).toBe('NEEDS_REVISION'); expect(ppi.detail).toContain('img:hero');
+    // 33 PPI at 3 m: below the 70 PPI target but above what the eye resolves there (~29 PPI) → accepted, and said so
+    expect(ppi.status).toBe('PASS'); expect(ppi.detail).toContain('حد رؤية العين');
     const usage = await prisma.aiUsage.count().catch(() => -1);
     expect(usage === -1 || usage >= 1).toBe(true);
   });
@@ -135,5 +135,37 @@ describe('PRINT DESIGN STUDIO — packaging with the supplier dieline', () => {
     expect(pdf).toContain('/Separation /Fold'); expect(pdf.match(/\[3 2\] 0 d/g)?.length).toBeGreaterThanOrEqual(6);
     const svgOut = (await storage().get(ex.files.find((f) => f.kind === 'svg')!.key)).toString();
     expect(svgOut).toContain('id="Fold"');
+  });
+});
+
+describe('PRINT DESIGN STUDIO — resolution for large formats', () => {
+  it('shows the resolution before generating; upscaling smooths but QA still measures the original; a real photo can replace the AI picture', async () => {
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    setAiProviderOverride(new FakeAiProvider());
+    const r = await createPrint({ productId: 'rollup', activity: 'عيادة أسنان', business: 'Smile', viewM: 3, texts: { headline: 'ابتسامتك تبدأ هنا' } }, user);
+    const plan0 = await imagePlanPrint(r.id, user);
+    expect(plan0.areaMm!.w).toBeGreaterThan(600); expect(plan0.ai!.ppi).toBeLessThan(plan0.target);
+    expect(plan0.eye).toBeGreaterThan(0); expect(plan0.needPx!.w).toBeGreaterThan(1536);
+    await generateHero(r.id, user);
+    const before = (await previewPrint(r.id, user)).qa.checks.find((c) => c.id === 'ppi')!;
+    const up = await upscalePrint(r.id, user);
+    expect(up.factor).toBeGreaterThanOrEqual(2);
+    const imgs = up.project.images as Record<string, string>;
+    expect(imgs.hero_upscale).toBe(String(up.factor)); expect(imgs.hero_native).toMatch(/^\d+x\d+$/);
+    const big = await sharp(await storage().get(imgs.hero)).metadata();
+    expect(big.width).toBe(Number(imgs.hero_native.split('x')[0]) * up.factor);
+    const after = (await previewPrint(r.id, user)).qa.checks.find((c) => c.id === 'ppi')!;
+    expect(after.status).toBe(before.status); // enlarging does not change the verdict
+    expect(after.detail).toContain('مكبّرة');
+    // a real high-resolution photo
+    const photo = await sharp({ create: { width: 6000, height: 9000, channels: 3, background: '#88aacc' } }).jpeg({ quality: 60 }).toBuffer();
+    const withPhoto = await uploadPrintAsset(r.id, 'hero', photo, user);
+    expect((withPhoto.images as Record<string, string>).hero_source).toBe('upload');
+    expect((withPhoto.images as Record<string, string>).hero_upscale).toBeUndefined();
+    const plan1 = await imagePlanPrint(r.id, user);
+    expect(plan1.current!.source).toBe('upload'); expect(plan1.current!.ppi).toBeGreaterThan(plan0.ai!.ppi * 3);
+    const qa = (await previewPrint(r.id, user)).qa.checks.find((c) => c.id === 'ppi')!;
+    expect(qa.status).toBe('PASS'); expect(qa.detail).toContain('صورة مرفوعة');
   });
 });

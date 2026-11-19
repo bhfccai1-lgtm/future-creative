@@ -14,7 +14,7 @@ import { enq } from '../queue/queues';
 import { inspectPdf } from '../edu/pdf';
 import { fontDir } from '../render/fonts';
 import { BriefSchema, analyze, type Analysis, type Brief } from './brief';
-import { FAMILIES, FINISHES, available, type Capabilities } from './catalog';
+import { AI_MAX_PX, FAMILIES, FINISHES, acuityPpi, available, type Capabilities } from './catalog';
 import { buildConcepts, bestConcept, type Concept, type ConceptKey } from './concepts';
 import { renderDesign, type PrintPage } from './render';
 import { buildMockup } from './mockup';
@@ -95,11 +95,49 @@ export function heroPrompt(a: Analysis, b: Brief, c: Concept) {
     b.texts.headline ? `The picture expresses: ${b.texts.headline}.` : '', `Visual direction: ${c.idea}. Metaphor: ${c.metaphor}.`, `Imagery: ${c.imagery}.`,
     `Colour palette: ${c.palette.primary}, ${c.palette.secondary}, ${c.palette.accent}.`, 'Culturally appropriate for Bahrain; modest clothing for any people.', NO_TEXT].filter(Boolean).join(' ');
 }
+/** where the picture goes (mm) and what resolution each source gives there — shown BEFORE anything is paid for */
 export async function imagePlanPrint(id: string, user: User) {
-  const p = await loadPrint(id, user); const { a, b, concept, s } = await context(p);
+  const p = await loadPrint(id, user); const ctx = await context(p); const { a, b, concept, s } = ctx;
   const live = !(await getAiProvider(s)).isDryRun;
-  const has = !!imagesOf(p).hero;
-  return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, 'medium', 1) * 1000) / 1000, prompt: heroPrompt(a, b, concept) };
+  const imgs = imagesOf(p); const has = !!imgs.hero;
+  const pages = await renderDesign({ a, b, concept, dpi: 10, images: imgs, logo: ctx.logo, preview: true });
+  const area = pages.flatMap((pg) => pg.placed.filter((x) => x.id === 'img:hero' || x.id === 'hero:area').map((x) => ({ w: (x.rect.w / pg.dpi) * 25.4, h: (x.rect.h / pg.dpi) * 25.4, src: x.srcPx, up: x.upscale, source: x.source })))[0];
+  const viewM = b.viewM ?? a.product.viewM; const eye = viewM ? acuityPpi(viewM) : null;
+  const verdict = (ppi: number) => (ppi >= a.targetPpi * 0.9 ? 'ok' : eye && ppi >= eye ? 'acceptable' : 'low');
+  let ai = null, current = null;
+  if (area) {
+    const land = area.w > area.h * 1.15, port = area.h > area.w * 1.15;
+    const [gw, gh] = land ? [AI_MAX_PX, 1024] : port ? [1024, AI_MAX_PX] : [1024, 1024];
+    const aiPpi = Math.round(Math.min(gw / area.w, gh / area.h) * 25.4);
+    ai = { px: `${gw}x${gh}`, ppi: aiPpi, verdict: verdict(aiPpi) };
+    // pixels a photo needs to reach the target in this box
+    const needPx = { w: Math.ceil((area.w / 25.4) * a.targetPpi), h: Math.ceil((area.h / 25.4) * a.targetPpi) };
+    if (area.src) { const cp = Math.round(Math.min(area.src.w / area.w, area.src.h / area.h) * 25.4); current = { px: `${area.src.w}x${area.src.h}`, ppi: cp, verdict: verdict(cp), upscale: area.up ?? 1, source: area.source ?? 'ai' }; }
+    return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, 'medium', 1) * 1000) / 1000, prompt: heroPrompt(a, b, concept), areaMm: { w: Math.round(area.w), h: Math.round(area.h) }, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx };
+  }
+  return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, 'medium', 1) * 1000) / 1000, prompt: heroPrompt(a, b, concept), areaMm: null, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx: null };
+}
+
+/** smooths the pixels of a low-resolution picture for large sizes (Lanczos + light sharpening). QA still measures the ORIGINAL. */
+export async function upscalePrint(id: string, user: User) {
+  const p = await loadPrint(id, user);
+  const imgs = imagesOf(p);
+  const srcKey = imgs.hero_original ?? imgs.hero;
+  if (!srcKey) throw new AppError('NO_IMAGE', 'لا توجد صورة لتكبيرها.', 409);
+  const plan = await imagePlanPrint(id, user);
+  const buf = await storage().get(srcKey); const m = await sharp(buf).metadata();
+  const nativePpi = plan.current?.ppi ? Math.round(plan.current.ppi) : 0;
+  const factor = Math.max(2, Math.min(4, Math.ceil(plan.target / Math.max(1, nativePpi))));
+  const w = (m.width ?? 0) * factor, h = (m.height ?? 0) * factor;
+  if (w * h > 120_000_000) throw new AppError('TOO_BIG', 'الصورة ستتجاوز الحد المسموح بعد التكبير.', 413);
+  const up = await sharp(buf).resize(w, h, { kernel: 'lanczos3' }).sharpen({ sigma: 0.8 }).png().toBuffer();
+  const key = `print/${id}/hero-up${factor}-${crypto.createHash('sha256').update(up).digest('hex').slice(0, 10)}.png`;
+  await storage().put(key, up, 'image/png');
+  if (imgs.hero && imgs.hero !== srcKey) await storage().remove(imgs.hero).catch(() => undefined);
+  const next = { ...imgs, hero: key, hero_original: srcKey, hero_native: `${m.width}x${m.height}`, hero_upscale: String(factor) };
+  const upd = await prisma.printProject.update({ where: { id }, data: { images: next as unknown as Prisma.InputJsonValue, versions: await snapshot(p, `تكبير الصورة ×${factor}`), ...(p.status === 'approved' || p.status === 'exported' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
+  await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.upscale', targetType: 'print_project', targetId: id, details: { factor, native: `${m.width}x${m.height}` } });
+  return { project: upd, factor };
 }
 export async function generateHero(id: string, user: User) {
   const p = await loadPrint(id, user); const { a, b, concept, s } = await context(p);
@@ -113,7 +151,9 @@ export async function generateHero(id: string, user: User) {
   const key = `print/${id}/hero-${crypto.createHash('sha256').update(img.png).digest('hex').slice(0, 10)}.png`;
   await storage().put(key, img.png, 'image/png');
   const old = imagesOf(p).hero;
-  const upd = await prisma.printProject.update({ where: { id }, data: { images: { ...imagesOf(p), hero: key } as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'صورة جديدة بالذكاء الاصطناعي'), ...(p.status === 'approved' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
+  const { hero_original: oldOrig, hero_native: _n, hero_upscale: _u, hero_source: _s, ...restImgs } = imagesOf(p); void _n; void _u; void _s;
+  if (oldOrig && oldOrig !== old) await storage().remove(oldOrig).catch(() => undefined);
+  const upd = await prisma.printProject.update({ where: { id }, data: { images: { ...restImgs, hero: key, hero_source: 'ai' } as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'صورة جديدة بالذكاء الاصطناعي'), ...(p.status === 'approved' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
   if (old) await storage().remove(old).catch(() => undefined);
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.image', targetType: 'print_project', targetId: id, details: { model: img.model } });
   return upd;
@@ -239,8 +279,21 @@ export async function adFromPrint(id: string, input: { accountIds: string[]; for
   return { message: `جاري تجهيز ${accounts.length} إعلان من التصميم المعتمد — تظهر في طابور الموافقات للمراجعة قبل النشر ✓`, approvedHash: p.approvedHash };
 }
 
-export async function uploadPrintAsset(id: string, kind: 'logo' | 'dieline', buf: Buffer, user: User) {
+export async function uploadPrintAsset(id: string, kind: 'logo' | 'dieline' | 'hero', buf: Buffer, user: User) {
   const p = await loadPrint(id, user);
+  if (kind === 'hero') {
+    // a real high-resolution photo instead of the AI picture (the original pixels are kept)
+    const meta = await sharp(buf).metadata().catch(() => null);
+    if (!meta?.width || !['jpeg', 'png', 'webp', 'tiff'].includes(meta.format ?? '')) throw new AppError('BAD_IMAGE', 'الصورة يجب أن تكون JPG/PNG/WebP/TIFF.', 422);
+    const png = meta.format === 'png' || meta.format === 'jpeg' ? buf : await sharp(buf).png().toBuffer();
+    const key = `print/${id}/hero-photo-${crypto.createHash('sha256').update(png).digest('hex').slice(0, 12)}.${meta.format === 'jpeg' ? 'jpg' : 'png'}`;
+    await storage().put(key, png, meta.format === 'jpeg' ? 'image/jpeg' : 'image/png');
+    const { hero: oldHero, hero_original: oldOrig, hero_native: _n, hero_upscale: _u, hero_source: _s, ...rest } = imagesOf(p); void _n; void _u; void _s;
+    for (const k of [oldHero, oldOrig]) if (k) await storage().remove(k).catch(() => undefined);
+    const upd = await prisma.printProject.update({ where: { id }, data: { images: { ...rest, hero: key, hero_source: 'upload' } as unknown as Prisma.InputJsonValue, versions: await snapshot(p, `رفع صورة ${meta.width}×${meta.height}`), ...(p.status === 'approved' || p.status === 'exported' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
+    await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.photo', targetType: 'print_project', targetId: id, details: { px: `${meta.width}x${meta.height}` } });
+    return upd;
+  }
   if (kind === 'dieline') {
     // the supplier's dieline is READ (cut / crease / perforation / glue / panels) — production is unblocked only if it parses
     let dl: Dieline;

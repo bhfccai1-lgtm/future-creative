@@ -16,6 +16,11 @@ interface Qa { checks: { level: string; id: string; label: string; status: Statu
 interface Project { id: string; title: string; productId: string; status: string; brief: Brief; conceptKey: string | null; images: Record<string, string> | null; versions: { at: string; note: string }[] | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number; note?: string }[] } | null; mockupKey: string | null; approvedAt: string | null }
 interface Brief { productId: string; request: string; business: string; activity: string; audience: string; lang: 'ar' | 'en' | 'bi'; sizeId: string; orientation: 'portrait' | 'landscape'; sides?: 1 | 2; pages?: number; material?: string; finishes: string[]; outputs: 'print' | 'ad' | 'both'; viewM?: number; conditions: { outdoor: boolean; waterproof: boolean; food: boolean; darkFabric: boolean }; finishTarget?: 'logo_headline' | 'logo' | 'headline' | 'name'; texts: Texts; shopBrandingConsent: boolean; logoKey?: string; dielineKey?: string; dieline?: { wMm: number; hMm: number; panels: { x: number; y: number; w: number; h: number }[]; fold: string[]; warnings: string[] }; frontPanel?: number }
 
+/** same text on the server and in the browser (no locale / time-zone drift → no hydration mismatch) */
+const DATE_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bahrain', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtDate = (d: string | Date) => DATE_FMT.format(new Date(d));
+type Verdict = 'ok' | 'acceptable' | 'low';
+interface ImagePlan { done: boolean; live: boolean; costUsd: number; areaMm: { w: number; h: number } | null; target: number; eye: number | null; viewM: number | null; ai: { px: string; ppi: number; verdict: Verdict } | null; current: { px: string; ppi: number; verdict: Verdict; upscale: number; source: 'ai' | 'upload' } | null; needPx: { w: number; h: number } | null }
 type Texts = { headline: string; subline: string; body: string; name: string; role: string; phone: string; email: string; website: string; address: string; cta: string; extra: string[] };
 const STATUS_STYLE: Record<Status, string> = { PASS: 'bg-emerald-100 text-emerald-800', NEEDS_REVISION: 'bg-amber-100 text-amber-800', BLOCKED: 'bg-red-100 text-red-800', NOT_VERIFIED: 'bg-slate-100 text-slate-700' };
 const STATUS_AR: Record<Status, string> = { PASS: 'ناجح', NEEDS_REVISION: 'يحتاج تعديل', BLOCKED: 'موقوف', NOT_VERIFIED: 'غير متحقق' };
@@ -82,7 +87,7 @@ function Dashboard({ rows, L, onOpen, onNew }: { rows: Row[]; L: (a: string, e: 
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{rows.map((r) => { const p = PRODUCTS.find((x) => x.id === r.productId); return (
           <li key={r.id}><button type="button" onClick={() => onOpen(r.id)} className="flex w-full items-center gap-3 rounded-xl border bg-white p-2 text-start">
             {r.mockupKey ? <img src={`/api/media/${r.mockupKey}`} alt="" className="h-16 w-20 shrink-0 rounded-lg object-cover" /> : <div className="grid h-16 w-20 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] text-slate-500">{p ? FAMILIES[p.family].ar : ''}</div>}
-            <div className="min-w-0 flex-1"><div className="truncate font-bold">{r.title}</div><div className="truncate text-xs text-slate-500">{p ? L(p.ar, p.en) : r.productId} · {L(PROJ_STATUS[r.status]?.[0] ?? r.status, PROJ_STATUS[r.status]?.[1] ?? r.status)}</div><div className="text-[10px] text-slate-400" dir="ltr">{new Date(r.updatedAt).toLocaleString()}</div></div>
+            <div className="min-w-0 flex-1"><div className="truncate font-bold">{r.title}</div><div className="truncate text-xs text-slate-500">{p ? L(p.ar, p.en) : r.productId} · {L(PROJ_STATUS[r.status]?.[0] ?? r.status, PROJ_STATUS[r.status]?.[1] ?? r.status)}</div><div className="text-[10px] text-slate-400" dir="ltr">{fmtDate(r.updatedAt)}</div></div>
           </button></li>); })}</ul>)}
     </section>
   );
@@ -143,7 +148,7 @@ function Generator({ L, ui, caps, busy, onCreate }: { L: (a: string, e: string) 
         <Step n={3} title={L('المقاس والاتجاه', 'Size & orientation')}>
           <div className="flex flex-wrap gap-1.5">{product.sizes.map((s) => <button key={s.id} type="button" onClick={() => set('sizeId', s.id)} className={`rounded-full border px-3 py-1.5 text-xs font-bold ${b.sizeId === s.id || (!b.sizeId && s === product.sizes[0]) ? 'border-indigo-700 bg-indigo-50 text-indigo-900' : 'bg-white'}`}>{s.ar}</button>)}</div>
           {['sheet', 'multipage', 'large_format'].includes(fam) && <div className="mt-2 flex gap-2">{(['portrait', 'landscape'] as const).map((o) => <button key={o} type="button" onClick={() => set('orientation', o)} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${b.orientation === o ? 'bg-slate-900 text-white' : 'bg-white'}`}>{o === 'portrait' ? L('عمودي', 'Portrait') : L('أفقي', 'Landscape')}</button>)}</div>}
-          {big && <label className="mt-2 block text-xs font-bold">{L('مسافة المشاهدة (متر) — تحدد الدقة وحجم العنوان', 'Viewing distance (m) — sets resolution and headline size')}<input className="input ltr mt-1" type="number" min={0.3} max={100} step={0.5} value={b.viewM ?? product.viewM ?? ''} onChange={(e) => set('viewM', Number(e.target.value) || undefined)} /></label>}
+          {big && <label className="mt-2 block text-xs font-bold">{L('مسافة المشاهدة (متر) — تحدد الدقة وحجم العنوان', 'Viewing distance (m) — sets resolution and headline size')}<input className="input ltr mt-1" type="number" min={0.3} max={100} step="any" value={b.viewM ?? product.viewM ?? ''} onChange={(e) => set('viewM', Number(e.target.value) || undefined)} /></label>}
         </Step>
         <Step n={4} title={L('اللغة والجهات', 'Language & sides')}>
           <div className="flex flex-wrap gap-2">{([['ar', 'عربي'], ['en', 'English'], ['bi', L('ثنائي اللغة', 'Bilingual')]] as const).map(([v, l]) => <button key={v} type="button" onClick={() => set('lang', v)} className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${b.lang === v ? 'bg-slate-900 text-white' : 'bg-white'}`}>{l}</button>)}
@@ -229,12 +234,12 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
   const [sub, setSub] = useState<'design' | 'mockup' | 'prepress' | 'qa' | 'ad' | 'export' | 'history'>('design');
   const [page, setPage] = useState(0);
   const [guides, setGuides] = useState(true);
-  const [plan, setPlan] = useState<{ done: boolean; live: boolean; costUsd: number } | null>(null);
+  const [plan, setPlan] = useState<ImagePlan | null>(null);
   const [texts, setTexts] = useState<Record<string, string> | null>(null);
   const load = useCallback(async () => {
     const r = await call<{ project: Project }>(`/api/print/projects/${id}`); setP(r.project); setTexts({ ...r.project.brief.texts, extra: r.project.brief.texts.extra.join('\n') });
     const v = await call<{ pages: PageInfo[]; qa: Qa; analysis: Analysis; concepts: Concept[]; concept: string }>(`/api/print/projects/${id}/preview`, { method: 'POST' }); setPv(v); setPage((x) => Math.min(x, v.pages.length - 1));
-    call<{ done: boolean; live: boolean; costUsd: number }>(`/api/print/projects/${id}/image`).then(setPlan).catch(() => setPlan(null));
+    call<ImagePlan>(`/api/print/projects/${id}/image`).then(setPlan).catch(() => setPlan(null));
   }, [id]);
   useEffect(() => { void run(L('تجهيز المعاينة…', 'Preparing preview…'), load); }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p || !pv) return <p className="text-sm text-slate-500">…</p>;
@@ -242,7 +247,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
   const approved = p.status === 'approved' || p.status === 'exported';
   const act = async (action: string, label: string, ok: string, body?: unknown) => { const r = await run(label, () => call<Record<string, unknown>>(`/api/print/projects/${id}/${action}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined }), ok); if (r) { await load(); onChanged(); } return r; };
   const patch = async (body: unknown, label: string) => { const r = await run(label, () => call(`/api/print/projects/${id}`, { method: 'PATCH', body: JSON.stringify(body) }), L('حُفظ — المعاينة محدثة ✓', 'Saved ✓')); if (r) { await load(); onChanged(); } };
-  const upload = async (kind: 'logo' | 'dieline', f: File) => { const fd = new FormData(); fd.append('file', f); fd.append('kind', kind); const r = await run(L('رفع الملف…', 'Uploading…'), () => call(`/api/print/projects/${id}/upload`, { method: 'POST', body: fd }), L('رُفع الملف الأصلي ✓', 'Uploaded ✓')); if (r) { await load(); onChanged(); } };
+  const upload = async (kind: 'logo' | 'dieline' | 'hero', f: File) => { const fd = new FormData(); fd.append('file', f); fd.append('kind', kind); const r = await run(L('رفع الملف…', 'Uploading…'), () => call(`/api/print/projects/${id}/upload`, { method: 'POST', body: fd }), L('رُفع الملف الأصلي ✓', 'Uploaded ✓')); if (r) { await load(); onChanged(); } };
   const kx = cur ? 100 / cur.widthPx : 1, ky = cur ? 100 / cur.heightPx : 1;
   return (
     <section className="space-y-3">
@@ -282,7 +287,10 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
               <div className="rounded-2xl border bg-white p-3 text-sm">
                 <div className="mb-2 font-extrabold">🎨 {L('صورة الذكاء الاصطناعي', 'AI picture')}</div>
                 <p className="text-[11px] text-slate-500">{L('مشهد حسب النشاط والاتجاه — بدون نصوص أو شعارات داخله. لا يُعاد توليد بقية التصميم.', 'A scene for the activity — no text or logos inside. The rest of the design is kept.')}</p>
+                {plan?.areaMm && <ResolutionInfo plan={plan} L={L} />}
                 {plan && (plan.live ? <button type="button" disabled={busy} onClick={() => act('image', L('يرسم الصورة…', 'Painting…'), L('أُضيفت الصورة ✓', 'Picture added ✓'))} className="mt-2 w-full rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{plan.done ? L('صورة أخرى', 'Another picture') : L('إنشاء الصورة', 'Generate')} (~${plan.costUsd})</button> : <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">{L('يحتاج مفتاح OpenAI — يظهر مكان الصورة في المعاينة فقط.', 'Needs an OpenAI key — the picture area shows in the preview only.')}</p>)}
+                {plan?.current && plan.current.verdict !== 'ok' && <button type="button" disabled={busy} onClick={() => act('upscale', L('تكبير الصورة…', 'Upscaling…'), L('كُبّرت الصورة — البكسلات أنعم (لا تفاصيل جديدة) ✓', 'Upscaled ✓'))} className="mt-2 w-full rounded-lg border border-indigo-300 px-3 py-2 text-xs font-bold text-indigo-800">{L('تكبير احترافي لتنعيم البكسلات', 'Professional upscale (smoother pixels)')}{plan.current.upscale > 1 ? ` (${L('الحالي', 'now')} ×${plan.current.upscale})` : ''}</button>}
+                <label className="mt-2 block text-xs font-bold">{L('أو ارفع صورة عالية الدقة (تصوير حقيقي)', 'Or upload a high-resolution photo')}{plan?.needPx && <span className="font-normal text-slate-500"> — {L('المطلوب لهذه المساحة', 'needed here')} <span dir="ltr">{plan.needPx.w}×{plan.needPx.h} px</span></span>}<input type="file" accept="image/jpeg,image/png,image/webp,image/tiff" className="mt-1 block w-full text-xs" onChange={(e) => e.target.files?.[0] && upload('hero', e.target.files[0])} /></label>
               </div>
               <div className="rounded-2xl border bg-white p-3 text-sm">
                 <div className="mb-2 font-extrabold">{L('الشعار والملفات', 'Logo & files')}</div>
@@ -346,7 +354,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
       {sub === 'ad' && <AdPanel L={L} accounts={accounts} approved={approved} busy={busy} onCreate={(body) => act('ad', L('تجهيز الإعلان…', 'Preparing the ad…'), L('أُرسل الإعلان لطابور الموافقات ✓', 'Sent to approvals ✓'), body)} />}
 
       {sub === 'history' && <div className="space-y-2 rounded-2xl border bg-white p-3 text-xs">
-        <ul className="divide-y">{[...(p.versions ?? [])].reverse().map((v, i) => <li key={i} className="flex justify-between gap-2 py-1.5"><span>{v.note}</span><span className="text-slate-400" dir="ltr">{new Date(v.at).toLocaleString()}</span></li>)}</ul>
+        <ul className="divide-y">{[...(p.versions ?? [])].reverse().map((v, i) => <li key={i} className="flex justify-between gap-2 py-1.5"><span>{v.note}</span><span className="text-slate-400" dir="ltr">{fmtDate(v.at)}</span></li>)}</ul>
         {!(p.versions ?? []).length && <p className="text-slate-500">{L('لا توجد نسخ سابقة.', 'No previous versions.')}</p>}
         <button type="button" className="rounded-lg border border-red-300 px-3 py-1.5 font-bold text-red-700" onClick={async () => { if (!confirm(L('حذف المشروع وملفاته؟', 'Delete project and files?'))) return; const r = await run(L('حذف…', 'Deleting…'), () => call(`/api/print/projects/${id}`, { method: 'DELETE' })); if (r) onDeleted(); }}>{L('حذف المشروع', 'Delete project')}</button>
       </div>}
@@ -382,3 +390,20 @@ function BrandPanel({ L, shop }: { L: (a: string, e: string) => string; shop: { 
     </section>
   );
 }
+
+/** resolution at the FINAL size, before paying: AI picture vs the target and vs what the eye can resolve at the viewing distance */
+function ResolutionInfo({ plan, L }: { plan: ImagePlan; L: (a: string, e: string) => string }) {
+  const V: Record<Verdict, [string, string, string]> = { ok: ['ممتازة', 'good', 'bg-emerald-100 text-emerald-800'], acceptable: ['مقبولة لمسافة المشاهدة', 'acceptable for the distance', 'bg-amber-100 text-amber-800'], low: ['منخفضة', 'low', 'bg-red-100 text-red-800'] };
+  const row = (label: string, v: { px: string; ppi: number; verdict: Verdict }) => <div className="flex items-center justify-between gap-2"><span>{label} <span className="text-slate-400" dir="ltr">({v.px})</span></span><span className={`rounded-full px-2 py-0.5 font-bold ${V[v.verdict][2]}`} dir="ltr">{v.ppi} PPI · {L(V[v.verdict][0], V[v.verdict][1])}</span></div>;
+  return (
+    <div className="mt-2 space-y-1 rounded-lg bg-slate-50 p-2 text-[11px]">
+      <div className="font-bold">{L('الدقة بالمقاس النهائي', 'Resolution at final size')} — <span dir="ltr">{plan.areaMm!.w}×{plan.areaMm!.h} mm</span></div>
+      <div className="text-slate-500">{L('المستهدف', 'Target')} {plan.target} PPI{plan.eye ? ` · ${L('حد رؤية العين عند', 'eye limit at')} ${plan.viewM} ${L('م', 'm')}: ${plan.eye} PPI` : ''}</div>
+      {plan.ai && row(L('صورة الذكاء الاصطناعي', 'AI picture'), plan.ai)}
+      {plan.current && row(plan.current.source === 'upload' ? L('الصورة المرفوعة', 'Uploaded photo') : L('الصورة الحالية', 'Current picture'), plan.current)}
+      {plan.current && plan.current.upscale > 1 && <div className="text-slate-500">{L(`مكبّرة ×${plan.current.upscale} — الفحص يقيس الصورة الأصلية`, `Upscaled ×${plan.current.upscale} — QA measures the original`)}</div>}
+      {plan.ai?.verdict === 'low' && <div className="text-red-700">{L('صورة الذكاء الاصطناعي ستظهر مكسّرة بهذا المقاس — الأفضل صورة حقيقية عالية الدقة أو تصغير مساحة الصورة.', 'An AI picture will look pixelated at this size — use a real high-res photo or a smaller picture area.')}</div>}
+    </div>
+  );
+}
+

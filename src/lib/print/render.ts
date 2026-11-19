@@ -13,7 +13,7 @@ import { movePath } from './dieline';
  * separate vector geometry (mm) for prepress, never baked into the artwork.
  */
 export interface Rect { x: number; y: number; w: number; h: number }
-export interface Placed { id: string; kind: 'text' | 'image' | 'logo' | 'shape'; rect: Rect; fits: boolean; missing?: string[]; text?: string; pt?: number; srcPx?: { w: number; h: number } }
+export interface Placed { id: string; kind: 'text' | 'image' | 'logo' | 'shape'; rect: Rect; fits: boolean; missing?: string[]; text?: string; pt?: number; srcPx?: { w: number; h: number }; upscale?: number; source?: 'ai' | 'upload' }
 export interface PrintPage {
   label: string; png: Buffer; widthPx: number; heightPx: number; dpi: number;
   trimMm: { w: number; h: number }; bleedMm: number; safeMm: number;
@@ -88,7 +88,10 @@ async function image(c: C, cv: Canvas, slot: string, r: Rect, o: { radius?: numb
     let img = await sharp(buf).resize(Math.round(r.w), Math.round(r.h), { fit: o.fit ?? 'cover', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
     if (o.radius) img = await sharp(img).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(r.w)}" height="${Math.round(r.h)}"><rect width="${Math.round(r.w)}" height="${Math.round(r.h)}" rx="${o.radius}" fill="#fff"/></svg>`), blend: 'dest-in' }]).png().toBuffer();
     cv.put({ png: img, w: r.w, h: r.h }, r.x, r.y);
-    cv.placed.push({ id: o.id ?? `img:${slot}`, kind: 'image', rect: { ...r }, fits: true, srcPx: { w: meta.width ?? 0, h: meta.height ?? 0 } });
+    // QA measures the ORIGINAL pixels: an enlarged copy must not pass as a sharper image
+    const native = (c.images[`${slot}_native`] ?? '').match(/^(\d+)x(\d+)$/);
+    const up = Number(c.images[`${slot}_upscale`] ?? 1) || 1;
+    cv.placed.push({ id: o.id ?? `img:${slot}`, kind: 'image', rect: { ...r }, fits: true, srcPx: native ? { w: Number(native[1]), h: Number(native[2]) } : { w: meta.width ?? 0, h: meta.height ?? 0 }, upscale: up > 1 ? up : undefined, source: c.images[`${slot}_source`] === 'upload' ? 'upload' : 'ai' });
     return true;
   } catch { return false; }
 }
@@ -173,6 +176,7 @@ async function composeSheet(c: C, cv: Canvas, r: Rect, o: { scale: number; dark:
   else if (o.heroSlot && heroH > r.h * 0.15 && c.preview) {
     // preview only: show where the AI picture will go (never in a production file)
     cv.svg.push(`<rect x="${r.x}" y="${y}" width="${r.w}" height="${heroH}" rx="${c.k * 3}" fill="${c.cc.palette.primary}" fill-opacity="0.06" stroke="${c.cc.palette.primary}" stroke-opacity="0.35" stroke-dasharray="${c.k * 3} ${c.k * 2}" stroke-width="${Math.max(1, c.k * 0.4)}"/><circle cx="${r.x + r.w / 2}" cy="${y + heroH / 2}" r="${Math.min(r.w, heroH) * 0.12}" fill="none" stroke="${c.cc.palette.primary}" stroke-opacity="0.35" stroke-width="${Math.max(1, c.k * 0.5)}"/>`);
+    cv.placed.push({ id: 'hero:area', kind: 'shape', rect: { x: r.x, y: Math.round(y), w: r.w, h: Math.round(heroH) }, fits: true });
     y += heroH + gap; heroPlaced = true;
   }
   // copy block centred in the space that is left

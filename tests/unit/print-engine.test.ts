@@ -38,11 +38,14 @@ describe('PRINT DESIGN MASTER — product database', () => {
     const a = analyze(BriefSchema.parse({ productId: 'business_card' }), { ...cap, disabledProducts: ['business_card'] });
     expect(a.blockers.join()).toContain('غير مفعّل'); expect(a.productionPossible).toBe(false);
   });
-  it('resolution follows viewing distance; spine follows page count', () => {
+  it('resolution follows viewing distance; spine follows page count', async () => {
     expect(ppiForDistance(0.3)).toBe(300);
     expect(ppiForDistance(3)).toBeLessThan(120);
     expect(ppiForDistance(15)).toBe(50);
     expect(spineMm(120, 0.1)).toBe(6);
+    const { acuityPpi, effectivePpi } = await import('@/lib/print/catalog');
+    expect(acuityPpi(3)).toBeGreaterThan(25); expect(acuityPpi(3)).toBeLessThan(35); expect(acuityPpi(0.3)).toBeGreaterThan(250);
+    expect(effectivePpi(1536, 850)).toBe(46);
   });
 });
 

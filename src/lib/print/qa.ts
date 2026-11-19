@@ -1,6 +1,6 @@
 import { lintText } from '../qc/checks';
 import type { Analysis, Brief } from './brief';
-import { FINISHES } from './catalog';
+import { AI_MAX_PX, FINISHES, acuityPpi } from './catalog';
 import type { PrintPage, Rect } from './render';
 
 /**
@@ -59,12 +59,21 @@ export function runPrintQa(a: Analysis, b: Brief, pages: PrintPage[], o: { expor
   // ── Technical QA
   const dimOk = pages.every((p) => { const k = p.dpi / 25.4; return Math.abs(p.widthPx - Math.round((p.trimMm.w + 2 * p.bleedMm) * k)) <= 2 && Math.abs(p.heightPx - Math.round((p.trimMm.h + 2 * p.bleedMm) * k)) <= 2; });
   add('technical', 'dimensions', 'الأبعاد الفعلية بالمليمتر', dimOk ? 'PASS' : 'NEEDS_REVISION', `${a.trim.w}×${a.trim.h} مم${a.bleedMm ? ` + نزيف ${a.bleedMm} مم` : ''} عند ${pages[0]?.dpi ?? 0} DPI`);
-  const lowRes: string[] = []; const resInfo: string[] = [];
+  // resolution of the ORIGINAL pixels at the final size: ≥ target = PASS; between the eye's limit at the viewing distance
+  // and the target = acceptable (PASS, stated); below the eye's limit = NEEDS_REVISION. Enlarged copies are measured on their original.
+  const viewM = b.viewM ?? a.product.viewM;
+  const eye = viewM ? acuityPpi(viewM) : null;
+  const lowRes: string[] = []; const resInfo: string[] = []; let borderline = false;
   for (const p of art) for (const x of p.placed.filter((y) => y.srcPx)) {
-    const mmW = x.rect.w / (p.dpi / 25.4); const ppi = Math.round((x.srcPx!.w / mmW) * 25.4);
-    resInfo.push(`${x.id}: ${ppi} PPI`); if (ppi < a.targetPpi * 0.9) lowRes.push(`${x.id} ${ppi}/${a.targetPpi}`);
+    // a picture covering its box is limited by the tighter direction
+    const mmW = x.rect.w / (p.dpi / 25.4), mmH = x.rect.h / (p.dpi / 25.4); const ppi = Math.round(Math.min(x.srcPx!.w / mmW, x.srcPx!.h / mmH) * 25.4);
+    const tag = `${x.id}: ${ppi} PPI${x.upscale ? ` (مكبّرة ×${x.upscale} بخوارزمية Lanczos — لا تضيف تفاصيل)` : ''}${x.source === 'upload' ? ' (صورة مرفوعة)' : ''}`;
+    if (ppi >= a.targetPpi * 0.9) resInfo.push(tag);
+    else if (eye && ppi >= eye) { resInfo.push(`${tag} — أقل من المستهدف ${a.targetPpi} لكنها فوق حد رؤية العين (${eye} PPI) عند ${viewM} م`); borderline = true; }
+    else lowRes.push(`${x.id} ${ppi}/${a.targetPpi}${eye ? ` (حد العين ${eye})` : ''}`);
   }
-  add('technical', 'ppi', `الدقة الفعلية للصور (المستهدف ${a.targetPpi} PPI)`, lowRes.length ? 'NEEDS_REVISION' : resInfo.length ? 'PASS' : 'PASS', lowRes.length ? `دقة منخفضة: ${lowRes.join('، ')} — صور الذكاء الاصطناعي محدودة البكسلات؛ للمقاسات الكبيرة استخدم صورة مصدر أعلى دقة أو تكبيرًا احترافيًا (التكبير العادي لا يضيف تفاصيل)` : resInfo.join(' · ') || 'لا توجد صور نقطية — نصوص وأشكال مرسومة بالدقة النهائية');
+  add('technical', 'ppi', `الدقة الفعلية للصور (المستهدف ${a.targetPpi} PPI${eye ? `، حد رؤية العين ${eye} PPI عند ${viewM} م` : ''})`, lowRes.length ? 'NEEDS_REVISION' : 'PASS',
+    lowRes.length ? `دقة منخفضة: ${lowRes.join('، ')} — صور الذكاء الاصطناعي حدها نحو ${AI_MAX_PX} بكسل؛ ارفع صورة أعلى دقة (تصوير حقيقي) أو صغّر مساحة الصورة. التكبير الآلي ينعّم البكسلات فقط ولا يرفع النتيجة` : (resInfo.join(' · ') || 'لا توجد صور نقطية — نصوص وأشكال مرسومة بالدقة النهائية') + (borderline ? ' · مقبولة لمسافة المشاهدة المحددة فقط' : ''));
   const unfit = texts.filter((x) => !x.fits);
   add('technical', 'overflow', 'لا يوجد نص مقصوص أو متجاوز', unfit.length ? 'NEEDS_REVISION' : 'PASS', unfit.map((x) => x.id).slice(0, 4).join('، ') || undefined);
   const minPt = a.product.family === 'large_format' ? 24 : a.product.family === 'card' ? 6.5 : ['sticker', 'label', 'stamp'].includes(a.product.family) ? 5.5 : 7;
