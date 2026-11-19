@@ -28,6 +28,8 @@ export interface ComposeInput {
   /** Gold-poster layout only: product keyword in the gold badge + benefit badges. */
   badge?: string | null;
   features?: string[];
+  /** Gold-poster layout only: footer ribbon (shop name · country) */
+  footer?: string | null;
 }
 
 export interface PlacedLayer {

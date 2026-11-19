@@ -84,7 +84,7 @@ export function scenePrompt(sceneDescription: string, style: string, art?: { lig
     art?.lens ? `Camera: ${art.lens}.` : '',
     'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
     'Vertical 9:16 premium advertising product photograph, photorealistic, ultra sharp focus on the product, high dynamic range, rich true-to-life colours, professional retouching.',
-    'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 34% and 63% of the height); the upper 33% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 37% is the table/surface in soft focus.',
+    'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 39% and 64% of the height); the upper 38% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 36% is the table/surface in soft focus.',
     'The printed surface of the product shows a vivid, high-quality printed illustration or pattern that suits the occasion — artwork only.',
     'ABSOLUTELY NO text, letters, numbers, words, logos, brand marks, signatures or watermarks anywhere in the image, including on the product.',
   ].filter(Boolean).join('\n');
