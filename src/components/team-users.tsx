@@ -13,9 +13,13 @@ const ROLE_TONE: Record<string, 'navy' | 'blue' | 'slate'> = { ADMIN: 'navy', ED
 /** a strong random password (letters + digits, no look-alikes) for the admin to hand over in person */
 function strongPassword() {
   const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', dig = '23456789', all = abc + dig;
-  const r = crypto.getRandomValues(new Uint32Array(16));
-  const out = Array.from(r, (n) => all[n % all.length]);
-  out[3] = dig[r[3] % dig.length]; out[9] = abc[r[9] % abc.length];
+  // unbiased pick: reject bytes above the largest multiple of the alphabet size (no modulo bias)
+  const pick = (set: string) => {
+    const lim = 256 - (256 % set.length);
+    for (;;) { const [b] = crypto.getRandomValues(new Uint8Array(1)); if (b < lim) return set[b % set.length]; }
+  };
+  const out = Array.from({ length: 16 }, () => pick(all));
+  out[3] = pick(dig); out[9] = pick(abc);
   return out.join('');
 }
 const fmt = (d: string | null) => d ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bahrain', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(d)) : 'لم يدخل بعد';
