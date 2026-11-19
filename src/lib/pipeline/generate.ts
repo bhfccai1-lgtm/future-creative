@@ -134,7 +134,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   // «يتعلم من ذوقك»: the owner's approvals/rejections (human decisions only)
   const taste = await tasteProfile();
   // 🧠 the account's performance memory (learnt nightly from its real numbers) — 1 design in 5 explores without it
-  const brain = await (await import('../growth/brain')).brainGuidance(account.id).catch(() => ({ text: null, mode: 'none' as const, rules: [] as string[] }));
+  const brain = await (await import('../growth/brain')).brainGuidance(account.id).catch(() => ({ text: null, mode: 'none' as const, rules: [] as string[], art: {} }));
   const feedback = brain.text ? [...taste.feedback, brain.text] : taste.feedback;
   // automatic designs that didn't choose a method/style use the settings (default: signature style, «تلقائي» method)
   if (!p.direction?.renderMode || !p.direction?.designStyle) {
@@ -178,7 +178,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
   const formal = /business|corporate|b2b|شركات/i.test(`${account.name} ${account.handle ?? ''} ${account.businessCategory ?? ''}`);
-  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined, concept: d.concept, concepts: s.ai.creativeConcepts, formal, blockedConcepts: taste.blocked.concept });
+  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined, concept: d.concept, concepts: s.ai.creativeConcepts, formal, blockedConcepts: taste.blocked.concept, prefer: brain.art });
   if (!dtype) dtype = designTypeOf(art.composition);
   const lightingP = LIGHTING.find((x) => x.value === art.lighting)?.prompt, lensP = LENSES.find((x) => x.value === art.lens)?.prompt;
   const conceptP = CONCEPTS.find((x) => x.value === art.concept)?.prompt;
@@ -190,7 +190,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     data: {
       accountId: account.id, productId: product.id, format, language: lang, state: 'GENERATING', dryRun: provider.isDryRun, createdBy: p.createdBy, scheduleId: p.scheduleId,
       channels: await withAutoGbp(account, format, withAutoChannels(account, format, (d.channels ?? []) as import('@prisma/client').SocialPlatform[])),
-      options: { brain: { mode: brain.mode, rules: brain.rules }, designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? s.ai.audio.defaultReelAudio) : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
+      options: { brain: { mode: brain.mode, rules: brain.rules, ...(Object.keys(brain.art).length ? { art: brain.art } : {}) }, designType: d.designType ?? null, designStyle: d.designStyle ?? null, reelStyle: format === 'REEL_VIDEO' ? (d.reelStyle ?? 'standard') : null, reelDuration: format === 'REEL_VIDEO' ? reelDuration : null, audio: format === 'REEL_VIDEO' ? (d.audio ?? s.ai.audio.defaultReelAudio) : null, audioQuery: d.audio === 'instagram' ? (d.audioQuery ?? null) : null, direction: (p.direction ?? null) as Prisma.InputJsonValue, revisionOf: p.revisionOf ?? null },
     },
   });
   await audit({ actorId: p.actorId, actorLabel: p.createdBy, action: 'ad.generate.start', targetType: 'advertisement', targetId: ad.id, details: { product: product.slug, format, provider: provider.name, language: lang, direction: (p.direction ?? null) as Prisma.InputJsonValue } });
@@ -713,18 +713,20 @@ export function pickLeastRecent(options: string[], recent: (string | null)[]) {
 }
 
 /** Least-recently-used art recipe for this account (last 12 designs). A user-chosen composition is kept. */
-export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[] }): Promise<Art> {
+export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[]; prefer?: { concept?: string; lighting?: string; composition?: string } }): Promise<Art> {
+  // 🎨 visual memory: a winner the account brain learnt is used when it is allowed here; otherwise least-recently-used
+  const pref = (pool: readonly string[], v?: string) => (v && pool.includes(v) ? v : undefined);
   const recent = await prisma.advertisement.findMany({ where: { accountId }, orderBy: { createdAt: 'desc' }, take: 12, select: { options: true } });
   const prev = recent.map((r) => ((r.options ?? {}) as { direction?: { art?: Art } | null }).direction?.art ?? {});
   const comps = o.aiFull ? DESIGN_TYPES.map((x) => x.value) : LAYERED_COMPOSITIONS;
   const lights = LIGHTING.filter((x) => o.light === undefined || x.light === o.light).map((x) => x.value);
   let lenses = LENSES.map((x) => x.value) as string[];
-  const composition = o.composition ?? pickLeastRecent(comps, prev.map((a) => a.composition ?? null));
+  const composition = o.composition ?? pref(comps, o.prefer?.composition) ?? pickLeastRecent(comps, prev.map((a) => a.composition ?? null));
   if (composition === 'flat_lay') lenses = ['overhead'];
   else lenses = lenses.filter((l) => l !== 'overhead' && (composition !== 'macro_detail' || l === '85mm' || l === '50mm'));
   return {
     composition,
-    lighting: pickLeastRecent(lights, prev.map((a) => a.lighting ?? null)),
+    lighting: pref(lights, o.prefer?.lighting) ?? pickLeastRecent(lights, prev.map((a) => a.lighting ?? null)),
     lens: pickLeastRecent(lenses, prev.map((a) => a.lens ?? null)),
     ...(o.aiFull ? { poster: pickLeastRecent(POSTER_LAYOUTS.map((x) => x.value), prev.map((a) => a.poster ?? null)) } : {}),
     ...conceptOf(o, prev),
@@ -754,12 +756,12 @@ export function withAutoChannels(account: Parameters<typeof autoChannelsFor>[0],
 }
 
 /** Big visual idea: user choice, «none», or least-recently-used (formal accounts only get formal concepts). Macro shots keep the pure product look. */
-function conceptOf(o: { composition?: string; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[] }, prev: Art[]): { concept?: string } {
+function conceptOf(o: { composition?: string; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[]; prefer?: { concept?: string } }, prev: Art[]): { concept?: string } {
   if (o.concept === 'none') return {};
   if (o.concept && o.concept !== 'auto') return CONCEPTS.some((c) => c.value === o.concept) ? { concept: o.concept } : {};
   if (o.concepts === false || o.composition === 'macro_detail') return {};
   const pool = withoutBlocked(CONCEPTS.filter((c) => !o.formal || c.formal).map((c) => c.value as string), o.blockedConcepts ?? []);
-  return { concept: pickLeastRecent(pool, prev.map((a) => a.concept ?? null)) };
+  return { concept: (o.prefer?.concept && pool.includes(o.prefer.concept) ? o.prefer.concept : undefined) ?? pickLeastRecent(pool, prev.map((a) => a.concept ?? null)) };
 }
 
 /** Exact phrases the owner quoted in the idea («…», "…", “…”) — max 2, 3–120 characters each. */

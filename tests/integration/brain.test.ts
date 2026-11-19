@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '@/lib/db';
 import { brainGuidance, brainOf, learnBrains, learnRules, MIN_N } from '@/lib/growth/brain';
 import { accountPlans, type PlanPost } from '@/lib/growth/account-plan';
-import { generateAdvertisement } from '@/lib/pipeline/generate';
+import { generateAdvertisement, pickArt } from '@/lib/pipeline/generate';
 import { setAiProviderOverride } from '@/lib/ai';
 import type { BriefRequest } from '@/lib/ai/types';
 import { captureQueues, FakeAiProvider, resetDb, seedBase } from './helpers';
@@ -21,6 +21,25 @@ const row = (hook: string, views: number) => ({ p: { adId: 'x', hook, headline: 
 class Recording extends FakeAiProvider { reqs: BriefRequest[] = []; async generateBrief(req: BriefRequest) { this.reqs.push(req); return super.generateBrief(req); } }
 
 describe('🧠 account brain (learn → apply → explore)', () => {
+  it('🎨 visual memory: learns the winning concept/lighting and steers the next image toward it', async () => {
+    const vis = (concept: string, lighting: string, views: number) => ({ ...row('جملة', views), art: { concept, lighting, composition: 'hero_product' } });
+    const rows = [...Array.from({ length: 3 }, () => vis('levitation', 'golden_hour', 600)), ...Array.from({ length: 3 }, () => vis('paper_craft', 'softbox', 100))];
+    const rules = learnRules(rows);
+    expect(rules.find((r) => r.dim === 'concept')).toMatchObject({ visual: 'concept', best: 'levitation', worst: 'paper_craft', prompt: '' });
+    expect(rules.find((r) => r.dim === 'lighting')?.ar).toMatch(/ضوء الغروب الذهبي/);
+    expect(rules.find((r) => r.dim === 'composition')).toBeUndefined(); // one value only → nothing to compare
+    const { accounts } = await seedBase();
+    await prisma.systemSetting.create({ data: { key: `brain:${accounts[0].id}`, value: { accountId: accounts[0].id, at: NOW.toISOString(), posts: 6, rules } as never, updatedBy: 'brain' } });
+    const g = await brainGuidance(accounts[0].id, () => 0.9);
+    expect(g).toMatchObject({ mode: 'apply', text: null, art: { concept: 'levitation', lighting: 'golden_hour' } }); // visual-only memory: no copy instruction
+    expect((await brainGuidance(accounts[0].id, () => 0.1)).art).toEqual({}); // exploring: free choice
+    const art = await pickArt(accounts[0].id, { aiFull: false, concepts: true, prefer: g.art });
+    expect(art).toMatchObject({ concept: 'levitation', lighting: 'golden_hour' });
+    // a winner the owner blocked, or an explicit choice, always wins over the memory
+    expect((await pickArt(accounts[0].id, { aiFull: false, concepts: true, prefer: g.art, blockedConcepts: ['levitation'] })).concept).not.toBe('levitation');
+    expect((await pickArt(accounts[0].id, { aiFull: false, concepts: true, prefer: g.art, concept: 'paper_craft' })).concept).toBe('paper_craft');
+  });
+
   it('learnRules keeps a rule only with enough posts on both sides and a real lift', () => {
     const rows = [...Array.from({ length: 3 }, () => row('البحرين في كل رشفة!', 300)), ...Array.from({ length: 3 }, () => row('منو يستاهل هدية؟', 100))];
     const hook = learnRules(rows).find((r) => r.dim === 'hook');
@@ -43,7 +62,7 @@ describe('🧠 account brain (learn → apply → explore)', () => {
     for (let i = 0; i < 4; i++) await post(acc.id, product.id, i, `البحرين في كل رشفة ${i}!\nكوبك بتصميمك`, { views: 400, reach: 300, saves: 3, retentionPct: 80 });
     for (let i = 4; i < 8; i++) await post(acc.id, product.id, i, `منو يستاهل هدية اليوم ${i}؟\nكوب بتصميم خاص`, { views: 90, reach: 80, retentionPct: 20 });
 
-    expect(await brainGuidance(acc.id)).toEqual({ text: null, mode: 'none', rules: [] }); // nothing learnt yet
+    expect(await brainGuidance(acc.id)).toEqual({ text: null, mode: 'none', rules: [], art: {} }); // nothing learnt yet
     const r = await learnBrains(NOW);
     expect(r.accounts).toBe(1);
     const b = await brainOf(acc.id);
