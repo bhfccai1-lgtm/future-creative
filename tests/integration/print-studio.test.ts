@@ -169,3 +169,46 @@ describe('PRINT DESIGN STUDIO — resolution for large formats', () => {
     expect(qa.status).toBe('PASS'); expect(qa.detail).toContain('صورة مرفوعة');
   });
 });
+
+describe('PRINT DESIGN STUDIO — online client proof', () => {
+  it('secret link with watermarked images; approval approves that exact version; edits make the link stale; changes need a note', async () => {
+    const { createProof, publicProof, proofImage, decideProof } = await import('@/lib/print/proof');
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const p = await createPrint(brief, user);
+    const pr = await createProof(p.id, user);
+    expect(pr.path).toMatch(/^\/proof\/[\w-]{20,}$/); expect(pr.images).toBeGreaterThanOrEqual(3); // mockup + 2 faces
+    const pub = await publicProof(pr.token);
+    expect(pub).toMatchObject({ product: 'بطاقات الأعمال', stale: false, expired: false, decision: null });
+    expect(JSON.stringify(pub)).not.toContain(admin.email); // no internal data on the public page
+    const img = await proofImage(pr.token, 1);
+    expect((await sharp(img).metadata()).format).toBe('jpeg');
+    await expect(proofImage(pr.token, 99)).rejects.toThrow();
+    await expect(publicProof('x'.repeat(24))).rejects.toThrow(/غير صالح/);
+    // changes need a note; then the client asks for a change
+    await expect(decideProof(pr.token, { decision: 'changes', name: 'سارة' }, '1.1.1.1')).rejects.toThrow(/التعديلات/);
+    const ch = await decideProof(pr.token, { decision: 'changes', name: 'سارة', note: 'كبّر الشعار قليلًا' }, '1.1.1.1');
+    expect(ch.status).toBe('changes');
+    expect(await prisma.notification.count({ where: { code: 'PROOF_CHANGES' } })).toBe(1);
+    // the shop edits → the old link refuses a decision
+    await updatePrint(p.id, { brief: { texts: { headline: 'عنوان معدّل' } } as never }, user);
+    expect((await publicProof(pr.token)).stale).toBe(true);
+    await expect(decideProof(pr.token, { decision: 'approve', name: 'سارة' }, '1.1.1.1')).rejects.toThrow(/تغيّر التصميم/);
+    // new proof for the new version (decision cleared) → the client approves → the project is approved at that version
+    const pr2 = await createProof(p.id, user);
+    expect((await publicProof(pr2.token)).decision).toBeNull();
+    const ok = await decideProof(pr2.token, { decision: 'approve', name: 'سارة' }, '1.1.1.1');
+    expect(ok.status).toBe('approved');
+    const after = await prisma.printProject.findUniqueOrThrow({ where: { id: p.id } });
+    expect(after.status).toBe('approved'); expect(after.approvedHash).toBe(after.proofHash);
+    await expect(decideProof(pr2.token, { decision: 'changes', name: 'سارة', note: 'تعديل' }, '1.1.1.1')).rejects.toThrow(/مسبقًا/);
+    expect(await prisma.auditLog.count({ where: { action: 'print.proof.approved', actorLabel: 'client:سارة' } })).toBe(1);
+    // export works right after the client's approval
+    const ex = await exportPrint(p.id, user);
+    expect(ex.files.some((f) => f.kind === 'pdf')).toBe(true);
+    // expired links are refused
+    await prisma.printProject.update({ where: { id: p.id }, data: { proofExpiresAt: new Date(Date.now() - 1000) } });
+    expect((await publicProof(pr2.token)).expired).toBe(true);
+    await expect(proofImage(pr2.token, 0)).rejects.toThrow(/صلاحية/);
+  });
+});

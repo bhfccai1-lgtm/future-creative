@@ -13,7 +13,7 @@ interface Analysis { product: Product; familyAr: string; identity: { id: string;
 interface Concept { key: 'A' | 'B' | 'C'; name: string; idea: string; metaphor: string; palette: Record<string, string>; finishes: string[]; scores: Record<string, number>; total: number }
 interface PageInfo { key: string; v: string; label: string; widthPx: number; heightPx: number; dpi: number; trimMm: { w: number; h: number }; bleedMm: number; folds: number[]; cut: string | null; kissCut: number; hidden: { label: string; rect: { x: number; y: number; w: number; h: number } }[]; safe: { x: number; y: number; w: number; h: number }[]; note: string | null }
 interface Qa { checks: { level: string; id: string; label: string; status: Status; detail?: string }[]; levels: Record<string, Status>; overall: Status; productionReady: boolean }
-interface Project { id: string; title: string; productId: string; status: string; brief: Brief; conceptKey: string | null; images: Record<string, string> | null; versions: { at: string; note: string }[] | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number; note?: string }[] } | null; mockupKey: string | null; approvedAt: string | null }
+interface Project { id: string; title: string; productId: string; status: string; brief: Brief; conceptKey: string | null; images: Record<string, string> | null; versions: { at: string; note: string }[] | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number; note?: string }[] } | null; mockupKey: string | null; approvedAt: string | null; proofToken?: string | null; proofExpiresAt?: string | null; clientDecision?: { status: string; name: string; note: string; at: string } | null }
 interface Brief { productId: string; request: string; business: string; activity: string; audience: string; lang: 'ar' | 'en' | 'bi'; sizeId: string; orientation: 'portrait' | 'landscape'; sides?: 1 | 2; pages?: number; material?: string; finishes: string[]; outputs: 'print' | 'ad' | 'both'; viewM?: number; conditions: { outdoor: boolean; waterproof: boolean; food: boolean; darkFabric: boolean }; finishTarget?: 'logo_headline' | 'logo' | 'headline' | 'name'; texts: Texts; shopBrandingConsent: boolean; logoKey?: string; dielineKey?: string; dieline?: { wMm: number; hMm: number; panels: { x: number; y: number; w: number; h: number }[]; fold: string[]; warnings: string[] }; frontPanel?: number }
 
 /** same text on the server and in the browser (no locale / time-zone drift → no hydration mismatch) */
@@ -231,7 +231,7 @@ const List = ({ cls, title, items }: { cls: string; title: string; items: string
 function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: { id: string; L: (a: string, e: string) => string; ui: Lang; accounts: Account[]; run: <T>(label: string, fn: () => Promise<T>, ok?: string) => Promise<T | null>; busy: boolean; onChanged: () => void; onDeleted: () => void }) {
   const [p, setP] = useState<Project | null>(null);
   const [pv, setPv] = useState<{ pages: PageInfo[]; qa: Qa; analysis: Analysis; concepts: Concept[]; concept: string } | null>(null);
-  const [sub, setSub] = useState<'design' | 'mockup' | 'prepress' | 'qa' | 'ad' | 'export' | 'history'>('design');
+  const [sub, setSub] = useState<'design' | 'mockup' | 'prepress' | 'qa' | 'proof' | 'ad' | 'export' | 'history'>('design');
   const [page, setPage] = useState(0);
   const [guides, setGuides] = useState(true);
   const [plan, setPlan] = useState<ImagePlan | null>(null);
@@ -255,7 +255,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
         <div className="min-w-0"><div className="truncate text-lg font-extrabold">{p.title}</div><div className="text-xs text-slate-500">{ui === 'ar' ? pv.analysis.product.ar : pv.analysis.product.en} · <span dir="ltr">{pv.analysis.trim.w}×{pv.analysis.trim.h} mm</span> · {L(PROJ_STATUS[p.status]?.[0] ?? p.status, PROJ_STATUS[p.status]?.[1] ?? p.status)}</div></div>
         <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${STATUS_STYLE[pv.qa.overall]}`}>QA: {L(STATUS_AR[pv.qa.overall], pv.qa.overall)}</span>
       </div>
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">{([['design', 'محرر الجهات', 'Front / Back Editor'], ['mockup', 'استوديو المعاينة', 'Mockup Studio'], ['prepress', 'ما قبل الطباعة', 'Prepress Center'], ['qa', 'الجودة والاعتماد', 'Quality Control'], ['ad', 'الإعلان', 'Social Advertising'], ['export', 'التصدير', 'Export Center'], ['history', 'السجل', 'Project History']] as const).map(([k, ar, en]) => <button key={k} type="button" onClick={() => setSub(k)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${sub === k ? 'bg-slate-900 text-white' : 'border bg-white'}`}>{L(ar, en)}</button>)}</div>
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">{([['design', 'محرر الجهات', 'Front / Back Editor'], ['mockup', 'استوديو المعاينة', 'Mockup Studio'], ['prepress', 'ما قبل الطباعة', 'Prepress Center'], ['qa', 'الجودة والاعتماد', 'Quality Control'], ['proof', 'بروفة العميل', 'Client proof'], ['ad', 'الإعلان', 'Social Advertising'], ['export', 'التصدير', 'Export Center'], ['history', 'السجل', 'Project History']] as const).map(([k, ar, en]) => <button key={k} type="button" onClick={() => setSub(k)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${sub === k ? 'bg-slate-900 text-white' : 'border bg-white'}`}>{L(ar, en)}</button>)}</div>
 
       {(sub === 'design' || sub === 'prepress') && cur && (
         <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
@@ -351,6 +351,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
         {pv.qa.productionReady ? <p className="rounded bg-emerald-50 p-2 text-xs font-bold text-emerald-800">✓ {L('جاهز للإنتاج حسب الفحوص المنفذة', 'Production-ready per the checks run')}</p> : approved && p.exports && <p className="rounded bg-slate-50 p-2 text-xs text-slate-700">{L('الملفات أُنشئت، لكن توجد فحوص تحتاج مراجعة (انظر الجودة).', 'Files created; some checks need attention.')}</p>}
       </div>}
 
+      {sub === 'proof' && <ProofPanel L={L} p={p} busy={busy} onCreate={() => act('proof', L('تجهيز البروفة…', 'Preparing proof…'), L('رابط البروفة جاهز ✓', 'Proof link ready ✓'))} />}
       {sub === 'ad' && <AdPanel L={L} accounts={accounts} approved={approved} busy={busy} onCreate={(body) => act('ad', L('تجهيز الإعلان…', 'Preparing the ad…'), L('أُرسل الإعلان لطابور الموافقات ✓', 'Sent to approvals ✓'), body)} />}
 
       {sub === 'history' && <div className="space-y-2 rounded-2xl border bg-white p-3 text-xs">
@@ -403,6 +404,28 @@ function ResolutionInfo({ plan, L }: { plan: ImagePlan; L: (a: string, e: string
       {plan.current && row(plan.current.source === 'upload' ? L('الصورة المرفوعة', 'Uploaded photo') : L('الصورة الحالية', 'Current picture'), plan.current)}
       {plan.current && plan.current.upscale > 1 && <div className="text-slate-500">{L(`مكبّرة ×${plan.current.upscale} — الفحص يقيس الصورة الأصلية`, `Upscaled ×${plan.current.upscale} — QA measures the original`)}</div>}
       {plan.ai?.verdict === 'low' && <div className="text-red-700">{L('صورة الذكاء الاصطناعي ستظهر مكسّرة بهذا المقاس — الأفضل صورة حقيقية عالية الدقة أو تصغير مساحة الصورة.', 'An AI picture will look pixelated at this size — use a real high-res photo or a smaller picture area.')}</div>}
+    </div>
+  );
+}
+
+/** online proof for the client: secret link (14 days), watermarked images, the client's approve / changes decision */
+function ProofPanel({ L, p, busy, onCreate }: { L: (a: string, e: string) => string; p: Project; busy: boolean; onCreate: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const url = p.proofToken && typeof window !== 'undefined' ? `${window.location.origin}/proof/${p.proofToken}` : '';
+  const valid = !!p.proofExpiresAt && new Date(p.proofExpiresAt) > new Date();
+  const d = p.clientDecision;
+  const msg = encodeURIComponent(`مرحبًا 👋\nهذه بروفة تصميمك «${p.title}» للمراجعة:\n${url}\nيرجى مراجعة الأسماء والأرقام ثم الضغط على «أعتمد التصميم» أو كتابة التعديلات.`);
+  return (
+    <div className="space-y-3 rounded-2xl border bg-white p-3 text-sm">
+      <p className="text-xs text-slate-600">{L('رابط سري يُرسل للعميل (بدون تسجيل دخول): يرى تصميمه بعلامة «بروفة» مع المواصفات، ثم يعتمد أو يطلب تعديلات — ويصلك تنبيه. الاعتماد مربوط بنسخة التصميم: أي تعديل بعده يحتاج بروفة جديدة.', 'A secret link for the client: watermarked design + specs → approve or request changes.')}</p>
+      {d && <div className={`rounded-lg p-2 text-xs font-bold ${d.status === 'approved' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>{d.status === 'approved' ? `✅ ${L('اعتمده العميل', 'Approved by')} ${d.name}` : `✏️ ${d.name} ${L('طلب تعديلات', 'requested changes')}: ${d.note}`} <span className="font-normal text-slate-500" dir="ltr">· {fmtDate(d.at)}</span></div>}
+      <button type="button" disabled={busy} onClick={onCreate} className="w-full rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white">{p.proofToken && valid ? L('تحديث البروفة للنسخة الحالية', 'Refresh proof for the current version') : L('إنشاء رابط بروفة للعميل', 'Create client proof link')}</button>
+      {url && valid && <div className="space-y-2">
+        <div className="flex gap-2"><input readOnly className="input ltr min-w-0 flex-1 text-xs" value={url} /><button type="button" className="shrink-0 rounded-lg border px-3 text-xs font-bold" onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(true); } catch { setCopied(false); } }}>{copied ? L('نُسخ ✓', 'Copied ✓') : L('نسخ', 'Copy')}</button></div>
+        <a href={`https://wa.me/?text=${msg}`} target="_blank" rel="noreferrer" className="block rounded-lg bg-emerald-600 px-3 py-2 text-center text-xs font-bold text-white">{L('إرسال عبر واتساب', 'Send via WhatsApp')}</a>
+        <a href={url} target="_blank" rel="noreferrer" className="block text-center text-xs font-bold text-indigo-700 underline">{L('فتح صفحة العميل', 'Open client page')}</a>
+        <p className="text-[11px] text-slate-500">{L('صالح حتى', 'Valid until')} <span dir="ltr">{fmtDate(p.proofExpiresAt!)}</span></p>
+      </div>}
     </div>
   );
 }

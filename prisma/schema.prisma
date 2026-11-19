@@ -800,6 +800,12 @@ model PrintProject {
   exports      Json?
   mockupKey    String?
   versions     Json?
+  /** online client proof: secret link, the design hash it shows, images, the client's decision */
+  proofToken     String?   @unique
+  proofHash      String?
+  proofExpiresAt DateTime?
+  proofKeys      Json?
+  clientDecision Json?
   createdBy    String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

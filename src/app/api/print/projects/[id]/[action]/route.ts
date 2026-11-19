@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { api } from '@/lib/auth/server';
 import { AppError } from '@/lib/errors';
 import { adFromPrint, approvePrint, exportPrint, generateHero, imagePlanPrint, mockupPrint, previewPrint, undoPrint, upscalePrint } from '@/lib/print/service';
+import { createProof } from '@/lib/print/proof';
 import { printUser } from '../../../_user';
 type P = { params: Promise<{ id: string; action: string }> };
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,7 @@ export const POST = api<P>('ads:create', async (req, { params, user }) => {
     case 'export': return NextResponse.json({ ok: true, ...(await exportPrint(id, u)) });
     case 'mockup': return NextResponse.json({ ok: true, ...(await mockupPrint(id, u)) });
     case 'image': return NextResponse.json({ ok: true, project: await generateHero(id, u) });
+    case 'proof': return NextResponse.json({ ok: true, ...(await createProof(id, u)) });
     case 'upscale': return NextResponse.json({ ok: true, ...(await upscalePrint(id, u)) });
     case 'undo': return NextResponse.json({ ok: true, project: await undoPrint(id, u) });
     case 'ad': {

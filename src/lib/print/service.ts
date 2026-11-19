@@ -167,6 +167,12 @@ async function renderAt(p: Awaited<ReturnType<typeof loadPrint>>, dpi: number, p
 /** preview dpi: enough to read on a phone without rendering a 2-metre banner at 300 DPI */
 const previewDpi = (a: Analysis) => Math.max(12, Math.min(110, Math.round(1600 / (Math.max(a.trim.w, a.trim.h) / 25.4))));
 
+/** the design as it will print (no preview placeholders), at preview resolution — used for the client proof */
+export async function previewPages(p: Awaited<ReturnType<typeof loadPrint>>) {
+  const ctx = await context(p);
+  return renderDesign({ a: ctx.a, b: ctx.b, concept: ctx.concept, dpi: Math.min(150, previewDpi(ctx.a) * 1.5), images: ctx.images, logo: ctx.logo, preview: false });
+}
+
 export async function previewPrint(id: string, user: User) {
   const p = await loadPrint(id, user);
   const { a, b, pages, concepts, concept } = await renderAt(p, previewDpi((await context(p)).a), true);
