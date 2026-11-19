@@ -1,0 +1,77 @@
+# «هل أدمج؟» — answers the question on every pull request and watches main.
+#   • every PR gets ONE comment (updated in place) the moment CI starts and when it ends:
+#       ⏳ wait · ✅ safe to merge · ⛔ do not merge (which job failed + link)
+#   • main: when CI fails an issue «🔴 main is broken» is opened (or updated); the next green run closes it.
+# It reacts to the CI workflow (workflow_run), so it also works for Dependabot PRs and never needs repository settings.
+name: Merge readiness
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [requested, completed]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const done = run.status === 'completed';
+            const ok = done && run.conclusion === 'success';
+            const cancelled = done && ['cancelled', 'skipped', 'stale'].includes(run.conclusion);
+            // failing jobs, with links
+            let failed = [];
+            if (done && !ok) {
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { owner, repo, run_id: run.id, per_page: 100 });
+              failed = jobs.filter((j) => j.conclusion && !['success', 'skipped'].includes(j.conclusion)).map((j) => `- \`${j.name}\` — [السجل](${j.html_url})`);
+            }
+            const sha = run.head_sha.slice(0, 7);
+
+            // ── main: open / update / close the «main is broken» issue ──
+            if (run.head_branch === 'main' && run.event !== 'pull_request') {
+              if (!done || cancelled) return;
+              const TITLE = '🔴 main معطّل — فحص GitHub (CI) فشل';
+              const open = (await github.rest.issues.listForRepo({ owner, repo, state: 'open', labels: 'main-broken', per_page: 10 })).data;
+              if (ok) {
+                for (const i of open) {
+                  await github.rest.issues.createComment({ owner, repo, issue_number: i.number, body: `✅ عاد أخضر عند \`${sha}\` — [التشغيل](${run.html_url}). أُغلقت المشكلة تلقائيًا.` });
+                  await github.rest.issues.update({ owner, repo, issue_number: i.number, state: 'closed', state_reason: 'completed' });
+                }
+                return;
+              }
+              const body = [
+                `فشل فحص CI على \`main\` عند \`${sha}\` — [التشغيل](${run.html_url}).`, '', '**المهام الفاشلة:**', ...(failed.length ? failed : ['- (انظر التشغيل)']), '',
+                'ماذا يعني هذا:', '- السيرفر **لن يتحدّث** لهذا الإصدار (`scripts/update.sh` يرفض أي إصدار غير أخضر) — النظام الحالي يبقى يعمل.',
+                '- لا تدمج طلبات جديدة حتى يعود أخضر، ولا تنشر Release.', '', '_تُغلق هذه المشكلة تلقائيًا عند أول تشغيل أخضر على main._',
+              ].join('\n');
+              if (open.length) await github.rest.issues.createComment({ owner, repo, issue_number: open[0].number, body });
+              else {
+                await github.rest.issues.createLabel({ owner, repo, name: 'main-broken', color: 'd73a4a', description: 'CI is red on main' }).catch(() => {});
+                await github.rest.issues.create({ owner, repo, title: TITLE, body, labels: ['main-broken'] });
+              }
+              return;
+            }
+
+            // ── pull request: one sticky comment ──
+            let prs = run.pull_requests ?? [];
+            if (!prs.length) prs = (await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: run.head_sha })).data.filter((p) => p.state === 'open');
+            if (!prs.length || cancelled) return;
+            const MARK = '<!-- merge-readiness -->';
+            const text = !done
+              ? `${MARK}\n### ⏳ انتظر — الفحص يعمل الآن\nلا تدمج قبل أن يصبح هذا التعليق ✅ (عادة 15–25 دقيقة). — \`${sha}\` · [التشغيل](${run.html_url})`
+              : ok
+                ? `${MARK}\n### ✅ جاهز للدمج\nكل الفحوص خضراء (البناء، اختبارات التكامل، Docker) عند \`${sha}\` — [التشغيل](${run.html_url}).\nبعد الدمج: حدّث السيرفر \`bash scripts/update.sh\` أو انشر Release إن كان التحديث التلقائي مفعّلًا.`
+                : `${MARK}\n### ⛔ لا تدمج\nفشل الفحص عند \`${sha}\` — الدمج الآن يجعل \`main\` أحمر ويوقف تحديث السيرفر.\n\n**المهام الفاشلة:**\n${failed.join('\n') || '- (انظر التشغيل)'}\n\n[التشغيل](${run.html_url})`;
+            for (const pr of prs) try {
+              const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr.number, per_page: 100 });
+              const mine = comments.find((c) => c.body?.includes(MARK));
+              if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body: text });
+              else await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: text });
+            } catch (e) { core.warning(`PR #${pr.number}: could not comment (${e.message}) — e.g. a read-only token for Dependabot runs`); }
