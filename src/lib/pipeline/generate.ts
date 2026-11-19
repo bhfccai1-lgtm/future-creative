@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import { fitToAlgorithm, type AlgoFit } from '../growth/algorithm';
+import { assessImage, retryHint, type ImageQuality } from '../creative/image-quality';
 import { applyProofIssues, PROOF_SYSTEM, type ProofCopy, type ProofIssue } from '../creative/ai-proofread';
 import { pickFromWeek, programContentTypes } from '../growth/program';
 import { findBanned, stripBanned } from '../creative/banned';
@@ -295,6 +296,18 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const realPhoto = d.realPhotoKey ? await loadReference(d.realPhotoKey) : null;
     if (d.realPhotoKey && !realPhoto) throw new AppError('NO_PHOTO', 'صورة العمل المنجز غير موجودة — ارفعها مرة أخرى.', 422);
     type Scene = Awaited<ReturnType<typeof provider.generateScene>>;
+    // ── IMAGE QUALITY GATE (layered scenes + reel shots): text drawn by mistake, softness, exposure ──
+    const gateOn = s.ai.imageQualityGate && !provider.isDryRun && !realPhoto;
+    const qualities: ImageQuality[] = [];
+    let gateRetried = false, chosenQ: ImageQuality | null = null;
+    const assessScene = async (png: Buffer, jobId?: string) => assessImage(png, {
+      readText: provider.readText ? async (jpg: Buffer) => {
+        await assertBudget(s, estimateTextCost(s, 1200, 120));
+        const r = await provider.readText!(jpg, s.ai.textModel);
+        await recordUsage({ jobId, provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
+        return r.text;
+      } : null,
+    });
     const sceneFirst: Scene = realPhoto
       ? ({ png: await sharp(realPhoto).resize(1024, 1536, { fit: 'cover', position: sharp.strategy.attention }).png().toBuffer(), model: 'real-photo' } as Scene)
       : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
@@ -310,6 +323,28 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: aiFull ? posterSize : '1024x1536', seedHint: `${ad.id}${k ? `-c${k}` : ''}`, references }));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         candidates.push(img);
+        if (gateOn && !aiFull) {
+          let q = await assessScene(img.png, jobId); qualities.push(q);
+          // one corrective re-draw per design: the reason goes into the prompt (only within the AI budget)
+          if (!q.pass && !gateRetried) {
+            gateRetried = true;
+            try {
+              await assertBudget(s, estimateImageCost(s, imgQuality));
+              const again = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt + retryHint(q), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-q${k}`, references }));
+              await recordUsage({ jobId, provider: provider.name, model: again.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+              q = await assessScene(again.png, jobId); candidates.push(again); qualities.push(q);
+            } catch { /* budget reached → keep the best attempt; QC shows the issue */ }
+          }
+        }
+      }
+      // the quality gate decides which candidates the art director may choose from: passing ones, else the best-scoring
+      if (gateOn && !aiFull && qualities.length === candidates.length) {
+        const ok = candidates.filter((_, i) => qualities[i].pass);
+        const bestI = qualities.reduce((b, q, i) => (q.score > qualities[b].score ? i : b), 0);
+        const keep = ok.length ? ok : [candidates[bestI]];
+        const keptQ = ok.length ? qualities.filter((q) => q.pass) : [qualities[bestI]];
+        candidates.splice(0, candidates.length, ...keep);
+        qualities.splice(0, qualities.length, ...keptQ);
       }
       // Self-correcting full-AI poster: read the drawn text BEFORE composing; misspelled/missing words → re-draw with an exact correction note
       let pool = candidates;
@@ -350,15 +385,17 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         pool = passing.length ? passing : [candidates[fewest]];
         textCheck = { attempts: candidates.length, passed: passing.length > 0, textPassed: passing.length > 0 || !!checks[fewest]?.textOk, missing: passing.length ? [] : (checks[fewest]?.missing ?? []), ...(passing.length ? {} : { foreign: checks[fewest]?.foreign ?? [], layoutIssues: checks[fewest]?.layoutIssues ?? [] }) };
       }
-      if (pool.length === 1) return pool[0];
+      if (pool.length === 1) { chosenQ = qualities[0] ?? null; return pool[0]; }
       try {
         const thumbs = await Promise.all(pool.map((c) => sharp(c.png).resize(512).jpeg({ quality: 80 }).toBuffer()));
         const j = await provider.judgeImages!(thumbs, `${brief!.headline} — ${brief!.sceneDescription}`.slice(0, 1500), s.ai.textModel);
         await recordUsage({ jobId, provider: provider.name, model: j.model, kind: 'text', inputTokens: j.usage.inputTokens, outputTokens: j.usage.outputTokens, costUsd: estimateTextCost(s, j.usage.inputTokens, j.usage.outputTokens) });
         artDirector = { candidates: pool.length, best: j.best, scores: j.scores, reason: j.reason };
+        chosenQ = qualities[j.best] ?? qualities[0] ?? null;
         return pool[j.best] ?? pool[0];
       } catch (e) {
         artDirector = { candidates: pool.length, best: 0, scores: [], reason: `judge failed: ${(e as Error).message.slice(0, 120)}` };
+        chosenQ = qualities[0] ?? null;
         return pool[0];
       }
     });
@@ -404,11 +441,26 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const story = (brief.storyboard ?? []).filter((x) => x.scene.trim());
     const shotFor = (i: number) => (story[i]?.scene ? `${story[i].scene} Same product as the first shot: ${brief!.sceneDescription.slice(0, 300)}` : `${brief!.sceneDescription} ${SHOTS[(i - 1) % SHOTS.length]}`);
     const extraScenes: { png: Buffer; model: string }[] = [];
+    const shotQualities: ImageQuality[] = []; let shotRetries = 0;
     for (let i = 1; i < sceneCount; i++) {
       await assertBudget(s, estimateImageCost(s, imgQuality));
       extraScenes.push(await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(`${shotFor(i)}`, creativeStyle, { lighting: lightingP, concept: conceptP }), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
+        const shotPrompt = scenePrompt(`${shotFor(i)}`, creativeStyle, { lighting: lightingP, concept: conceptP });
+        let img = await retrying(s.ai.maxRetries, () => provider.generateScene(shotPrompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+        if (gateOn) {
+          let q = await assessScene(img.png, jobId);
+          if (!q.pass) {
+            try {
+              await assertBudget(s, estimateImageCost(s, imgQuality));
+              const again = await retrying(s.ai.maxRetries, () => provider.generateScene(shotPrompt + retryHint(q), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-${i}-q` }));
+              await recordUsage({ jobId, provider: provider.name, model: again.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+              const q2 = await assessScene(again.png, jobId); shotRetries++;
+              if (q2.score >= q.score) { img = again; q = q2; }
+            } catch { /* budget reached → keep the first shot */ }
+          }
+          shotQualities.push(q);
+        }
         return img;
       }));
     }
@@ -561,6 +613,19 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       aiText = { expected, transcript };
     }
 
+    // the picture quality behind this design (shown on the design page and in QC)
+    const cq = chosenQ as ImageQuality | null; // set inside the image job above
+    const imageQuality = gateOn && (cq || shotQualities.length) ? {
+      score: Math.min(cq?.score ?? 100, ...shotQualities.map((q) => q.score)),
+      pass: (cq?.pass ?? true) && shotQualities.every((q) => q.pass),
+      issues: [...new Set([...(cq?.issues ?? []), ...shotQualities.flatMap((q) => q.issues)].map((i) => `${i.level === 'fail' ? '✗' : '•'} ${i.ar}`))].slice(0, 8),
+      sharpness: cq?.sharpness ?? null, retried: (gateRetried ? 1 : 0) + shotRetries, checked: qualities.length + shotQualities.length,
+    } : null;
+    if (imageQuality) {
+      const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(o ?? {}), imageQuality } as Prisma.InputJsonValue } });
+    }
+
     // ── Step 10: automated quality control ──
     const dups = await findDuplicates(account.id, { sha256: primarySha, phash: finalHash, headline: brief.headline }, s.duplicateWindowDays, ad.id);
     const qc = await runQualityChecks({
@@ -574,6 +639,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,
       algorithm: { score: algoFit.after, grade: algoFit.grade, remaining: algoFit.remaining.map((r) => r.label) },
       aiProofread: proof,
+      imageQuality,
     });
 
     await storeFingerprints(account.id, ad.id, [

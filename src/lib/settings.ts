@@ -75,6 +75,9 @@ export const SettingsSchema = z.object({
     creativeStyle: z.string().default('Premium commercial product photography, cinematic lighting, deep navy and elegant gold accents, clean composition with negative space at top and bottom for text.'),
     languages: z.array(z.enum(['ar', 'en', 'ml'])).default(['ar', 'en', 'ml']),
     useAiReview: z.boolean().default(false),
+    /** IMAGE QUALITY GATE for ad scenes (layered designs and reel shots): text drawn inside the picture, softness,
+     *  exposure — a failed scene is regenerated once with the reason. One small vision call per picture. */
+    imageQualityGate: z.boolean().default(true),
     /** Full-AI posters (AI-drawn text): require a human approval before publishing. Admin may turn it off. */
     aiFullRequiresApproval: z.boolean().default(true),
     /** Automatic designs (schedule, campaigns, n8n) that don't choose: design method and style. 'auto' method = full AI poster for vertical formats on approval-mode accounts, verified layers for autonomous ones. */
