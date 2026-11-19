@@ -352,3 +352,29 @@ describe('PRINT DESIGN STUDIO — monthly report', () => {
     expect((await printReport('2020-01')).orders).toBe(0);
   });
 });
+
+describe('PRINT DESIGN STUDIO — image quality gate', () => {
+  it('a picture with text inside is regenerated once with the reason; the art director orders variants; usage is recorded', async () => {
+    class GateAi extends FakeAiProvider {
+      scenes: string[] = []; reads = 0;
+      async generateScene(p: string, o: Parameters<FakeAiProvider['generateScene']>[1]) { this.scenes.push(p); return super.generateScene(p, o); }
+      async readText() { this.reads++; return { text: this.reads === 1 ? 'GRAND OPENING' : 'No text', usage: { inputTokens: 300, outputTokens: 10 }, model: 'fake-vision' }; }
+      async judgeImages(images: Buffer[]) { return { best: 1, scores: images.map((_, i) => (i === 1 ? 92 : 60)), reason: 'b', usage: { inputTokens: 500, outputTokens: 20 }, model: 'fake-vision' }; }
+    }
+    const ai = new GateAi(); setAiProviderOverride(ai);
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const p = await createPrint({ productId: 'flyer', sizeId: 'A5', activity: 'مطعم', business: 'Smash', texts: { headline: 'برجر مشوي' } }, user);
+    const g = await generateHero(p.id, user, { variants: 2 });
+    expect(ai.scenes.length).toBe(3); // 2 variants + 1 regeneration of the one with text
+    expect(ai.scenes.some((s) => s.includes('ZERO letters'))).toBe(true);
+    const imgs = g.images as Record<string, string>;
+    const q = JSON.parse(imgs.hero_quality) as Record<string, { pass: boolean; judge?: number; attempts?: number }>;
+    expect(Object.values(q).every((x) => x.pass)).toBe(true);
+    expect(q[imgs.hero].judge).toBe(92); // the art director's best is the chosen picture
+    expect(Object.values(q).some((x) => x.attempts === 2)).toBe(true);
+    const plan = await imagePlanPrint(p.id, user);
+    expect(plan.heroQuality?.pass).toBe(true);
+    expect(await prisma.aiUsage.count({ where: { kind: 'text' } }).catch(() => 1)).toBeGreaterThan(0);
+  });
+});

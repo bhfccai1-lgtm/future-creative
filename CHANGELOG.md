@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **AI picture quality gate** (print studio + EDUCATION MASTER): every picture is checked for text drawn inside it (vision read), real sharpness (strongest edges vs tonal range — flat illustrations are not called soft), exposure/contrast, and, for cut-outs, margins and real transparency; a failing picture is regenerated once with the reason added to the prompt (only within the AI budget, all usage recorded); with several variants the art director scores them and a passing picture always wins; the studio shows the verdict, score, art-director mark and any auto-regeneration; uploaded client photos get the technical checks only.
 - **Reels render faster:** decoded still frames are reused instead of being re-decoded by FFmpeg for every second (#13).
 - **Fix — intermittent test failure on `main`:** Metricool «link all brands» picked the free account slot by creation time only; accounts created in the same millisecond came back in random order. The id now breaks ties, so the slot order is deterministic (the CI failure after #13 was this, not the Reels change).
 - **CI:** commits on `main` are never cancelled any more (only superseded PR runs are), so every commit gets a real ✓ or ✗ — the server's update check no longer sees «failure» for a run that was merely cancelled; a weekly run on `main` (Sunday 02:17) catches intermittent tests and outside drift; a new check fails when `prisma/schema.prisma` changes without a migration.

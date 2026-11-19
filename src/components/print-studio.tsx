@@ -19,8 +19,9 @@ interface Brief { productId: string; request: string; business: string; activity
 /** same text on the server and in the browser (no locale / time-zone drift → no hydration mismatch) */
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bahrain', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 const fmtDate = (d: string | Date) => DATE_FMT.format(new Date(d));
+interface PicQuality { score: number; pass: boolean; sharp: number | null; issues: { l: string; t: string }[]; judge?: number; attempts?: number }
 type Verdict = 'ok' | 'acceptable' | 'low';
-interface ImagePlan { done: boolean; live: boolean; costUsd: number; costs?: { low: number; medium: number; high: number }; plan?: { size: string; quality: 'low' | 'medium' | 'high'; background: string; extend: string; keepW: number; keepH: number; ratioBox: number; notes: string[] }; variants?: string[]; chosen?: number; areaMm: { w: number; h: number } | null; target: number; eye: number | null; viewM: number | null; ai: { px: string; ppi: number; verdict: Verdict } | null; current: { px: string; ppi: number; verdict: Verdict; upscale: number; source: 'ai' | 'upload' } | null; needPx: { w: number; h: number } | null }
+interface ImagePlan { done: boolean; live: boolean; costUsd: number; costs?: { low: number; medium: number; high: number }; plan?: { size: string; quality: 'low' | 'medium' | 'high'; background: string; extend: string; keepW: number; keepH: number; ratioBox: number; notes: string[] }; variants?: string[]; chosen?: number; heroQuality?: PicQuality | null; qualities?: Record<string, PicQuality>; areaMm: { w: number; h: number } | null; target: number; eye: number | null; viewM: number | null; ai: { px: string; ppi: number; verdict: Verdict } | null; current: { px: string; ppi: number; verdict: Verdict; upscale: number; source: 'ai' | 'upload' } | null; needPx: { w: number; h: number } | null }
 type Texts = { headline: string; subline: string; body: string; name: string; role: string; phone: string; email: string; website: string; address: string; cta: string; extra: string[] };
 const STATUS_STYLE: Record<Status, string> = { PASS: 'bg-emerald-100 text-emerald-800', NEEDS_REVISION: 'bg-amber-100 text-amber-800', BLOCKED: 'bg-red-100 text-red-800', NOT_VERIFIED: 'bg-slate-100 text-slate-700' };
 const STATUS_AR: Record<Status, string> = { PASS: 'ناجح', NEEDS_REVISION: 'يحتاج تعديل', BLOCKED: 'موقوف', NOT_VERIFIED: 'غير متحقق' };
@@ -314,10 +315,11 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
               <div className="rounded-2xl border bg-white p-3 text-sm">
                 <div className="mb-2 font-extrabold">🎨 {L('صورة الذكاء الاصطناعي', 'AI picture')}</div>
                 <p className="text-[11px] text-slate-500">{L('مشهد حسب النشاط والاتجاه — بدون نصوص أو شعارات داخله. لا يُعاد توليد بقية التصميم.', 'A scene for the activity — no text or logos inside. The rest of the design is kept.')}</p>
+                {plan?.heroQuality && <QualityBadge q={plan.heroQuality} L={L} />}
                 {plan?.areaMm && <ResolutionInfo plan={plan} L={L} />}
                 {plan && (plan.live ? <HeroGenerator plan={plan} L={L} busy={busy} onGenerate={(quality, variants) => act('image', L('يرسم الصورة…', 'Painting…'), L('أُضيفت الصورة ✓', 'Picture added ✓'), { quality, variants })} /> : <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">{L('يحتاج مفتاح OpenAI — يظهر مكان الصورة في المعاينة فقط.', 'Needs an OpenAI key — the picture area shows in the preview only.')}</p>)}
                 {plan?.plan && <ul className="mt-2 list-disc space-y-0.5 ps-4 text-[11px] text-slate-500">{[`${L('لوحة النموذج', 'Model canvas')} ${plan.plan.size} · ${L('نسبة المساحة', 'box ratio')} ${plan.plan.ratioBox}:1`, ...plan.plan.notes].map((n, i) => <li key={i}>{n}</li>)}</ul>}
-                {(plan?.variants?.length ?? 0) > 1 && <div className="mt-2 grid grid-cols-3 gap-1.5">{plan!.variants!.map((k, i) => <button key={k} type="button" disabled={busy || plan!.chosen === i} onClick={() => act('pick', L('اختيار…', 'Choosing…'), L('اختيرت الصورة ✓', 'Chosen ✓'), { index: i })} className={`overflow-hidden rounded-lg border-2 ${plan!.chosen === i ? 'border-indigo-700' : 'border-transparent'}`}><img src={`/api/media/${k}`} alt={`${L('بديل', 'variant')} ${i + 1}`} className="aspect-square w-full bg-slate-100 object-contain" /></button>)}</div>}
+                {(plan?.variants?.length ?? 0) > 1 && <div className="mt-2 grid grid-cols-3 gap-1.5">{plan!.variants!.map((k, i) => <button key={k} type="button" disabled={busy || plan!.chosen === i} onClick={() => act('pick', L('اختيار…', 'Choosing…'), L('اختيرت الصورة ✓', 'Chosen ✓'), { index: i })} className={`overflow-hidden rounded-lg border-2 ${plan!.chosen === i ? 'border-indigo-700' : 'border-transparent'}`}><img src={`/api/media/${k}`} alt={`${L('بديل', 'variant')} ${i + 1}`} className="aspect-square w-full bg-slate-100 object-contain" />{plan!.qualities?.[k] && <span className={`block text-[10px] font-bold ${plan!.qualities[k].pass ? 'text-emerald-700' : 'text-red-700'}`}>{plan!.qualities[k].pass ? '✓' : '⚠'} {plan!.qualities[k].judge ?? plan!.qualities[k].score}</span>}</button>)}</div>}
                 {plan?.current && plan.current.verdict !== 'ok' && <button type="button" disabled={busy} onClick={() => act('upscale', L('تكبير الصورة…', 'Upscaling…'), L('كُبّرت الصورة — البكسلات أنعم (لا تفاصيل جديدة) ✓', 'Upscaled ✓'))} className="mt-2 w-full rounded-lg border border-indigo-300 px-3 py-2 text-xs font-bold text-indigo-800">{L('تكبير احترافي لتنعيم البكسلات', 'Professional upscale (smoother pixels)')}{plan.current.upscale > 1 ? ` (${L('الحالي', 'now')} ×${plan.current.upscale})` : ''}</button>}
                 <label className="mt-2 block text-xs font-bold">{L('أو ارفع صورة عالية الدقة (تصوير حقيقي)', 'Or upload a high-resolution photo')}{plan?.needPx && <span className="font-normal text-slate-500"> — {L('المطلوب لهذه المساحة', 'needed here')} <span dir="ltr">{plan.needPx.w}×{plan.needPx.h} px</span></span>}<input type="file" accept="image/jpeg,image/png,image/webp,image/tiff" className="mt-1 block w-full text-xs" onChange={(e) => e.target.files?.[0] && upload('hero', e.target.files[0])} /></label>
               </div>
@@ -537,6 +539,17 @@ function ProductionPanel({ L, p, approved, busy, onStage }: { L: (a: string, e: 
       <a href={`/print-job/${p.id}`} target="_blank" rel="noreferrer" className="block rounded-lg border px-3 py-2 text-center text-xs font-bold">{L('أمر الشغل للورشة (طباعة)', 'Workshop job sheet (print)')}</a>
       {(p.production?.history.length ?? 0) > 0 && <ul className="divide-y text-[11px]">{[...p.production!.history].reverse().map((h, i) => <li key={i} className="flex justify-between gap-2 py-1"><span>{STAGES_UI.find((s) => s[0] === h.stage)?.[1] ?? h.stage}{h.note ? ` — ${h.note}` : ''}</span><span className="text-slate-400" dir="ltr">{fmtDate(h.at)}</span></li>)}</ul>}
       <p className="text-[11px] text-slate-500">{L('«تم التسليم» يحوّل العميل المرتبط في «العملاء والطلبات» إلى «طلب مكتمل».', '«Delivered» marks the linked customer as won.')}</p>
+    </div>
+  );
+}
+
+/** the quality gate's verdict for the chosen picture */
+function QualityBadge({ q, L }: { q: PicQuality; L: (a: string, e: string) => string }) {
+  return (
+    <div className={`mt-2 rounded-lg p-2 text-[11px] ${q.pass ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-900'}`}>
+      <div className="font-bold">{q.pass ? `✓ ${L('اجتازت فحص الجودة', 'Passed the quality gate')}` : `⚠ ${L('لم تجتز فحص الجودة', 'Did not pass the quality gate')}`} · {L('التقييم', 'score')} {q.score}{q.judge !== undefined ? ` · ${L('المدير الفني', 'art director')} ${q.judge}/100` : ''}</div>
+      <div className="text-slate-600">{L('بلا نصوص داخلها', 'no text inside')}{q.issues.some((i) => i.t.includes('نص')) ? ' ✗' : ' ✓'} · {L('الحدة', 'sharpness')} {q.sharp ?? '—'}{(q.attempts ?? 1) > 1 ? ` · ${L('أُعيد توليدها تلقائيًا', 'auto-regenerated')} (${q.attempts})` : ''}</div>
+      {q.issues.length > 0 && <ul className="mt-1 list-disc ps-4">{q.issues.map((i, k) => <li key={k}>{i.t}</li>)}</ul>}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { AppError } from '../errors';
 import { storage } from '../storage';
 import { getSettings, type Settings } from '../settings';
 import { getAiProvider } from '../ai';
-import { assertBudget, estimateImageCost, recordUsage } from '../ai/cost';
+import { assertBudget, estimateImageCost, estimateTextCost, recordUsage } from '../ai/cost';
 import { enq } from '../queue/queues';
 import { inspectPdf } from '../edu/pdf';
 import { fontDir } from '../render/fonts';
@@ -22,6 +22,8 @@ import { runPrintQa, type QaReport } from './qa';
 import { buildPrintPdf } from './pdf';
 import { parseDieline, type Dieline } from './dieline';
 import { artPlan, extendToRatio } from './artdirection';
+import { generateChecked, qualitySummary } from '../creative/checked-image';
+import { assessImage } from '../creative/image-quality';
 
 /**
  * PRINT DESIGN STUDIO workflow:
@@ -119,7 +121,9 @@ export async function imagePlanPrint(id: string, user: User) {
     const plan = artPlan(a, b, concept, { w: area.w, h: area.h });
     const costs = { low: estimateImageCost(s, 'low'), medium: estimateImageCost(s, 'medium'), high: estimateImageCost(s, 'high') };
     const variants = (imgs.hero_variants ?? '').split('|').filter(Boolean);
-    return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, plan.quality, 1) * 1000) / 1000, costs, prompt: plan.prompt, plan: { size: plan.size, quality: plan.quality, background: plan.background, extend: plan.extend, keepW: plan.keepW, keepH: plan.keepH, ratioBox: plan.ratioBox, notes: plan.notes }, variants, chosen: variants.indexOf(imgs.hero ?? ''), areaMm: { w: Math.round(area.w), h: Math.round(area.h) }, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx };
+    let qualities: Record<string, { score: number; pass: boolean; sharp: number | null; issues: { l: string; t: string }[]; judge?: number; attempts?: number }> = {};
+    try { qualities = JSON.parse(imgs.hero_quality ?? '{}'); } catch { qualities = {}; }
+    return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, plan.quality, 1) * 1000) / 1000, costs, prompt: plan.prompt, plan: { size: plan.size, quality: plan.quality, background: plan.background, extend: plan.extend, keepW: plan.keepW, keepH: plan.keepH, ratioBox: plan.ratioBox, notes: plan.notes }, variants, chosen: variants.indexOf(imgs.hero ?? ''), qualities, heroQuality: imgs.hero ? qualities[imgs.hero] ?? null : null, areaMm: { w: Math.round(area.w), h: Math.round(area.h) }, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx };
   }
   return { slot: 'hero', done: has, live, costUsd: Math.round(estimateImageCost(s, 'medium', 1) * 1000) / 1000, prompt: heroPrompt(a, b, concept), areaMm: null, target: a.targetPpi, eye, viewM: viewM ?? null, ai, current, needPx: null };
 }
@@ -154,21 +158,32 @@ export async function generateHero(id: string, user: User, opts: { quality?: 'lo
   const plan = artPlan(ctx.a, ctx.b, ctx.concept, box);
   const quality = opts.quality ?? plan.quality, n = Math.max(1, Math.min(3, opts.variants ?? 1));
   await assertBudget(s, estimateImageCost(s, quality, n));
+  // every picture passes the quality gate (text inside, softness, cut-out margins) — one automatic retry on failure
   const made = await Promise.all(Array.from({ length: n }, async (_, k) => {
-    const img = await provider.generateScene(plan.prompt, { model: s.ai.imageModel, quality, size: plan.size, seedHint: `${id}:hero:${Date.now()}:${k}`, background: plan.background });
+    const img = await generateChecked(provider, s, plan.prompt, { model: s.ai.imageModel, quality, size: plan.size, seedHint: `${id}:hero:${Date.now()}:${k}`, background: plan.background }, { transparent: plan.background === 'transparent' });
     const meta = await sharp(img.png).metadata(); if (!meta.width) throw new AppError('BAD_IMAGE', 'لم يرجع النموذج صورة صالحة.', 502);
-    await recordUsage({ provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, quality) });
     const out = plan.extend !== 'none' && plan.background === 'opaque' ? await extendToRatio(img.png, plan.ratioBox) : img.png;
     const key = `print/${id}/hero-${k}-${crypto.createHash('sha256').update(out).digest('hex').slice(0, 10)}.png`;
     await storage().put(key, out, 'image/png');
-    return { key, model: img.model };
+    return { key, model: img.model, quality: img.quality, attempts: img.attempts, png: img.png, judge: undefined as number | undefined };
   }));
+  // several variants: the art director scores them; a picture that failed the gate never wins over one that passed
+  if (n > 1 && provider.judgeImages) {
+    try {
+      const thumbs = await Promise.all(made.map((m) => sharp(m.png).flatten({ background: '#ffffff' }).resize(512, 512, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer()));
+      const j = await provider.judgeImages(thumbs, plan.prompt.slice(0, 1500), s.ai.textModel);
+      await recordUsage({ provider: provider.name, model: j.model, kind: 'text', inputTokens: j.usage.inputTokens, outputTokens: j.usage.outputTokens, costUsd: estimateTextCost(s, j.usage.inputTokens, j.usage.outputTokens) });
+      made.forEach((m, i) => { m.judge = Math.round(j.scores[i] ?? 0); });
+    } catch { /* the art director is optional */ }
+  }
+  made.sort((x, y) => (Number(y.quality.pass) - Number(x.quality.pass)) || ((y.judge ?? y.quality.score) - (x.judge ?? x.quality.score)));
   const prev = imagesOf(p);
   for (const k of [prev.hero, prev.hero_original, ...(prev.hero_variants ?? '').split('|')]) if (k && !made.some((m) => m.key === k)) await storage().remove(k).catch(() => undefined);
-  const { hero_original: _o, hero_native: _n, hero_upscale: _u, hero_source: _s, hero_variants: _v, hero_bg: _b, hero_extended: _e, ...rest } = prev; void _o; void _n; void _u; void _s; void _v; void _b; void _e;
-  const images = { ...rest, hero: made[0].key, hero_source: 'ai', hero_bg: plan.background, ...(plan.extend !== 'none' && plan.background === 'opaque' ? { hero_extended: plan.extend } : {}), ...(n > 1 ? { hero_variants: made.map((m) => m.key).join('|') } : {}) };
+  const { hero_original: _o, hero_native: _n, hero_upscale: _u, hero_source: _s, hero_variants: _v, hero_bg: _b, hero_extended: _e, hero_quality: _q, ...rest } = prev; void _o; void _n; void _u; void _s; void _v; void _b; void _e; void _q;
+  const hero_quality = JSON.stringify(Object.fromEntries(made.map((m) => [m.key, JSON.parse(qualitySummary(m.quality, { judge: m.judge, attempts: m.attempts }))])));
+  const images = { ...rest, hero: made[0].key, hero_source: 'ai', hero_bg: plan.background, hero_quality, ...(plan.extend !== 'none' && plan.background === 'opaque' ? { hero_extended: plan.extend } : {}), ...(n > 1 ? { hero_variants: made.map((m) => m.key).join('|') } : {}) };
   const upd = await prisma.printProject.update({ where: { id }, data: { images: images as unknown as Prisma.InputJsonValue, versions: await snapshot(p, n > 1 ? `${n} صور بالذكاء الاصطناعي (${quality})` : `صورة بالذكاء الاصطناعي (${quality})`), ...(p.status === 'approved' || p.status === 'exported' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
-  await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.image', targetType: 'print_project', targetId: id, details: { model: made[0].model, quality, variants: n, size: plan.size, extend: plan.extend, background: plan.background } });
+  await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.image', targetType: 'print_project', targetId: id, details: { model: made[0].model, quality, variants: n, size: plan.size, extend: plan.extend, background: plan.background, gate: made.map((m) => ({ score: m.quality.score, pass: m.quality.pass, attempts: m.attempts, judge: m.judge })) } });
   return upd;
 }
 
@@ -315,9 +330,12 @@ export async function uploadPrintAsset(id: string, kind: 'logo' | 'dieline' | 'h
     const png = meta.format === 'png' || meta.format === 'jpeg' ? buf : await sharp(buf).png().toBuffer();
     const key = `print/${id}/hero-photo-${crypto.createHash('sha256').update(png).digest('hex').slice(0, 12)}.${meta.format === 'jpeg' ? 'jpg' : 'png'}`;
     await storage().put(key, png, meta.format === 'jpeg' ? 'image/jpeg' : 'image/png');
-    const { hero: oldHero, hero_original: oldOrig, hero_native: _n, hero_upscale: _u, hero_source: _s, ...rest } = imagesOf(p); void _n; void _u; void _s;
+    const { hero: oldHero, hero_original: oldOrig, hero_native: _n, hero_upscale: _u, hero_source: _s, hero_quality: _q, hero_variants: _v, ...rest } = imagesOf(p); void _n; void _u; void _s; void _q; void _v;
     for (const k of [oldHero, oldOrig]) if (k) await storage().remove(k).catch(() => undefined);
-    const upd = await prisma.printProject.update({ where: { id }, data: { images: { ...rest, hero: key, hero_source: 'upload' } as unknown as Prisma.InputJsonValue, versions: await snapshot(p, `رفع صورة ${meta.width}×${meta.height}`), ...(p.status === 'approved' || p.status === 'exported' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
+    // a client's photo: technical checks only (it may legitimately contain text)
+    const q = await assessImage(png);
+    const hero_quality = JSON.stringify({ [key]: JSON.parse(qualitySummary(q)) });
+    const upd = await prisma.printProject.update({ where: { id }, data: { images: { ...rest, hero: key, hero_source: 'upload', hero_quality } as unknown as Prisma.InputJsonValue, versions: await snapshot(p, `رفع صورة ${meta.width}×${meta.height}`), ...(p.status === 'approved' || p.status === 'exported' ? { status: 'designed', approvedHash: null, approvedAt: null } : {}) } });
     await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.photo', targetType: 'print_project', targetId: id, details: { px: `${meta.width}x${meta.height}` } });
     return upd;
   }
@@ -340,7 +358,7 @@ export async function uploadPrintAsset(id: string, kind: 'logo' | 'dieline' | 'h
 
 export async function deletePrint(id: string, user: User) {
   const p = await loadPrint(id, user);
-  const keys = [...Object.values(imagesOf(p)), ...(((p.exports as { files?: { key: string }[] } | null)?.files) ?? []).map((f) => f.key), ...(p.mockupKey ? [p.mockupKey] : [])];
+  const keys = [...Object.entries(imagesOf(p)).filter(([k]) => /^hero$|^hero_original$/.test(k) || k.startsWith('hero_v')).flatMap(([k, v]) => (k === 'hero_variants' ? v.split('|') : [v])), ...(((p.exports as { files?: { key: string }[] } | null)?.files) ?? []).map((f) => f.key), ...(p.mockupKey ? [p.mockupKey] : [])];
   await prisma.printProject.delete({ where: { id } });
   for (const k of keys) await storage().remove(k).catch(() => undefined);
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.delete', targetType: 'print_project', targetId: id });

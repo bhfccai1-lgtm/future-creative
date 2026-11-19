@@ -7,12 +7,13 @@ import { AppError } from '../errors';
 import { storage } from '../storage';
 import { getSettings } from '../settings';
 import { getAiProvider } from '../ai';
-import { assertBudget, estimateImageCost, recordUsage } from '../ai/cost';
+import { assertBudget, estimateImageCost } from '../ai/cost';
 import { ContentSchema, PRESETS, SettingsSchema, STEPS, type StepId, type StepState } from './types';
 import { generateContent, regenerateSection } from './content';
 import { renderDoc, defaultPanelOrder, resolveStyle } from './render';
 import { buildPdf, inspectPdf } from './pdf';
 import { plannedSlots } from './art';
+import { generateChecked, qualitySummary } from '../creative/checked-image';
 import { runQc, type EduQc } from './qc';
 
 type User = { sub: string; email: string; perms: readonly string[] };
@@ -105,15 +106,18 @@ export async function generateImages(id: string, user: User, opts: { only?: stri
   await assertBudget(settings, estimateImageCost(settings, quality, todo.length));
   let steps = mark(stepsOf(p), 'images', 'running', `${todo.length} صورة…`);
   await prisma.eduProject.update({ where: { id }, data: { steps: steps as unknown as Prisma.InputJsonValue } });
-  const failed: string[] = []; let generated = 0;
+  const failed: string[] = []; const flagged: string[] = []; let generated = 0, retried = 0;
   const queue = [...todo];
   const worker = async () => {
     for (let slot = queue.shift(); slot; slot = queue.shift()) {
       try {
-        const img = await provider.generateScene(slot.prompt, { model: settings.ai.imageModel, quality, size: slot.size, seedHint: `${id}:${slot.id}:${Date.now()}` });
+        // quality gate: no text inside (lessons are printed by the engine), not soft — one automatic retry on failure
+        const img = await generateChecked(provider, settings, slot.prompt, { model: settings.ai.imageModel, quality, size: slot.size, seedHint: `${id}:${slot.id}:${Date.now()}` });
         const meta = await sharp(img.png).metadata();
         if (!meta.width || !meta.height) throw new Error('صورة غير صالحة');
-        await recordUsage({ provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(settings, quality) });
+        have[`q:${slot.id}`] = qualitySummary(img.quality, { attempts: img.attempts });
+        if (img.attempts > 1) retried++;
+        if (!img.quality.pass) flagged.push(`${slot.label}: ${img.quality.issues.filter((i) => i.level === 'fail').map((i) => i.ar).join('، ')}`);
         const key = `edu/${id}/img-${slot.id.replace(/[^a-z0-9]+/gi, '-')}-${crypto.createHash('sha256').update(img.png).digest('hex').slice(0, 10)}.png`;
         await storage().put(key, img.png, 'image/png');
         if (have[slot.id]) await storage().remove(have[slot.id]).catch(() => undefined);
@@ -122,9 +126,10 @@ export async function generateImages(id: string, user: User, opts: { only?: stri
     }
   };
   await Promise.all([worker(), worker(), worker()]);
-  steps = mark(steps, 'images', failed.length ? (generated ? 'warning' : 'failed') : 'done', failed.length ? `تم ${generated} — تعذّر ${failed.length}: ${failed[0]}` : `${generated} صورة بالذكاء الاصطناعي (بدون نصوص داخلها)`);
+  const gate = `${retried ? ` · أُعيد توليد ${retried} لفشلها في فحص الجودة` : ''}${flagged.length ? ` · تحتاج مراجعة: ${flagged[0]}` : ''}`;
+  steps = mark(steps, 'images', failed.length || flagged.length ? (generated ? 'warning' : 'failed') : 'done', failed.length ? `تم ${generated} — تعذّر ${failed.length}: ${failed[0]}${gate}` : `${generated} صورة بالذكاء الاصطناعي — فُحصت (بلا نصوص، حادة)${gate}`);
   const upd = await prisma.eduProject.update({ where: { id }, data: { images: have as unknown as Prisma.InputJsonValue, steps: steps as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'قبل توليد الصور') } });
-  await audit({ actorId: user.sub, actorLabel: user.email, action: 'edu.images', targetType: 'edu_project', targetId: id, details: { generated, failed: failed.length, slots: todo.map((x) => x.id) } });
+  await audit({ actorId: user.sub, actorLabel: user.email, action: 'edu.images', targetType: 'edu_project', targetId: id, details: { generated, failed: failed.length, retried, flagged: flagged.length, slots: todo.map((x) => x.id) } });
   return { project: upd, generated, failed };
 }
 
@@ -212,7 +217,7 @@ export async function exportFiles(id: string, formats: ('pdf' | 'png' | 'jpg')[]
 
 export async function deleteProject(id: string, user: User) {
   const p = await loadProject(id, user);
-  const keys = [...Object.values((p.images as Record<string, string> | null) ?? {}), ...(((p.exports as { files?: { key: string }[] } | null)?.files) ?? []).map((f) => f.key)];
+  const keys = [...Object.entries((p.images as Record<string, string> | null) ?? {}).filter(([k]) => !k.startsWith('q:')).map(([, v]) => v), ...(((p.exports as { files?: { key: string }[] } | null)?.files) ?? []).map((f) => f.key)];
   await prisma.eduProject.delete({ where: { id } });
   for (const k of keys) await storage().remove(k).catch(() => undefined);
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'edu.delete', targetType: 'edu_project', targetId: id });
