@@ -62,6 +62,10 @@ export const SettingsSchema = z.object({
   images: z.enum(['none', 'low', 'medium', 'rich']).default('low'),
   /** an AI-painted artwork behind every face/page (text stays real, on frosted cards) */
   aiBackground: z.boolean().default(false),
+  /** a student character on the cover (Bahraini boy / girl, age from the grade); none for Islamic studies */
+  coverCharacter: z.enum(['none', 'boy', 'girl']).default('none'),
+  /** picture-grid style: auto (realistic photos of real places and things in the glossy style) · photo · illustration */
+  galleryStyle: z.enum(['auto', 'photo', 'illustration']).default('auto'),
   fontScale: z.number().min(0.8).max(1.4).default(1),
   digits: z.enum(['arabic', 'latin']).default('arabic'),
   equationDir: z.enum(['rtl', 'ltr']).default('rtl'),
