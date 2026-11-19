@@ -13,10 +13,12 @@ import type { ComposeInput, ComposeResult, LayerManifest, PlacedLayer } from './
 export const POSTER_KEY = 'gold-poster';
 const W = 1080, H = 1920;
 const NAVY = '#0b1730', NAVY2 = '#14295c', WHITE = '#ffffff';
-const PANEL_Y = 1180; // curve apex ~1120 — the panel (order button + branches) ends above Instagram's bottom UI (IG_SAFE_1920)
+const PANEL_Y = 1250; // curve apex ~1225 — the panel (order button + branches) ends above Instagram's bottom UI (IG_SAFE_1920)
 // Layout inside the Instagram safe zone: logo under the story/Reels header, phones above the caption / reply bar,
 // branch columns inset from the Reels side icons. The benefit-icon row lives on feed formats only (no room here).
-const L = { logo: { x: 330, y: 236, w: 420, h: 150 }, kicker: 396, badge: 490, tag: 664, sep: 748, cta: 1212, label: 1346, phone: 1430, colX: 110 };
+// Hierarchy: one hero (the gold badge), the headline second, the tagline quiet — and a product window of ~560 px
+// (was ~400) that matches the scene prompt's product band (34–63 % of the height), so the product is never cut.
+const L = { logo: { x: 360, y: 240, w: 360, h: 112 }, kicker: 366, badge: 446, tag: 602, sep: 672, cta: 1274, label: 1386, phone: 1460, colX: 110 };
 
 const goldGrad = (id: string) => `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdeeb0"/><stop offset="0.45" stop-color="#e6c25a"/><stop offset="1" stop-color="#b8892a"/></linearGradient>`;
 const goldLine = (id: string) => `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b8892a" stop-opacity="0"/><stop offset="0.2" stop-color="#f6d77a"/><stop offset="0.5" stop-color="#fff1b8"/><stop offset="0.8" stop-color="#f6d77a"/><stop offset="1" stop-color="#b8892a" stop-opacity="0"/></linearGradient>`;
@@ -47,32 +49,30 @@ export async function buildPosterBackground(sceneBuf: Buffer, features: number):
   const dividers = '';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
     <defs>
-      <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.88"/><stop offset="0.86" stop-color="${NAVY}" stop-opacity="0.74"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient>
+      <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.9"/><stop offset="0.76" stop-color="${NAVY}" stop-opacity="0.82"/><stop offset="0.88" stop-color="${NAVY}" stop-opacity="0.38"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient>
       <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}"/><stop offset="1" stop-color="${NAVY}"/></linearGradient>
       ${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="sw" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset="0.5" stop-color="#e2bd52"/><stop offset="1" stop-color="#9c7420" stop-opacity="0.2"/></linearGradient>
     </defs>
-    <rect x="0" y="0" width="${W}" height="${L.sep + 120}" fill="url(#top)"/>
-    <path d="M-40 330 C 90 190 230 70 470 -30" fill="none" stroke="url(#sw)" stroke-width="12" stroke-linecap="round"/>
+    <rect x="0" y="0" width="${W}" height="${L.sep + 190}" fill="url(#top)"/>
+    <path d="M-40 330 C 90 190 230 70 470 -30" fill="none" stroke="url(#sw)" stroke-width="8" stroke-linecap="round" opacity="0.85"/>
     <path d="M-40 380 C 120 230 270 110 540 -30" fill="none" stroke="url(#sw)" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
-    <path d="M1120 260 C 1000 150 900 70 760 -30" fill="none" stroke="url(#sw)" stroke-width="6" stroke-linecap="round" opacity="0.65"/>
+    <path d="M1120 260 C 1000 150 900 70 760 -30" fill="none" stroke="url(#sw)" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
     <rect x="${W / 2 - 200}" y="${L.sep}" width="400" height="4" rx="2" fill="url(#gl)"/>
     <path d="M0 ${PANEL_Y + 40} Q ${W / 2} ${PANEL_Y - 90} ${W} ${PANEL_Y + 40} L ${W} ${H} L 0 ${H} Z" fill="url(#panel)" fill-opacity="0.97"/>
     <path d="M0 ${PANEL_Y + 40} Q ${W / 2} ${PANEL_Y - 90} ${W} ${PANEL_Y + 40}" fill="none" stroke="url(#gg)" stroke-width="9"/>
     <path d="M0 ${PANEL_Y + 62} Q ${W / 2} ${PANEL_Y - 66} ${W} ${PANEL_Y + 62}" fill="none" stroke="url(#gg)" stroke-width="2" opacity="0.6"/>
     ${dividers}
-    <path d="M-30 1640 C 60 1600 120 1560 150 1500" fill="none" stroke="url(#sw)" stroke-width="5" opacity="0.6"/>
-    <path d="M1110 1640 C 1020 1600 960 1560 930 1500" fill="none" stroke="url(#sw)" stroke-width="5" opacity="0.6"/>
-    <rect x="${W / 2 - 1}" y="${L.label}" width="2" height="170" fill="url(#gl)" opacity="0.8"/>
+    <rect x="${W / 2 - 1}" y="${L.label + 6}" width="2" height="146" fill="url(#gl)" opacity="0.7"/>
     <rect x="0" y="${H - 10}" width="${W}" height="10" fill="url(#gg)"/>
   </svg>`;
   return sharp(scene).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
 }
 
 const sparkles = (cx: number, cy: number, halfW: number) => {
-  const l = (x1: number, y1: number, x2: number, y2: number) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#f2cf5b" stroke-width="9" stroke-linecap="round"/>`;
-  const L = cx - halfW - 18, R = cx + halfW + 18;
-  return [l(L, cy - 44, L - 36, cy - 70), l(L - 4, cy, L - 56, cy), l(L, cy + 44, L - 36, cy + 70), l(R, cy - 44, R + 36, cy - 70), l(R + 4, cy, R + 56, cy), l(R, cy + 44, R + 36, cy + 70)].join('');
+  const l = (x1: number, y1: number, x2: number, y2: number) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#f2cf5b" stroke-width="6" stroke-linecap="round" opacity="0.9"/>`;
+  const L = cx - halfW - 20, R = cx + halfW + 20;
+  return [l(L, cy - 38, L - 26, cy - 58), l(L - 4, cy, L - 42, cy), l(L, cy + 38, L - 26, cy + 58), l(R, cy - 38, R + 26, cy - 58), l(R + 4, cy, R + 42, cy), l(R, cy + 38, R + 26, cy + 58)].join('');
 };
 
 function place(id: PlacedLayer['id'], png: Buffer, left: number, top: number, w: number, h: number, box: PlacedLayer['box'], r: Pick<RenderedText, 'fits' | 'missing' | 'fontSize'> | null, text?: string, color?: string, solid?: boolean): PlacedLayer & { solid?: boolean } {
@@ -91,15 +91,15 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
   layers.push(place('logo', logoPng, lb.x + (lb.w - lm.width!) / 2, lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
 
   // kicker line
-  const kb = { x: 60, y: L.kicker, w: 960, h: 86 };
-  const k = await renderText({ text: input.headline, lang, weight: 'extrabold', color: WHITE, maxSize: 74, minSize: 44, boxW: kb.w, boxH: kb.h, maxLines: 1 });
+  const kb = { x: 70, y: L.kicker, w: 940, h: 72 };
+  const k = await renderText({ text: input.headline, lang, weight: 'bold', color: WHITE, maxSize: 62, minSize: 40, boxW: kb.w, boxH: kb.h, maxLines: 1 });
   layers.push(place('headline', k.png, kb.x + (kb.w - k.width) / 2, kb.y + (kb.h - k.height) / 2, k.width, k.height, kb, k, input.headline, WHITE));
 
   // gold badge with the product keyword
   const badgeText = (input.badge ?? '').trim();
   if (badgeText) {
-    const t = await renderText({ text: badgeText, lang, weight: 'extrabold', color: NAVY, maxSize: 120, minSize: 70, boxW: 700, boxH: 126, maxLines: 1 });
-    const pw = Math.min(840, Math.max(420, t.width + 140)), ph = 158, py = L.badge;
+    const t = await renderText({ text: badgeText, lang, weight: 'extrabold', color: NAVY, maxSize: 104, minSize: 62, boxW: 680, boxH: 110, maxLines: 1 });
+    const pw = Math.min(820, Math.max(400, t.width + 130)), ph = 140, py = L.badge;
     const cw = pw + 180, ch = ph + 12, x0 = 90; // sparkles live in the side margins of this canvas
     const pill = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}"><defs>${goldGrad('g')}<linearGradient id="hi" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
       <rect x="${x0 + 6}" y="8" width="${pw}" height="${ph}" rx="${ph / 2}" fill="#000" opacity="0.28"/>
@@ -114,18 +114,18 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
 
   // tagline
   if (input.supportingCopy?.trim()) {
-    const sb = { x: 70, y: L.tag, w: 940, h: 72 };
-    const sp = await renderText({ text: input.supportingCopy.trim(), lang, weight: 'bold', color: WHITE, maxSize: 60, minSize: 36, boxW: sb.w, boxH: sb.h, maxLines: 1 });
-    layers.push(place('support', sp.png, sb.x + (sb.w - sp.width) / 2, sb.y + (sb.h - sp.height) / 2, sp.width, sp.height, sb, sp, input.supportingCopy.trim(), WHITE));
+    const sb = { x: 80, y: L.tag, w: 920, h: 60 };
+    const sp = await renderText({ text: input.supportingCopy.trim(), lang, weight: 'regular', color: '#f6e7b8', maxSize: 46, minSize: 32, boxW: sb.w, boxH: sb.h, maxLines: 1 });
+    layers.push(place('support', sp.png, sb.x + (sb.w - sp.width) / 2, sb.y + (sb.h - sp.height) / 2, sp.width, sp.height, sb, sp, input.supportingCopy.trim(), '#f6e7b8'));
   }
 
   // (no benefit-icon row on 1920: no room inside Instagram's safe zone — feed formats keep it)
 
   // CTA — gold pill with cart icon
   {
-    const cw = 620, chh = 112, cy = L.cta;
-    const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: 70, minSize: 30, boxW: cw - 200, boxH: 100, maxLines: 1 });
-    const cart = `<g transform="translate(${lang === 'ar' ? 56 : cw - 136} 22) scale(0.8)" fill="none" stroke="${NAVY}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">${CART}</g>`;
+    const cw = 600, chh = 100, cy = L.cta;
+    const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: 62, minSize: 30, boxW: cw - 200, boxH: 88, maxLines: 1 });
+    const cart = `<g transform="translate(${lang === 'ar' ? 56 : cw - 130} 16) scale(0.74)" fill="none" stroke="${NAVY}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">${CART}</g>`;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${chh}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${cw - 4}" height="${chh - 4}" rx="${(chh - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="4"/><rect x="14" y="10" width="${cw - 28}" height="${chh * 0.38}" rx="${chh * 0.19}" fill="#fff" opacity="0.28"/>${cart}</svg>`;
     const base = await svgPng(svg);
     const tx = lang === 'ar' ? Math.round(160 + (cw - 200 - t.width) / 2) : Math.round(40 + (cw - 200 - t.width) / 2);
@@ -139,19 +139,19 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
   for (let i = 0; i < order.length; i++) {
     const c = order[i];
     const cx = L.colX + colW2 * i + colW2 / 2;
-    const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: NAVY, maxSize: 42, minSize: 28, boxW: 300, boxH: 60, maxLines: 1 });
-    const pw = Math.min(colW2 - 60, lt.width + 120), ph = 76;
-    const pinX = lang === 'ar' ? pw - 70 : 18;
-    const pillSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${(ph - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="3"/><g transform="translate(${pinX} 10) scale(0.56)" fill="${NAVY}">${PIN}</g></svg>`;
+    const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: NAVY, maxSize: 38, minSize: 26, boxW: 300, boxH: 54, maxLines: 1 });
+    const pw = Math.min(colW2 - 60, lt.width + 112), ph = 66;
+    const pinX = lang === 'ar' ? pw - 66 : 16;
+    const pillSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${(ph - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="3"/><g transform="translate(${pinX + 4} 9) scale(0.48)" fill="${NAVY}">${PIN}</g></svg>`;
     const lpng = await sharp(await svgPng(pillSvg)).composite([{ input: lt.png, left: Math.round(lang === 'ar' ? (pw - 70 - lt.width) / 2 + 6 : 70 + (pw - 70 - lt.width) / 2 - 6), top: Math.round((ph - lt.height) / 2) }]).png().toBuffer();
     layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lpng, cx - pw / 2, L.label, pw, ph, { x: Math.round(cx - pw / 2), y: L.label, w: pw, h: ph }, lt, c.label, NAVY, true));
 
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 78, minSize: 46, boxW: Math.round(colW2 - 120), boxH: 90, maxLines: 1, ltr: true });
-    const iconD = 72, gap = 16, rw = Math.round(iconD + gap + nt.width), rh = Math.max(iconD, nt.height);
-    const phoneIcon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${iconD}" height="${iconD}"><defs>${goldGrad('g')}</defs><circle cx="${iconD / 2}" cy="${iconD / 2}" r="${iconD / 2 - 2}" fill="url(#g)"/><g transform="translate(18 18) scale(0.44)" fill="${NAVY}">${PHONE}</g></svg>`);
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 68, minSize: 42, boxW: Math.round(colW2 - 110), boxH: 78, maxLines: 1, ltr: true });
+    const iconD = 62, gap = 16, rw = Math.round(iconD + gap + nt.width), rh = Math.max(iconD, nt.height);
+    const phoneIcon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${iconD}" height="${iconD}"><defs>${goldGrad('g')}</defs><circle cx="${iconD / 2}" cy="${iconD / 2}" r="${iconD / 2 - 2}" fill="url(#g)"/><g transform="translate(15 15) scale(0.38)" fill="${NAVY}">${PHONE}</g></svg>`);
     const ppng = await sharp({ create: { width: rw, height: rh, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
       .composite([{ input: phoneIcon, left: 0, top: Math.round((rh - iconD) / 2) }, { input: nt.png, left: iconD + gap, top: Math.round((rh - nt.height) / 2) }]).png().toBuffer();
-    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - rw / 2, L.phone, rw, rh, { x: Math.round(cx - colW2 / 2 + 10), y: L.phone, w: Math.round(colW2 - 20), h: 96 }, { ...nt, fits: nt.fits && rw <= colW2 - 30 }, c.phone, WHITE));
+    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - rw / 2, L.phone, rw, rh, { x: Math.round(cx - colW2 / 2 + 10), y: L.phone, w: Math.round(colW2 - 20), h: 82 }, { ...nt, fits: nt.fits && rw <= colW2 - 30 }, c.phone, WHITE));
   }
 
   const png = await sharp(background).composite(layers.map((l) => ({ input: l.png, left: l.left, top: l.top }))).png().toBuffer();
