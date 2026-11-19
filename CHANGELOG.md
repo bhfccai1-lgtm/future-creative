@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Image quality gate for social-media designs** (it already guarded the print studio and EDUCATION MASTER). Every AI scene for a layered design and every extra Reel shot is checked before composing:
+  - text the image model drew by mistake (read by vision), softness and exposure;
+  - a failing scene is regenerated once with the reason added to the prompt, only within the AI budget;
+  - the art director may only choose among passing scenes;
+  - the verdict is stored on the design, and the new WARNING check «image_quality» shows the score, re-draws and issues;
+  - switch: «فحص جودة الصور قبل التصميم» (check image quality before designing) in AI settings, on by default — one small vision call per picture. Full-AI posters keep their own text and layout check.
 - **Several formats per account, with shares:** in the account settings, «عدة صيغ بالتناوب» (several formats in rotation) shows a checklist: Reels, carousel, portrait post, square post, story. Tick one or more and give each a weight; the percentage is shown live, and «مزيج النمو الموصى به» restores 50/25/15/10. Automatic designs follow the chosen shares (last 14 days); «صيغة واحدة ثابتة» keeps one format.
 - **Team members (المستخدمون والصلاحيات):** a new page under settings. The administrator adds staff (editor / viewer / admin), changes roles, disables accounts, unlocks locked ones and sets a new password (a strong one can be generated); changing a role, disabling or resetting ends that person's open sessions. The system never removes its last active administrator, and nobody can disable or demote themselves. Every user can change their own password (the current one is required; every session ends). All changes are audited.
 - **AI proofreading before drawing** (setting `useAiReview`, now on the AI settings page, off by default): one small text call reads the copy and only definite spelling/grammar mistakes are fixed before the design is rendered. A fix is applied only when it is exact, small and adds no numbers, and Gulf dialect is not treated as a mistake. Anything uncertain is listed for the reviewer in the new «ai_proofread» QC check; usage is recorded against the budget.

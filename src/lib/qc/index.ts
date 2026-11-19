@@ -31,6 +31,8 @@ export interface QcInput {
   carousel?: { images: number; problems: string[] } | null;
   /** «مؤشر الخوارزمية» after the automatic fixes (pipeline algorithm gate) */
   algorithm?: { score: number; grade: string; remaining: string[] } | null;
+  /** the AI picture quality gate (layered scenes + reel shots) */
+  imageQuality?: { score: number; pass: boolean; issues: string[]; retried: number } | null;
   /** AI proofreading result (only when `useAiReview` is on) */
   aiProofread?: { applied: { wrong: string; fix: string; reason: string }[]; flagged: { wrong: string; fix: string; reason: string }[]; error?: string } | null;
   /** Gemini Veo requested for this reel: whether it was really used (otherwise FFmpeg fallback). */
@@ -99,6 +101,7 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
   const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
   checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });
 
+  if (q.imageQuality) checks.push({ id: 'image_quality', label: 'جودة الصورة: بلا نص داخلها، حادة، تعريض سليم', passed: q.imageQuality.pass, severity: 'WARNING', detail: `${q.imageQuality.score}/100${q.imageQuality.retried ? ` · أُعيد التوليد ${q.imageQuality.retried}×` : ''}${q.imageQuality.issues.length ? ` — ${q.imageQuality.issues.join('؛ ')}` : ''}` });
   if (q.aiProofread) checks.push({ id: 'ai_proofread', label: 'مراجعة لغوية بالذكاء الاصطناعي (الأخطاء المؤكدة صُحّحت قبل الرسم)', passed: !q.aiProofread.error && q.aiProofread.flagged.length === 0, severity: 'WARNING', detail: q.aiProofread.error ? `تعذّرت المراجعة: ${q.aiProofread.error}` : (proofSummary(q.aiProofread) || 'لا أخطاء') });
   if (q.algorithm) checks.push({ id: 'algorithm_index', label: 'مؤشر الخوارزمية B أو أعلى (≥ 70)', passed: q.algorithm.score >= 70, severity: 'WARNING', detail: `${q.algorithm.score}/100 (${q.algorithm.grade})${q.algorithm.remaining.length ? ` — ينقص: ${q.algorithm.remaining.join('؛ ')}` : ''}` });
 

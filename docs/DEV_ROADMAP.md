@@ -17,6 +17,10 @@ It is updated with every round; the newest decisions are at the top.
 | 8 | Alerts appear only in the dashboard: there is no e-mail, WhatsApp or push delivery | Medium (a failure at night goes unnoticed) | 📋 planned |
 | 9 | Direct platform adapters (Meta Graph and others) are not implemented; everything goes through Metricool | Medium (single provider) | 📋 later |
 
+### Round 2 — image generation
+- ✅ The image quality gate now covers the ad pipeline: layered scenes and Reel shots. Before, only the print studio, EDUCATION MASTER and the text check of full-AI posters were covered.
+- 📋 Next: a monthly picture-quality report. It will show the first-try pass rate, the most common failure reasons, the cost per accepted picture, and which style or prompt fails most, so those reasons can be fed back into the prompts automatically.
+
 ## 2. Next steps (in order)
 
 1. **Branch protection on `main`** (owner, 1 minute — §3). It stops a repeat of finding #1.
