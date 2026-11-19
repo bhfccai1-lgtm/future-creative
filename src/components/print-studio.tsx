@@ -77,15 +77,33 @@ export function PrintStudio({ initial, accounts, caps: caps0, canAdmin, shop }: 
   );
 }
 
+interface Report { month: string; orders: number; revenue: number; withoutQuote: number; byProduct: { productId: string; name: string; orders: number; revenue: number }[]; proofs: { approvalRate: number | null }; turnaroundDays: number | null; target: { bhd: number; pct: number } | null }
+const Kpi = ({ v, l }: { v: string; l: string }) => <div className="rounded-lg bg-slate-50 p-2"><div className="text-base font-extrabold" dir="ltr">{v}</div><div className="text-[10px] leading-tight text-slate-500">{l}</div></div>;
 interface BoardItem { id: string; title: string; days: number; note?: string }
 interface Board { stages: Record<string, number>; awaitingClient: BoardItem[]; changesRequested: BoardItem[]; needFiles: BoardItem[]; stuck: BoardItem[]; readyNotCollected: BoardItem[] }
 function Dashboard({ rows, L, onOpen, onNew }: { rows: Row[]; L: (a: string, e: string) => string; onOpen: (id: string) => void; onNew: () => void }) {
   const counts = useMemo(() => rows.reduce<Record<string, number>>((a, r) => ({ ...a, [r.status]: (a[r.status] ?? 0) + 1 }), {}), [rows]);
   const [board, setBoard] = useState<Board | null>(null);
   useEffect(() => { call<{ board: Board }>('/api/print/board').then((r) => setBoard(r.board)).catch(() => setBoard(null)); }, [rows]);
+  const [month, setMonth] = useState(() => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 7));
+  const [rep, setRep] = useState<Report | null>(null);
+  useEffect(() => { call<{ report: Report }>(`/api/print/report?month=${month}`).then((r) => setRep(r.report)).catch(() => setRep(null)); }, [month, rows]);
   const lists: [keyof Board, string, string, string][] = [['changesRequested', 'العميل طلب تعديلات', 'Changes requested', 'border-amber-300 bg-amber-50'], ['awaitingClient', 'بروفات بانتظار رد العميل', 'Proofs awaiting the client', 'border-sky-200 bg-sky-50'], ['needFiles', 'معتمد — جهّز ملفات الإنتاج', 'Approved — prepare files', 'border-indigo-200 bg-indigo-50'], ['stuck', 'متوقف في مرحلة منذ يومين+', 'Stuck 2+ days', 'border-red-200 bg-red-50'], ['readyNotCollected', 'جاهز ولم يُستلم', 'Ready, not collected', 'border-emerald-200 bg-emerald-50']];
   return (
     <section className="space-y-3">
+      {rep && <div className="space-y-2 rounded-2xl border bg-white p-3">
+        <div className="flex items-center justify-between gap-2"><div className="text-sm font-extrabold">{L('تقرير الشهر', 'Monthly report')}</div><input type="month" className="input !w-auto !py-1 text-xs" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} /></div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Kpi v={`${rep.revenue.toFixed(3)}`} l={L('قيمة الطلبات المسلّمة (د.ب)', 'Delivered value (BHD)')} />
+          <Kpi v={String(rep.orders)} l={L('طلبات مسلّمة', 'Delivered orders')} />
+          <Kpi v={rep.proofs.approvalRate === null ? '—' : `${rep.proofs.approvalRate}%`} l={L('قبول البروفات', 'Proof approval')} />
+          <Kpi v={rep.turnaroundDays === null ? '—' : `${rep.turnaroundDays} ${L('يوم', 'd')}`} l={L('من الاعتماد للتسليم', 'Approval → delivery')} />
+        </div>
+        {rep.target && <div><div className="flex justify-between text-[11px] font-bold"><span>{L('الهدف الشهري', 'Monthly target')} {rep.target.bhd} {L('د.ب', 'BHD')}</span><span>{rep.target.pct}%</span></div><div className="mt-1 h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-emerald-600" style={{ width: `${Math.min(100, rep.target.pct)}%` }} /></div></div>}
+        {rep.byProduct.length > 0 && <table className="w-full text-xs"><tbody>{rep.byProduct.slice(0, 8).map((x) => <tr key={x.productId} className="border-t"><td className="py-1">{x.name}</td><td className="py-1 text-center">{x.orders}</td><td className="py-1 text-left" dir="ltr">{x.revenue.toFixed(3)}</td></tr>)}</tbody></table>}
+        {rep.withoutQuote > 0 && <p className="text-[11px] text-amber-700">{L(`${rep.withoutQuote} طلب مسلّم بلا عرض سعر — قيمته غير محسوبة`, `${rep.withoutQuote} delivered without a quote — not valued`)}</p>}
+        <p className="text-[10px] text-slate-400">{L('القيم من عروض الأسعار التي كتبتها فقط · توقيت البحرين', 'Values only from your quotes · Bahrain time')}</p>
+      </div>}
       {board && <div className="space-y-2">
         <div className="grid grid-cols-5 gap-1 text-center">{STAGES_UI.map(([k, ar, en]) => <div key={k} className="rounded-lg border bg-white p-1.5"><div className="text-lg font-extrabold">{board.stages[k] ?? 0}</div><div className="text-[10px] leading-tight text-slate-500">{L(ar, en)}</div></div>)}</div>
         {lists.filter(([k]) => (board[k] as BoardItem[]).length).map(([k, ar, en, cls]) => <div key={k} className={`rounded-xl border p-2 ${cls}`}><div className="text-xs font-extrabold">{L(ar, en)} ({(board[k] as BoardItem[]).length})</div><ul className="mt-1 space-y-0.5">{(board[k] as BoardItem[]).slice(0, 6).map((it) => <li key={it.id}><button type="button" onClick={() => onOpen(it.id)} className="flex w-full justify-between gap-2 text-start text-xs"><span className="min-w-0 truncate font-bold underline">{it.title}{it.note ? <span className="font-normal text-slate-600"> — {it.note}</span> : null}</span><span className="shrink-0 text-slate-500">{it.days ? `${it.days} ${L('يوم', 'd')}` : L('اليوم', 'today')}</span></button></li>)}</ul></div>)}

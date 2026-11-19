@@ -322,3 +322,33 @@ describe('PRINT DESIGN STUDIO — orders board & daily reminder', () => {
     expect(n.message).toContain('بروفة بلا رد'); expect(n.message).toContain('جاهز ولم يُستلم');
   });
 });
+
+describe('PRINT DESIGN STUDIO — monthly report', () => {
+  it('delivered value from typed quotes, proof approval rate, turnaround, target progress — Bahrain month', async () => {
+    const { printReport, currentMonth, monthRange } = await import('@/lib/print/report');
+    const { quoteFromPrint } = await import('@/lib/print/quote');
+    const { setStage } = await import('@/lib/print/production');
+    const { createProof, decideProof } = await import('@/lib/print/proof');
+    const { updateSettings } = await import('@/lib/settings');
+    const { admin } = await seedBase({ accounts: 0 });
+    await updateSettings((s) => ({ ...s, sales: { ...s.sales, monthlyTargetBhd: 100 } }));
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create', 'ads:approve'] };
+    expect(monthRange('2026-11').from.toISOString()).toBe('2026-10-31T21:00:00.000Z');
+    // order 1: proof approved by the client, quote 25 BHD, delivered
+    const a = await createPrint(brief, user); const pa = await createProof(a.id, user);
+    await decideProof(pa.token, { decision: 'approve', name: 'سارة' }, '3.3.3.3');
+    await quoteFromPrint(a.id, { newLead: { name: 'سارة' }, quantity: 500, unitPrice: 0.05 }, user);
+    await exportPrint(a.id, user); await setStage(a.id, 'delivered', user);
+    // order 2: delivered without a quote (counted, not valued)
+    const b = await createPrint({ ...brief, productId: 'flyer', sizeId: 'A5' }, user); await approvePrint(b.id, user); await exportPrint(b.id, user); await setStage(b.id, 'delivered', user);
+    // a proof with changes requested
+    const c = await createPrint(brief, user); const pc = await createProof(c.id, user);
+    await decideProof(pc.token, { decision: 'changes', name: 'علي', note: 'تعديل' }, '3.3.3.4');
+    const r = await printReport(currentMonth());
+    expect(r.orders).toBe(2); expect(r.revenue).toBeCloseTo(25, 3); expect(r.withoutQuote).toBe(1);
+    expect(r.byProduct[0]).toMatchObject({ productId: 'business_card', orders: 1 });
+    expect(r.proofs).toMatchObject({ decisions: 2, approved: 1, changes: 1, approvalRate: 50 });
+    expect(r.turnaroundDays).not.toBeNull(); expect(r.target).toEqual({ bhd: 100, pct: 25 });
+    expect((await printReport('2020-01')).orders).toBe(0);
+  });
+});
