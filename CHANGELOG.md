@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **Project skills for future development sessions** (`.claude/skills/`):
+  - **`fc-dev`** (new) holds this repository's development workflow: local Postgres and Redis, the checks to run before a PR, the phone-sized UI check, the zod-4 and RTL pitfalls that already broke builds, and the branch → PR → green CI → merge → one-click release flow.
+  - **`react-best-practices`** is Vercel's 72 React/Next.js performance rules, vendored from `vercel-labs/agent-skills` under MIT and reviewed as documentation only.
+  - It sits next to the existing `ig-*` operations skills.
 - **GitHub — «هل أدمج؟» (should I merge?) on every pull request:** one comment, updated in place, says ⏳ wait while CI runs, ✅ safe to merge when every check is green, or ⛔ do not merge with the failing job and its log. It works for Dependabot PRs too and needs no repository settings.
 - **GitHub — main health:** when CI fails on `main`, an issue «🔴 main معطّل» (main is broken) opens with the failing jobs and what it means; the server will not update to a red version. The first green run closes it.
 - **GitHub — one-click release:** Actions → «Publish release» → choose patch / minor / major. It prepares the changelog and version, commits, runs CI on that exact commit, and publishes the tag and Release only when it is green. A server with automatic updates installs it within 10 minutes. It refuses to start when `main` is red or «Unreleased» is empty.
