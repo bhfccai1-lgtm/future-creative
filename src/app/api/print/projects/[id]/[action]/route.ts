@@ -5,6 +5,7 @@ import { AppError } from '@/lib/errors';
 import { adFromPrint, approvePrint, exportPrint, generateHero, imagePlanPrint, mockupPrint, pickHero, previewPrint, undoPrint, upscalePrint } from '@/lib/print/service';
 import { createProof } from '@/lib/print/proof';
 import { quoteDraft, quoteFromPrint, quoteMessage } from '@/lib/print/quote';
+import { STAGES, readyMessage, setStage } from '@/lib/print/production';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/auth/rbac';
 import { printUser } from '../../../_user';
@@ -38,6 +39,11 @@ export const POST = api<P>('ads:create', async (req, { params, user }) => {
       const b = z.object({ leadId: z.string().max(60).optional(), newLead: z.object({ name: z.string().trim().min(2).max(80), contact: z.string().trim().max(60).optional() }).optional(), quantity: z.number().int().min(1).max(10_000_000), unitPrice: z.number().min(0).max(1_000_000), designFee: z.number().min(0).max(1_000_000).optional(), discount: z.number().min(0).max(1_000_000).optional(), notes: z.string().max(500).optional() }).parse(await req.json());
       const r = await quoteFromPrint(id, b, u);
       return NextResponse.json({ ok: true, ...r, message: await quoteMessage(id, u, origin(req)) });
+    }
+    case 'stage': {
+      const b = z.object({ stage: z.enum(STAGES), note: z.string().max(300).optional() }).parse(await req.json());
+      const production = await setStage(id, b.stage, u, b.note);
+      return NextResponse.json({ ok: true, production, ...(b.stage === 'ready' ? { message: await readyMessage(id, u) } : {}) });
     }
     case 'proof': return NextResponse.json({ ok: true, ...(await createProof(id, u)) });
     case 'upscale': return NextResponse.json({ ok: true, ...(await upscalePrint(id, u)) });

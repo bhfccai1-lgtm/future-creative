@@ -45,7 +45,9 @@ async function snapshot(p: { versions: unknown; brief: unknown; conceptKey: stri
   return [...v, { at: new Date().toISOString(), brief: p.brief, conceptKey: p.conceptKey, images: p.images ?? null, note }] as unknown as Prisma.InputJsonValue;
 }
 /** the design identity: brief + chosen concept + pictures — what approval freezes */
-const designHash = (brief: unknown, conceptKey: string | null, images: unknown) => crypto.createHash('sha256').update(JSON.stringify({ brief, conceptKey, images: images ?? {} })).digest('hex');
+/** commercial fields (quantity) are not part of the design: changing them never voids an approval */
+const designOnly = (brief: unknown) => { const { quantity: _q, ...rest } = (brief ?? {}) as Record<string, unknown>; void _q; return rest; };
+export const designHash = (brief: unknown, conceptKey: string | null, images: unknown) => crypto.createHash('sha256').update(JSON.stringify({ brief: designOnly(brief), conceptKey, images: images ?? {} })).digest('hex');
 
 export async function createPrint(input: unknown, user: User) {
   const b = BriefSchema.parse(input);

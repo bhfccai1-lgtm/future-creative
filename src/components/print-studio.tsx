@@ -13,7 +13,7 @@ interface Analysis { product: Product; familyAr: string; identity: { id: string;
 interface Concept { key: 'A' | 'B' | 'C'; name: string; idea: string; metaphor: string; palette: Record<string, string>; finishes: string[]; scores: Record<string, number>; total: number }
 interface PageInfo { key: string; v: string; label: string; widthPx: number; heightPx: number; dpi: number; trimMm: { w: number; h: number }; bleedMm: number; folds: number[]; cut: string | null; kissCut: number; hidden: { label: string; rect: { x: number; y: number; w: number; h: number } }[]; safe: { x: number; y: number; w: number; h: number }[]; note: string | null }
 interface Qa { checks: { level: string; id: string; label: string; status: Status; detail?: string }[]; levels: Record<string, Status>; overall: Status; productionReady: boolean }
-interface Project { id: string; title: string; productId: string; status: string; brief: Brief; conceptKey: string | null; images: Record<string, string> | null; versions: { at: string; note: string }[] | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number; note?: string }[] } | null; mockupKey: string | null; approvedAt: string | null; proofToken?: string | null; proofExpiresAt?: string | null; clientDecision?: { status: string; name: string; note: string; at: string } | null }
+interface Project { id: string; title: string; productId: string; status: string; brief: Brief; conceptKey: string | null; images: Record<string, string> | null; versions: { at: string; note: string }[] | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number; note?: string }[] } | null; mockupKey: string | null; approvedAt: string | null; production?: { stage: string; history: { stage: string; at: string; by: string; note?: string }[] } | null; proofToken?: string | null; proofExpiresAt?: string | null; clientDecision?: { status: string; name: string; note: string; at: string } | null }
 interface Brief { productId: string; request: string; business: string; activity: string; audience: string; lang: 'ar' | 'en' | 'bi'; sizeId: string; orientation: 'portrait' | 'landscape'; sides?: 1 | 2; pages?: number; material?: string; finishes: string[]; outputs: 'print' | 'ad' | 'both'; viewM?: number; conditions: { outdoor: boolean; waterproof: boolean; food: boolean; darkFabric: boolean }; finishTarget?: 'logo_headline' | 'logo' | 'headline' | 'name'; texts: Texts; shopBrandingConsent: boolean; logoKey?: string; dielineKey?: string; dieline?: { wMm: number; hMm: number; panels: { x: number; y: number; w: number; h: number }[]; fold: string[]; warnings: string[] }; frontPanel?: number }
 
 /** same text on the server and in the browser (no locale / time-zone drift → no hydration mismatch) */
@@ -231,7 +231,7 @@ const List = ({ cls, title, items }: { cls: string; title: string; items: string
 function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: { id: string; L: (a: string, e: string) => string; ui: Lang; accounts: Account[]; run: <T>(label: string, fn: () => Promise<T>, ok?: string) => Promise<T | null>; busy: boolean; onChanged: () => void; onDeleted: () => void }) {
   const [p, setP] = useState<Project | null>(null);
   const [pv, setPv] = useState<{ pages: PageInfo[]; qa: Qa; analysis: Analysis; concepts: Concept[]; concept: string } | null>(null);
-  const [sub, setSub] = useState<'design' | 'mockup' | 'prepress' | 'qa' | 'proof' | 'quote' | 'ad' | 'export' | 'history'>('design');
+  const [sub, setSub] = useState<'design' | 'mockup' | 'prepress' | 'qa' | 'proof' | 'quote' | 'production' | 'ad' | 'export' | 'history'>('design');
   const [page, setPage] = useState(0);
   const [guides, setGuides] = useState(true);
   const [plan, setPlan] = useState<ImagePlan | null>(null);
@@ -255,7 +255,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
         <div className="min-w-0"><div className="truncate text-lg font-extrabold">{p.title}</div><div className="text-xs text-slate-500">{ui === 'ar' ? pv.analysis.product.ar : pv.analysis.product.en} · <span dir="ltr">{pv.analysis.trim.w}×{pv.analysis.trim.h} mm</span> · {L(PROJ_STATUS[p.status]?.[0] ?? p.status, PROJ_STATUS[p.status]?.[1] ?? p.status)}</div></div>
         <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${STATUS_STYLE[pv.qa.overall]}`}>QA: {L(STATUS_AR[pv.qa.overall], pv.qa.overall)}</span>
       </div>
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">{([['design', 'محرر الجهات', 'Front / Back Editor'], ['mockup', 'استوديو المعاينة', 'Mockup Studio'], ['prepress', 'ما قبل الطباعة', 'Prepress Center'], ['qa', 'الجودة والاعتماد', 'Quality Control'], ['proof', 'بروفة العميل', 'Client proof'], ['quote', 'عرض السعر', 'Quote'], ['ad', 'الإعلان', 'Social Advertising'], ['export', 'التصدير', 'Export Center'], ['history', 'السجل', 'Project History']] as const).map(([k, ar, en]) => <button key={k} type="button" onClick={() => setSub(k)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${sub === k ? 'bg-slate-900 text-white' : 'border bg-white'}`}>{L(ar, en)}</button>)}</div>
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">{([['design', 'محرر الجهات', 'Front / Back Editor'], ['mockup', 'استوديو المعاينة', 'Mockup Studio'], ['prepress', 'ما قبل الطباعة', 'Prepress Center'], ['qa', 'الجودة والاعتماد', 'Quality Control'], ['proof', 'بروفة العميل', 'Client proof'], ['quote', 'عرض السعر', 'Quote'], ['production', 'الإنتاج', 'Production'], ['ad', 'الإعلان', 'Social Advertising'], ['export', 'التصدير', 'Export Center'], ['history', 'السجل', 'Project History']] as const).map(([k, ar, en]) => <button key={k} type="button" onClick={() => setSub(k)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${sub === k ? 'bg-slate-900 text-white' : 'border bg-white'}`}>{L(ar, en)}</button>)}</div>
 
       {(sub === 'design' || sub === 'prepress') && cur && (
         <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
@@ -354,6 +354,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
       </div>}
 
       {sub === 'proof' && <ProofPanel L={L} p={p} busy={busy} onCreate={() => act('proof', L('تجهيز البروفة…', 'Preparing proof…'), L('رابط البروفة جاهز ✓', 'Proof link ready ✓'))} />}
+      {sub === 'production' && <ProductionPanel L={L} p={p} approved={approved} busy={busy} onStage={async (stage, note) => { const r = await act('stage', L('تحديث المرحلة…', 'Updating…'), L('حُدّثت المرحلة ✓', 'Updated ✓'), { stage, note }); return (r as { message?: { text: string; wa: string | null } } | null)?.message ?? null; }} />}
       {sub === 'quote' && <QuotePanel L={L} id={id} busy={busy} run={run} />}
       {sub === 'ad' && <AdPanel L={L} accounts={accounts} approved={approved} busy={busy} onCreate={(body) => act('ad', L('تجهيز الإعلان…', 'Preparing the ad…'), L('أُرسل الإعلان لطابور الموافقات ✓', 'Sent to approvals ✓'), body)} />}
 
@@ -491,6 +492,24 @@ function QuotePanel({ L, id, busy, run }: { L: (a: string, e: string) => string;
         {v.message && !v.message.hasProof && <p className="text-[11px] text-amber-700">{L('لا يوجد رابط بروفة صالح — أنشئه من «بروفة العميل» ليُرفق في نفس الرسالة.', 'No valid proof link — create one to include it.')}</p>}
         {v.message && <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2 font-sans text-[11px] text-slate-700">{v.message.text}</pre>}
       </div>}
+    </div>
+  );
+}
+
+const STAGES_UI: [string, string, string][] = [['queued', 'بانتظار الطباعة', 'Queued'], ['printing', 'قيد الطباعة', 'Printing'], ['finishing', 'التشطيب والقص', 'Finishing'], ['ready', 'جاهز للاستلام', 'Ready'], ['delivered', 'تم التسليم', 'Delivered']];
+/** production stages after approval + the workshop job sheet + «order ready» WhatsApp */
+function ProductionPanel({ L, p, approved, busy, onStage }: { L: (a: string, e: string) => string; p: Project; approved: boolean; busy: boolean; onStage: (stage: string, note?: string) => Promise<{ text: string; wa: string | null } | null> }) {
+  const [note, setNote] = useState(''); const [ready, setReady] = useState<{ text: string; wa: string | null } | null>(null);
+  const cur = p.production?.stage; const idx = STAGES_UI.findIndex((s) => s[0] === cur);
+  if (!approved || !p.exports) return <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{L('الإنتاج يبدأ بعد اعتماد التصميم وتجهيز ملفات الإنتاج (التصدير).', 'Production starts after approval and exported files.')}</p>;
+  return (
+    <div className="space-y-3 rounded-2xl border bg-white p-3 text-sm">
+      <ol className="grid grid-cols-5 gap-1 text-center text-[10px] font-bold">{STAGES_UI.map(([k, ar, en], i) => <li key={k}><button type="button" disabled={busy} onClick={async () => { const m = await onStage(k, note || undefined); setNote(''); if (m) setReady(m); }} className={`w-full rounded-lg border p-1.5 ${i <= idx ? 'border-emerald-600 bg-emerald-600 text-white' : 'bg-white text-slate-600'}`}>{i + 1}<br />{L(ar, en)}</button></li>)}</ol>
+      <input className="input text-xs" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={L('ملاحظة للمرحلة (اختياري)', 'Note for the stage (optional)')} />
+      {ready && <div className="space-y-1 rounded-lg bg-emerald-50 p-2 text-xs"><div className="font-bold text-emerald-800">{L('رسالة «طلبك جاهز»', '«Order ready» message')}</div>{ready.wa ? <a href={ready.wa} target="_blank" rel="noreferrer" className="inline-block rounded-lg bg-emerald-600 px-3 py-1.5 font-bold text-white">{L('إرسال للعميل عبر واتساب', 'Send via WhatsApp')}</a> : <pre className="whitespace-pre-wrap font-sans">{ready.text}</pre>}</div>}
+      <a href={`/print-job/${p.id}`} target="_blank" rel="noreferrer" className="block rounded-lg border px-3 py-2 text-center text-xs font-bold">{L('أمر الشغل للورشة (طباعة)', 'Workshop job sheet (print)')}</a>
+      {(p.production?.history.length ?? 0) > 0 && <ul className="divide-y text-[11px]">{[...p.production!.history].reverse().map((h, i) => <li key={i} className="flex justify-between gap-2 py-1"><span>{STAGES_UI.find((s) => s[0] === h.stage)?.[1] ?? h.stage}{h.note ? ` — ${h.note}` : ''}</span><span className="text-slate-400" dir="ltr">{fmtDate(h.at)}</span></li>)}</ul>}
+      <p className="text-[11px] text-slate-500">{L('«تم التسليم» يحوّل العميل المرتبط في «العملاء والطلبات» إلى «طلب مكتمل».', '«Delivered» marks the linked customer as won.')}</p>
     </div>
   );
 }

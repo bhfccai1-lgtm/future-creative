@@ -262,9 +262,37 @@ describe('PRINT DESIGN STUDIO — quote from the design', () => {
     const m = (await quoteMessage(p.id, user, 'https://shop.example'))!;
     expect(m.text).toContain('25.000 د.ب'); expect(m.text).toContain('https://shop.example/proof/'); expect(m.wa).toMatch(/^https:\/\/wa\.me\/97336001234\?text=/);
     expect(m.text).toContain('33316319');
+    // the quantity is commercial, not design: saving a quote never voids an approval
+    await approvePrint(p.id, user);
+    await quoteFromPrint(p.id, { quantity: 750, unitPrice: 0.04 }, user);
+    const ex = await exportPrint(p.id, user); expect(ex.files.length).toBeGreaterThan(3);
     // updating keeps the same customer and quote number
     const q2 = await quoteFromPrint(p.id, { quantity: 1000, unitPrice: 0.035 }, user);
     expect(q2.leadId).toBe(q.leadId); expect(q2.quote.no).toBe(q.quote.no);
     expect(specLine((await prisma.printProject.findUniqueOrThrow({ where: { id: p.id } })).analysis as never, (await import('@/lib/print/brief')).BriefSchema.parse(p.brief))).toBe(d.desc);
+  });
+});
+
+describe('PRINT DESIGN STUDIO — production tracking', () => {
+  it('starts only after approval + files; «ready» prepares the customer message; «delivered» marks the customer as won', async () => {
+    const { setStage, readyMessage } = await import('@/lib/print/production');
+    const { quoteFromPrint } = await import('@/lib/print/quote');
+    const { admin } = await seedBase({ accounts: 0 });
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create', 'ads:approve'] };
+    const p = await createPrint(brief, user);
+    await expect(setStage(p.id, 'printing', user)).rejects.toThrow(/غير معتمد/);
+    await approvePrint(p.id, user);
+    await expect(setStage(p.id, 'printing', user)).rejects.toThrow(/ملفات/);
+    await exportPrint(p.id, user);
+    const q = await quoteFromPrint(p.id, { newLead: { name: 'خالد', contact: '33001122' }, quantity: 200, unitPrice: 0.05 }, user);
+    for (const s of ['queued', 'printing', 'finishing'] as const) await setStage(p.id, s, user, s === 'printing' ? 'آلة 2' : undefined);
+    const r = await setStage(p.id, 'ready', user);
+    expect(r.stage).toBe('ready'); expect(r.history).toHaveLength(4); expect(r.history[1].note).toBe('آلة 2');
+    const m = await readyMessage(p.id, user);
+    expect(m.text).toContain('جاهز للاستلام'); expect(m.wa).toMatch(/wa\.me\/97333001122/);
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: q.leadId } })).status).toBe('QUOTED');
+    await setStage(p.id, 'delivered', user);
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: q.leadId } });
+    expect(lead.status).toBe('WON'); expect(lead.wonAt).toBeTruthy();
   });
 });

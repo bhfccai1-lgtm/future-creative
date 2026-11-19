@@ -11,7 +11,7 @@ import { textImg } from './text';
 import { BriefSchema } from './brief';
 import { FINISHES, MATERIALS, productById } from './catalog';
 import type { Analysis } from './brief';
-import { loadPrint, mockupPrint, previewPages } from './service';
+import { designHash, loadPrint, mockupPrint, previewPages } from './service';
 
 /**
  * ONLINE CLIENT PROOF: a secret link (no login) where the client sees the exact design — watermarked «PROOF» so the
@@ -20,7 +20,8 @@ import { loadPrint, mockupPrint, previewPages } from './service';
  */
 type User = { sub: string; email: string; perms: readonly string[] };
 const DAYS = 14;
-export const designHashOf = (brief: unknown, conceptKey: string | null, images: unknown) => crypto.createHash('sha256').update(JSON.stringify({ brief, conceptKey, images: images ?? {} })).digest('hex');
+/** the same fingerprint as the studio's approval (quantity excluded) */
+export const designHashOf = (brief: unknown, conceptKey: string | null, images: unknown) => designHash(brief, conceptKey, images);
 
 async function watermark(png: Buffer): Promise<Buffer> {
   const img = sharp(png).flatten({ background: '#ffffff' }).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true });
