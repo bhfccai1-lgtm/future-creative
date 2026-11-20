@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **🔎 الظهور في Google (Google visibility)** — public product pages (`/p/<slug>`) are now ready for search engines:
+  - **`/sitemap.xml`** lists every active product, and **`/robots.txt`** opens the product pages only. The dashboard, API and private links are `noindex` and blocked.
+  - **Per page:** a title and description with the place and the branches («لوحات الأكريليك في البحرين | مطبعة إبداع المستقبل»), a canonical URL, OpenGraph/Twitter cards, and **schema.org structured data**: a Product with an Offer (price from, BHD, Bahrain) sold by the local business with its branches and phones.
+  - **A permanent product image URL** (`/p/<slug>/image`) instead of signed links that expired after 7 days.
+  - **«منتجات مشابهة» (related products)** links within the category, so Google finds the whole catalogue.
+  - **«🔎 الظهور في Google» card** on the products page: indexable pages, the share with a description, photo and price, the thin pages to fix first, and the sitemap URL for Google Search Console.
 - **🎙️ النطق الاحترافي (professional pronunciation)** — reel voice-overs:
   - **Numbers are spoken as words** instead of being dropped: «خصم ٢٠٪ على 150 كوب» → «عشرين بالمئة… مئة وخمسين», «2.5» → «اثنين فاصلة خمسة». English works too. Phone numbers are never read.
   - **Bug fix:** digits used to be removed before the pronunciation dictionary ran, so «A4/A3» never matched. Now the dictionary runs first, then numbers.
