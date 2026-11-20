@@ -169,3 +169,47 @@ describe('image model fallback (e.g. gpt-image-2 not enabled for the key)', () =
     await expect(new OpenAiProvider('k', c).generateScene('a mug', { model: 'gpt-image-1', quality: 'low', size: '1024x1024' })).rejects.toBeInstanceOf(AiProviderError);
   });
 });
+
+
+describe('image edit input fidelity compatibility', () => {
+  const reference = Buffer.from('iVBORw0KGgo=', 'base64');
+  const errorMessage = "The model 'gpt-image-2' does not support the 'input_fidelity' parameter";
+  const opts = { quality: 'high' as const, size: '1024x1536' as const, references: [reference] };
+  const makeClient = (rejectFidelity = false) => {
+    const calls: Record<string, unknown>[] = [];
+    const client = { images: { edit: async (p: Record<string, unknown>) => {
+      calls.push(p);
+      if (rejectFidelity && 'input_fidelity' in p) {
+        throw OpenAI.APIError.generate(400, { error: { message: errorMessage } }, errorMessage, new Headers());
+      }
+      return { data: [{ b64_json: reference.toString('base64') }] };
+    } } } as unknown as OpenAI;
+    return { client, calls };
+  };
+
+  it.each(['gpt-image-2', 'gpt-image-2-2026-04-21', 'gpt-image-2.5-sunburst', 'gpt-image-1-mini'])('omits unsupported high fidelity on %s', async (model) => {
+    const { client, calls } = makeClient(true);
+    const result = await new OpenAiProvider('k', client).generateScene('scene', { ...opts, model });
+    expect(result.model).toBe(model);
+    expect(result.png).toEqual(reference);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toHaveProperty('input_fidelity');
+    expect(calls[0]).toMatchObject({ model, prompt: 'scene', size: opts.size, quality: opts.quality });
+    expect(calls[0].image).toHaveLength(1);
+  });
+
+  it.each(['gpt-image-1', 'gpt-image-1.5'])('retains high fidelity on %s', async (model) => {
+    const { client, calls } = makeClient();
+    await new OpenAiProvider('k', client).generateScene('scene', { ...opts, model });
+    expect(calls[0]).toMatchObject({ input_fidelity: 'high' });
+  });
+
+  it('drops rejected fidelity once without changing model, prompt or image', async () => {
+    const { client, calls } = makeClient(true);
+    const result = await new OpenAiProvider('k', client).generateScene('scene', { ...opts, model: 'gpt-image-1.5' });
+    expect(result.model).toBe('gpt-image-1.5');
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).not.toHaveProperty('input_fidelity');
+    expect(calls[1]).toMatchObject({ model: 'gpt-image-1.5', prompt: 'scene', image: calls[0].image, quality: opts.quality, size: opts.size });
+  });
+});
