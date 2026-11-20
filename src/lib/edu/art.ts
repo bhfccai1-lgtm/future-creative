@@ -52,6 +52,16 @@ function subjectRules(s: EduSettings) {
 }
 
 /** Slots the current settings ask for (cover · one background per face · one illustration per section). */
+/** a section illustration (wide, plain background, no text) — used by «rich» images and by the smart panel filler */
+export function sectionSlot(s: EduSettings, c: EduContent, sec: EduContent['sections'][number]): Slot {
+  const st = STYLE_ART[resolveStyle(s)], rules = subjectRules(s);
+  const topic = `"${c.title || s.lesson}" (${s.subject}, ${s.grade})`;
+  return { id: `sec:${sec.id}`, kind: 'section', size: '1536x1024', label: `رسم: ${sec.heading}`, prompt: [
+    `A clear educational illustration for the lesson part "${sec.heading}" of ${topic}.`, sec.image ? `It shows: ${sec.image}.` : sec.body ? `Context: ${sec.body.slice(0, 200)}.` : '',
+    landmarkDetail(`${sec.heading} ${sec.image ?? ''}`) ? `Show accurately: ${landmarkDetail(`${sec.heading} ${sec.image ?? ''}`)}.` : '',
+    `Style: ${st}.`, ART_BIBLE, rules, 'Wide composition, plain very light background, subject clearly visible.', NO_TEXT].filter(Boolean).join(' ') };
+}
+
 export function plannedSlots(s: EduSettings, c: EduContent): Slot[] {
   const st = STYLE_ART[resolveStyle(s)], eng = PRESETS[s.type].engine, rules = subjectRules(s);
   const topic = `"${c.title || s.lesson}" (${s.subject}, ${s.grade})`;
@@ -72,12 +82,7 @@ export function plannedSlots(s: EduSettings, c: EduContent): Slot[] {
       `A soft decorative background artwork for a printed school ${PRESETS[s.type].en.toLowerCase()} about ${topic}.`, `Style: ${st}.`, rules,
       'Low contrast, light and airy colours, the motifs only around the edges and corners; the large central area must stay calm and almost plain so text can be printed over it.', ART_BIBLE, NO_TEXT].join(' ') });
   }
-  if (s.images === 'rich') {
-    for (const sec of c.sections.slice(0, 8)) out.push({ id: `sec:${sec.id}`, kind: 'section', size: '1536x1024', label: `رسم: ${sec.heading}`, prompt: [
-      `A clear educational illustration for the lesson part "${sec.heading}" of ${topic}.`, sec.image ? `It shows: ${sec.image}.` : sec.body ? `Context: ${sec.body.slice(0, 200)}.` : '',
-      landmarkDetail(`${sec.heading} ${sec.image ?? ''}`) ? `Show accurately: ${landmarkDetail(`${sec.heading} ${sec.image ?? ''}`)}.` : '',
-      `Style: ${st}.`, ART_BIBLE, rules, 'Wide composition, plain very light background, subject clearly visible.', NO_TEXT].filter(Boolean).join(' ') });
-  }
+  if (s.images === 'rich') for (const sec of c.sections.slice(0, 8)) out.push(sectionSlot(s, c, sec));
   if (s.images === 'medium' || s.images === 'rich') {
     // picture grids: one picture per caption (the caption itself is real text under the picture); real places and
     // things look best as photographs in the glossy brochure, illustrations elsewhere

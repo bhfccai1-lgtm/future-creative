@@ -102,6 +102,36 @@ describe('EDUCATION MASTER AI — acceptance projects', () => {
 });
 
 describe('EDUCATION MASTER — AI artwork', () => {
+  it('smart panel filler: a short lesson gets illustrations only for panels with room; «none» gets none', async () => {
+    const { admin } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+    const short = { ...iman, sections: iman.sections.slice(0, 3), summary: ['أركان الإيمان ستة.'] };
+    const ai = new EduAi(short); setAiProviderOverride(ai);
+    const user = { sub: admin.id, email: admin.email, perms: ['ads:create'] };
+    const { imagePlan, generateImages, smartSectionSlots } = await import('@/lib/edu/service');
+    const p = await createProject({ type: 'brochure', subject: 'التربية الإسلامية', grade: 'الصف الرابع', lesson: 'أركان الإيمان', images: 'low' }, user);
+    await generate(p.id, user);
+    const plan = await imagePlan(p.id, user);
+    const extra = plan.slots.filter((x) => x.id.startsWith('sec:'));
+    expect(plan.slots[0].id).toBe('cover');
+    expect(extra.length).toBeGreaterThanOrEqual(1); // short lesson → blank panels get a picture
+    expect(extra.length).toBeLessThanOrEqual(3);
+    const r = await generateImages(p.id, user);
+    expect(r.failed).toEqual([]);
+    expect(r.generated).toBe(plan.missing);
+    const imgs = (await prisma.eduProject.findUniqueOrThrow({ where: { id: p.id } })).images as Record<string, string>;
+    for (const x of extra) expect(imgs[x.id]).toBeTruthy();
+    // once drawn, nothing more is planned, and a filler picture can be redrawn alone
+    expect((await imagePlan(p.id, user)).missing).toBe(0);
+    const again = await generateImages(p.id, user, { only: [extra[0].id] });
+    expect(again.generated).toBe(1);
+    // the pictures fit: the preview has no overflow
+    const pv = await preview(p.id, user);
+    expect(pv.qc.checks.filter((c) => c.status === 'FAIL').map((c) => c.id)).toEqual([]);
+    const proj = await prisma.eduProject.findUniqueOrThrow({ where: { id: p.id } });
+    expect(await smartSectionSlots({ ...(proj.settings as object), images: 'none' } as never, proj.content as never, {})).toEqual([]);
+  }, 300000);
+
+
   it('plans cover + 2 face backgrounds + one picture per section, generates them, places them, and redoes one', async () => {
     const { admin } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
     const ai = new EduAi(iman); setAiProviderOverride(ai);
