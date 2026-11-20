@@ -36,7 +36,11 @@ export function rejectedParam(e: unknown, sent: Record<string, unknown>): string
   const candidates: string[] = [...DROPPABLE_PARAMS, 'response_format'];
   if (param && candidates.includes(param) && param in sent) return param;
   if (!/unsupported|not supported|does not support|unrecognized|unknown parameter|invalid.*parameter/i.test(msg)) return null;
-  return candidates.find((k) => k in sent && new RegExp(`['"\`]?${k}['"\`]?`).test(msg)) ?? null;
+  // Prefer the exact quoted parameter; a substring match would confuse `n` with any word.
+  const quoted = [...msg.matchAll(/['"\x60]([a-z_][a-z_0-9]*)['"\x60]/gi)].map((m) => m[1]);
+  const exact = quoted.find((k) => candidates.includes(k) && k in sent);
+  if (exact) return exact;
+  return candidates.find((k) => k in sent && new RegExp(`\\b${k}\\b`).test(msg)) ?? null;
 }
 
 /**
