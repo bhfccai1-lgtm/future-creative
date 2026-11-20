@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **⏰ أفضل وقت من Metricool (best time from Metricool)** — peak-hour scheduling now uses each account's **live Metricool best-time heatmap**:
+  - It shows when that account's audience is most active, per day of the week and hour, refreshed daily at 05:25 with one read-only call per account. It replaces a fixed built-in ranking.
+  - The account's own measured results still win once it has enough posts (12+).
+  - Growth settings show «⏰ من Metricool» (from Metricool) as the source. Instagram, TikTok and Facebook accounts each use their own network.
 - **🔎 الظهور في Google (Google visibility)** — public product pages (`/p/<slug>`) are now ready for search engines:
   - **`/sitemap.xml`** lists every active product, and **`/robots.txt`** opens the product pages only. The dashboard, API and private links are `noindex` and blocked.
   - **Per page:** a title and description with the place and the branches («لوحات الأكريليك في البحرين | مطبعة إبداع المستقبل»), a canonical URL, OpenGraph/Twitter cards, and **schema.org structured data**: a Product with an Offer (price from, BHD, Bahrain) sold by the local business with its branches and phones.

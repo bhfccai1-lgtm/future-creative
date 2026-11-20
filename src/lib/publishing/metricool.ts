@@ -21,7 +21,25 @@ export const ENDPOINTS = {
   analytics: (kind: 'posts' | 'reels' | 'stories', network = 'instagram') => `/v2/analytics/${kind}/${network}`,
   /** Instagram competitors configured in Metricool (summary, posts, reels). VERIFY on a live account. */
   competitors: (part: '' | '/posts' | '/reels' = '', network = 'instagram') => `/v2/analytics/competitors/${network}${part}`,
+  /** Best time to post per day/hour for a brand and network (the «best time» heatmap). VERIFY on a live account. */
+  bestTimes: (network = 'instagram') => `/v2/scheduler/besttimes/${network}`,
 };
+
+/** one cell of Metricool's best-time heatmap: ISO day (1 = Monday … 7 = Sunday), local hour, relative value */
+export interface BestTimeCell { day: number; hour: number; value: number }
+/** tolerant: `{data:[{dayOfWeek, bestTimesByHour:[{hourOfDay, value}]}]}` or a flat list of `{dayOfWeek, hourOfDay, value}` */
+export function parseBestTimes(json: unknown): BestTimeCell[] {
+  const root = (json as { data?: unknown })?.data ?? json;
+  const out: BestTimeCell[] = [];
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number.NaN);
+  for (const d of Array.isArray(root) ? root : []) {
+    const o = d as { dayOfWeek?: unknown; bestTimesByHour?: unknown; hourOfDay?: unknown; value?: unknown };
+    const day = num(o.dayOfWeek);
+    if (Array.isArray(o.bestTimesByHour)) for (const h of o.bestTimesByHour as { hourOfDay?: unknown; value?: unknown }[]) out.push({ day, hour: num(h.hourOfDay), value: num(h.value) });
+    else out.push({ day, hour: num(o.hourOfDay), value: num(o.value) });
+  }
+  return out.filter((c) => c.day >= 1 && c.day <= 7 && c.hour >= 0 && c.hour <= 23 && c.value >= 0);
+}
 
 /** Normalised per-post metrics read from the provider (absent metrics stay undefined — never invented). */
 export interface ProviderPostMetrics {
@@ -120,6 +138,14 @@ export class MetricoolAdapter implements PublishingAdapter {
     if (r.status === 401 || r.status === 403) throw new Error(`Metricool رفض الوصول إلى التحليلات (${r.status}) — قد لا تتيح خطتك ذلك.`);
     if (r.status !== 200) throw new Error(`استجابة تحليلات غير متوقعة من Metricool (${r.status}).`);
     return parsePostMetrics(r.json, kind);
+  }
+
+  /** Read-only «best time to post» heatmap (day of week × hour, higher = better) for the coming days. */
+  async bestTimes(brandId: string, network: string, from: Date, to: Date, timezone = 'Asia/Bahrain'): Promise<BestTimeCell[]> {
+    const fmt = (d: Date) => localDateTime(d, timezone).slice(0, 19);
+    const r = await this.req('GET', ENDPOINTS.bestTimes(network), { blogId: brandId, start: fmt(from), end: fmt(to), from: fmt(from), to: fmt(to), timezone });
+    if (r.status !== 200) throw new Error(`Metricool best-time ${network}: HTTP ${r.status}`);
+    return parseBestTimes(r.json);
   }
 
   /** Read-only follower count (latest value of the account followers timeline). Tolerant: returns null when unavailable. */

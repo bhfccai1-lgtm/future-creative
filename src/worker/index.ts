@@ -69,6 +69,7 @@ async function main() {
   await sched.upsertJobScheduler('growth-program', { pattern: '50 8 * * *', tz: TZ }, { name: 'growth-program' }); // daily check; sends one note per program week
   await sched.upsertJobScheduler('leads-follow-up', { pattern: '5 9 * * *', tz: TZ }, { name: 'leads-follow-up' }); // 09:05: customers due for a follow-up
   await sched.upsertJobScheduler('print-follow-up', { pattern: '15 9 * * *', tz: TZ }, { name: 'print-follow-up' }); // 09:15: proofs without a reply, stuck / uncollected print orders
+  await sched.upsertJobScheduler('best-times', { pattern: '25 5 * * *', tz: TZ }, { name: 'best-times' }); // Metricool best-time heatmap per account (read-only)
   await sched.upsertJobScheduler('analytics', { pattern: '15 5,17 * * *', tz: TZ }, { name: 'analytics' }); // read-only metrics import twice a day
   await sched.upsertJobScheduler('comments', { pattern: '*/30 * * * *', tz: TZ }, { name: 'comments' }); // pull + analyse Instagram comments (replies stay manual)
 
@@ -80,6 +81,7 @@ async function main() {
         return { health, cycle: await runSchedulerCycle() };
       }
       if (job.name === 'reconcile') return { stuck: await sweepStuckJobs(), ...(await reconcileSweep()) };
+      if (job.name === 'best-times') return (await import('../lib/growth/best-time')).refreshBestTimes(await getAdapter('metricool'));
       if (job.name === 'analytics') {
         const adapter = await getAdapter('metricool');
         const r = await importMetrics(adapter);

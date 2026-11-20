@@ -4,7 +4,7 @@ import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 
 type Growth = { peakHours: { enabled: boolean; maxDelayHours: number; count: number }; winners: { enabled: boolean; minMultiple: number; maxPerWeek: number } };
-type Peak = { id: string; name: string; hours: number[]; source: 'data' | 'default'; sample: number };
+type Peak = { id: string; name: string; hours: number[]; source: 'data' | 'metricool' | 'default'; sample: number };
 type Win = { adId: string; account: string; headline: string | null; format: string; reach: number; medianReach: number; multiple: number; sendsSaves: number; reason: string; publicUrl: string | null; boosted: boolean };
 export type GrowthStatus = { growth: Growth; peaks: Peak[]; winners: Win[] };
 
@@ -32,7 +32,7 @@ export function GrowthSettings({ initial }: { initial: GrowthStatus }) {
           <table className="w-full min-w-[480px]"><thead><tr><th className="th">الحساب</th><th className="th">ساعات الذروة (البحرين)</th><th className="th">المصدر</th></tr></thead>
             <tbody>{st.peaks.map((p) => (
               <tr key={p.id} className="border-t"><td className="td font-bold">{p.name}</td><td className="td ltr">{[...p.hours].sort((a, b) => a - b).map((h) => `${h}:00`).join('  ')}</td>
-                <td className="td text-xs">{p.source === 'data' ? <span className="text-emerald-700">من بياناتك ({p.sample} منشور)</span> : <span className="text-slate-500">افتراضي ({p.sample}/12 منشور مقاس)</span>}</td></tr>))}</tbody></table>
+                <td className="td text-xs">{p.source === 'data' ? <span className="text-emerald-700">من بياناتك ({p.sample} منشور)</span> : p.source === 'metricool' ? <span className="text-sky-700">⏰ من Metricool — نشاط جمهورك اليوم ({p.sample}/12 منشور مقاس حتى تتعلم من نتائجك)</span> : <span className="text-slate-500">افتراضي ({p.sample}/12 منشور مقاس)</span>}</td></tr>))}</tbody></table>
         </div>
       </section>
 

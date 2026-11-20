@@ -2,17 +2,19 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { prisma } from '../db';
 import { BEST_HOURS_RANKED } from '../campaigns/slots';
 import { inWindow } from '../time';
+import { metricoolBestHours } from './best-time';
 
 /**
  * Peak hours per account, learned from the account's OWN verified results (Metricool reach/views),
  * ranked by median reach per local hour. Until there is enough data (≥ 12 measured posts over ≥ 4 hours),
- * the brand-level ranking from Metricool's best-time data is used. Never invented.
+ * the account's LIVE Metricool best-time heatmap for that day is used (refreshed daily), and only without it the
+ * built-in ranking. Never invented.
  */
-export interface PeakHours { hours: number[]; source: 'data' | 'default'; sample: number; ranked: { hour: number; medianReach: number; posts: number }[] }
+export interface PeakHours { hours: number[]; source: 'data' | 'metricool' | 'default'; sample: number; ranked: { hour: number; medianReach: number; posts: number }[] }
 
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
-export async function peakHoursFor(account: { id: string; timezone: string }, count = 6, since = new Date(Date.now() - 90 * 86400_000)): Promise<PeakHours> {
+export async function peakHoursFor(account: { id: string; timezone: string }, count = 6, since = new Date(Date.now() - 90 * 86400_000), at = new Date()): Promise<PeakHours> {
   const rows = await prisma.publicationResult.findMany({
     where: { verifiedAt: { gte: since }, metricsFetchedAt: { not: null }, job: { accountId: account.id, primary: true } },
     select: { metrics: true, job: { select: { scheduledFor: true } } },
@@ -27,10 +29,12 @@ export async function peakHoursFor(account: { id: string; timezone: string }, co
   }
   const sample = [...byHour.values()].reduce((n, v) => n + v.length, 0);
   const ranked = [...byHour].map(([hour, v]) => ({ hour, medianReach: Math.round(median(v)), posts: v.length })).sort((a, b) => b.medianReach - a.medianReach);
-  if (sample < 12 || byHour.size < 4) return { hours: BEST_HOURS_RANKED.slice(0, count), source: 'default', sample, ranked };
+  const live = await metricoolBestHours(account, 24, at).catch(() => null);
+  const fallback = live ?? BEST_HOURS_RANKED;
+  if (sample < 12 || byHour.size < 4) return { hours: fallback.slice(0, count), source: live ? 'metricool' : 'default', sample, ranked };
   // hours with only one post are noisy: rank them after hours with ≥ 2 posts
   const solid = ranked.filter((r) => r.posts >= 2).map((r) => r.hour);
-  const hours = [...solid, ...ranked.filter((r) => r.posts < 2).map((r) => r.hour), ...BEST_HOURS_RANKED].filter((h, i, a) => a.indexOf(h) === i).slice(0, count);
+  const hours = [...solid, ...ranked.filter((r) => r.posts < 2).map((r) => r.hour), ...fallback].filter((h, i, a) => a.indexOf(h) === i).slice(0, count);
   return { hours, source: 'data', sample, ranked };
 }
 
