@@ -64,7 +64,7 @@ export const SettingsSchema = z.object({
   ai: z.object({
     dryRun: z.boolean().default(true),
     textModel: z.string().default('gpt-4.1-mini'),
-    imageModel: z.string().default('gpt-image-1'),
+    imageModel: z.string().default('gpt-image-2'), // falls back to gpt-image-1 automatically when not enabled for the key
     imageQuality: z.enum(['low', 'medium', 'high']).default('medium'),
     /** Image quality per format ('' = use imageQuality). Stories live 24 h → low is enough by default. */
     qualityByFormat: z.object({

@@ -65,10 +65,22 @@ export async function callWithParamFallback<P extends Record<string, unknown>, R
   }
 }
 
+/** the image model that always works on a verified OpenAI account — used when the chosen one is not available */
+export const FALLBACK_IMAGE_MODEL = 'gpt-image-1';
+/** «this model does not exist / is not enabled for this key» (404 model_not_found, 400 invalid model, 403 no access) */
+export function isModelUnavailable(e: unknown) {
+  if (!(e instanceof OpenAI.APIError)) return false;
+  const code = (e as { code?: string }).code ?? '';
+  return code === 'model_not_found' || ((e.status === 404 || e.status === 400 || e.status === 403) && /model/i.test(e.message) && /(not (found|exist|available|supported)|does not exist|invalid|access|verif)/i.test(e.message));
+}
+
+const warnedModels = new Set<string>();
 const warnDrop = (where: string) => (param: string) => console.warn(`[openai] ${where}: model rejected optional parameter "${param}" — retrying without it`);
 
 export class OpenAiProvider implements AiProvider {
   readonly name = 'openai';
+  /** set when the chosen image model was unavailable and the fallback was used (read by the caller to tell the owner) */
+  imageModelFallback: { wanted: string; reason: string } | null = null;
   readonly isDryRun = false;
   private client: OpenAI;
   constructor(apiKey: string, client?: OpenAI) {
@@ -246,24 +258,40 @@ export class OpenAiProvider implements AiProvider {
 
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; references?: Buffer[]; background?: 'transparent' | 'opaque' }) {
     const bg = opts.background === 'transparent' ? { background: 'transparent', output_format: 'png' } : {};
-    let res;
-    try {
+    const run = async (model: string) => {
       // reference images (real product photo / reference design) → the edits endpoint with several input images
       if (opts.references?.length) {
         const image = await Promise.all(opts.references.slice(0, 4).map((b, i) => toFile(b, `reference-${i + 1}.png`, { type: 'image/png' })));
-        res = await callWithParamFallback(
-          { model: opts.model, prompt, image, size: opts.size, quality: opts.quality, n: 1, input_fidelity: 'high' },
+        return callWithParamFallback(
+          { model, prompt, image, size: opts.size, quality: opts.quality, n: 1, input_fidelity: 'high' },
           (p) => this.client.images.edit(p as unknown as OpenAI.Images.ImageEditParamsNonStreaming), warnDrop('image-edit'));
-      } else res = await callWithParamFallback(
-        { model: opts.model, prompt, size: opts.size, quality: opts.quality, n: 1, ...bg },
+      }
+      return callWithParamFallback(
+        { model, prompt, size: opts.size, quality: opts.quality, n: 1, ...bg },
         (p) => this.client.images.generate(p as unknown as OpenAI.Images.ImageGenerateParamsNonStreaming), warnDrop('image'));
-    } catch (e) { throw mapError(e); }
+    };
+    let res; let used = opts.model;
+    try { res = await run(used); }
+    catch (e) {
+      // a newer model (e.g. gpt-image-2) not enabled for this key/organisation → keep designing with the proven model
+      if (!isModelUnavailable(e) || used === FALLBACK_IMAGE_MODEL) throw mapError(e);
+      console.warn(`[openai] image model "${used}" is not available for this key — falling back to ${FALLBACK_IMAGE_MODEL}`);
+      this.imageModelFallback = { wanted: used, reason: (e as Error).message.slice(0, 200) };
+      if (!warnedModels.has(used)) {
+        warnedModels.add(used);
+        const wanted = used;
+        void import('../audit').then(({ notify }) => notify('WARNING', 'IMAGE_MODEL_FALLBACK', `نموذج الصور «${wanted}» غير متاح لمفتاحك`,
+          `استُخدم ${FALLBACK_IMAGE_MODEL} تلقائيًا حتى لا تتوقف التصاميم. فعّل النموذج في حساب OpenAI (قد يحتاج توثيق المؤسسة) أو غيّر «نموذج الصور» في إعدادات الذكاء الاصطناعي.`)).catch(() => undefined);
+      }
+      used = FALLBACK_IMAGE_MODEL;
+      try { res = await run(used); } catch (e2) { throw mapError(e2); }
+    }
     const item = res.data?.[0];
-    if (item?.b64_json) return { png: Buffer.from(item.b64_json, 'base64'), model: opts.model, revisedPrompt: item.revised_prompt ?? undefined };
+    if (item?.b64_json) return { png: Buffer.from(item.b64_json, 'base64'), model: used, revisedPrompt: item.revised_prompt ?? undefined };
     if (item?.url) {
       const r = await fetch(item.url);
       if (!r.ok) throw new AiProviderError('NETWORK', 'تعذر تنزيل الصورة المولدة.', true);
-      return { png: Buffer.from(await r.arrayBuffer()), model: opts.model };
+      return { png: Buffer.from(await r.arrayBuffer()), model: used };
     }
     throw new AiProviderError('BAD_OUTPUT', 'لم تُرجع واجهة الصور أي صورة.', true);
   }

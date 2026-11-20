@@ -138,3 +138,34 @@ describe('regression: "الموجز لا يطابق المخطط: String must co
     expect(e.message).not.toMatch(/String must contain/);
   });
 });
+
+describe('image model fallback (e.g. gpt-image-2 not enabled for the key)', () => {
+  const notFound = (model: string) => OpenAI.APIError.generate(404, { error: { message: `The model '${model}' does not exist or you do not have access to it.`, type: 'invalid_request_error', param: null, code: 'model_not_found' } }, 'not found', new Headers());
+  const png = Buffer.from('iVBORw0KGgo=', 'base64');
+  const client = (available: string[]) => {
+    const seen: string[] = [];
+    const answer = async (p: { model: string }) => { seen.push(p.model); if (!available.includes(p.model)) throw notFound(p.model); return { data: [{ b64_json: png.toString('base64') }] }; };
+    return { seen, c: { images: { generate: answer, edit: answer } } as unknown as OpenAI };
+  };
+
+  it('uses gpt-image-2 when available', async () => {
+    const { seen, c } = client(['gpt-image-2', 'gpt-image-1']);
+    const r = await new OpenAiProvider('k', c).generateScene('a mug', { model: 'gpt-image-2', quality: 'medium', size: '1024x1536' });
+    expect(r.model).toBe('gpt-image-2'); expect(seen).toEqual(['gpt-image-2']);
+  });
+
+  it('falls back to gpt-image-1 (generate and edit) instead of failing the design', async () => {
+    const { seen, c } = client(['gpt-image-1']);
+    const p = new OpenAiProvider('k', c);
+    const r = await p.generateScene('a mug', { model: 'gpt-image-2', quality: 'medium', size: '1024x1536' });
+    expect(r.model).toBe('gpt-image-1'); expect(seen).toEqual(['gpt-image-2', 'gpt-image-1']);
+    expect(p.imageModelFallback?.wanted).toBe('gpt-image-2');
+    const e = await p.generateScene('a mug', { model: 'gpt-image-2', quality: 'low', size: '1024x1024', references: [png] });
+    expect(e.model).toBe('gpt-image-1');
+  });
+
+  it('other errors are not hidden by the fallback', async () => {
+    const { c } = client([]);
+    await expect(new OpenAiProvider('k', c).generateScene('a mug', { model: 'gpt-image-1', quality: 'low', size: '1024x1024' })).rejects.toBeInstanceOf(AiProviderError);
+  });
+});
