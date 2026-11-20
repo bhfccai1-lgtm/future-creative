@@ -289,7 +289,8 @@ export class OpenAiProvider implements AiProvider {
     const item = res.data?.[0];
     if (item?.b64_json) return { png: Buffer.from(item.b64_json, 'base64'), model: used, revisedPrompt: item.revised_prompt ?? undefined };
     if (item?.url) {
-      const r = await fetch(item.url);
+      const r = await fetch(item.url, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
+      if (!r) throw new AiProviderError('NETWORK', 'تعذر تنزيل الصورة المولدة (انتهت المهلة).', true);
       if (!r.ok) throw new AiProviderError('NETWORK', 'تعذر تنزيل الصورة المولدة.', true);
       return { png: Buffer.from(await r.arrayBuffer()), model: used };
     }

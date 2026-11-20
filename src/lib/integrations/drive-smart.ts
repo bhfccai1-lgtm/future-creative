@@ -4,7 +4,7 @@ import { notify } from '../audit';
 import { getSecret, getSettings } from '../settings';
 import { getAiProvider } from '../ai';
 import { assertBudget, estimateTextCost, recordUsage } from '../ai/cost';
-import { accountPlans, postScore, type PlanPost } from '../growth/account-plan';
+import { accountPlans, metricFields, postScore, type PlanPost } from '../growth/account-plan';
 import { publishableMedia } from '../publishing/media';
 import { SCRIPT_VERSION, type DriveMeta } from './google-archive';
 
@@ -26,17 +26,14 @@ export async function callScript(event: string, data: unknown, fetchImpl: Fetch 
   return j;
 }
 
-type M = { views?: number; reach?: number; saves?: number; shares?: number; comments?: number; likes?: number; retentionPct?: number; skipRatePct?: number };
 async function measured(since: Date) {
   const jobs = await prisma.publicationJob.findMany({
     where: { primary: true, result: { verifiedAt: { gte: since }, metricsFetchedAt: { not: null } } },
     include: { result: true, account: { select: { name: true } }, advertisement: { include: { media: true } } },
   });
   return jobs.map((j) => {
-    const m = (j.result?.metrics ?? {}) as M;
     const p: PlanPost = { adId: j.advertisementId, hook: '', headline: j.advertisement.headline, format: j.advertisement.format, publishedAt: (j.result?.verifiedAt ?? j.scheduledFor).toISOString(), product: '', category: '',
-      views: m.views ?? 0, reach: m.reach ?? 0, likes: m.likes ?? 0, comments: m.comments ?? 0, saves: m.saves ?? 0, shares: m.shares ?? 0,
-      retention: typeof m.retentionPct === 'number' ? Math.round(m.retentionPct) : null, skip: typeof m.skipRatePct === 'number' ? Math.round(m.skipRatePct) : null };
+      ...metricFields(j.result?.metrics) };
     return { p, score: Math.round(postScore(p) * 10) / 10, account: j.account.name, ad: j.advertisement };
   });
 }

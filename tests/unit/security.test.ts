@@ -66,3 +66,21 @@ describe('password policy', () => {
     expect(passwordPolicyError('Strong-Pass-2026')).toBeNull();
   });
 });
+
+describe('session secret fails closed (audit S1)', () => {
+  it('never signs or verifies with a missing or short secret', async () => {
+    const { sessionSecret, signSession, verifySession } = await import('@/lib/auth/session');
+    const claims = { sub: 'u1', email: 'a@b.bh', role: 'ADMIN', perms: [], sv: 1 };
+    const good = await signSession(claims);
+    expect((await verifySession(good))?.sub).toBe('u1');
+    const saved = process.env.SESSION_SECRET;
+    try {
+      for (const bad of ['', 'short-secret']) {
+        process.env.SESSION_SECRET = bad;
+        expect(() => sessionSecret()).toThrow(/SESSION_SECRET/);
+        await expect(signSession(claims)).rejects.toThrow(/SESSION_SECRET/);
+        expect(await verifySession(good)).toBeNull(); // a request is treated as logged out, never as valid
+      }
+    } finally { process.env.SESSION_SECRET = saved; }
+  });
+});

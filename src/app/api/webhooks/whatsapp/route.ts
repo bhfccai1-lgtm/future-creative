@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSecret } from '@/lib/settings';
+import { safeEqual } from '@/lib/crypto';
 import { handleInbound, verifyMetaSignature } from '@/lib/integrations/whatsapp-cloud';
 import { log } from '@/lib/ops/log';
 export const dynamic = 'force-dynamic';
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
   const token = await getSecret('WA_VERIFY_TOKEN');
-  if (q.get('hub.mode') === 'subscribe' && token && q.get('hub.verify_token') === token) return new Response(q.get('hub.challenge') ?? '', { status: 200 });
+  if (q.get('hub.mode') === 'subscribe' && token && safeEqual(q.get('hub.verify_token') ?? '', token)) return new Response(q.get('hub.challenge') ?? '', { status: 200 });
   return new Response('Forbidden', { status: 403 });
 }
 

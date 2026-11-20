@@ -46,7 +46,6 @@ describe('V6 production pipeline — custom printed mug & roll-up banner', () =>
       expect(manifest.layers.find((l) => l.id === 'contact:salmabad:phone')?.text).toBe('34315316');
       expect(manifest.layers.some((l) => l.id === 'logo')).toBe(true);
       expect(ad.logoSha256).toBeTruthy();
-      const failed = qc.checks.filter((c) => !c.passed).map((c) => c.id);
       console.log(`[v6] ${slug}: state=${ad.state} qcPassed=${ad.qcPassed} failed=${JSON.stringify(qc.checks.filter((c) => !c.passed))} chosen=«${sel.chosen}»`);
       expect(ad.state).not.toBe('PUBLISHED'); // STEP 09: never auto-published here
       expect((o.aiTextCheck as { passed: boolean }).passed).toBe(true);

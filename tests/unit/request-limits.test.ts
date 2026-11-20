@@ -15,3 +15,14 @@ describe('request size limits (before parsing/validation)', () => {
     expect((await middleware(req('/api/brand/logo', 80 * 1024 * 1024, 'multipart/form-data; boundary=x'))).status).toBe(413);
   });
 });
+
+describe('chunked bodies without a length (audit S2)', () => {
+  const chunked = (path: string) => new NextRequest(`https://ads.test.local${path}`, { method: 'POST', headers: { 'transfer-encoding': 'chunked', 'content-type': 'application/json' } });
+  it('are refused for the dashboard API (they would bypass the size limit)', async () => {
+    expect((await middleware(chunked('/api/ads/generate'))).status).toBe(411);
+  });
+  it('still reach webhooks and token integrations (they authenticate themselves)', async () => {
+    expect((await middleware(chunked('/api/webhooks/whatsapp'))).status).not.toBe(411);
+    expect((await middleware(chunked('/api/integrations/n8n/generate'))).status).not.toBe(411);
+  });
+});

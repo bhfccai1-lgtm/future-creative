@@ -4,7 +4,6 @@ import { api } from '@/lib/auth/server';
 import { getSecret, secretStatus, setSecret } from '@/lib/settings';
 import { audit } from '@/lib/audit';
 import { AppError } from '@/lib/errors';
-import { prisma } from '@/lib/db';
 
 const Body = z.object({ url: z.string().max(500) });
 /** Save (encrypted) the Apps Script web-app URL; "__delete__" removes it. */

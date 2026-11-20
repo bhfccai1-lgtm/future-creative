@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { prisma } from '@/lib/db';
 import { setSecret } from '@/lib/settings';
 import { generateAdvertisement } from '@/lib/pipeline/generate';
 import { queueGoogleArchive, appsScriptSource } from '@/lib/integrations/google-archive';

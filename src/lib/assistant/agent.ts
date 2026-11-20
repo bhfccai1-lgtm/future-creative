@@ -6,6 +6,7 @@ import { getSettings } from '../settings';
 import { getAiProvider } from '../ai';
 import { assertBudget, estimateTextCost, recordUsage } from '../ai/cost';
 import { can, type Permission } from '../auth/rbac';
+import { sessionSecret } from '../auth/session';
 import { enq } from '../queue/queues';
 import { runAdvisor } from '../ops/advisor';
 import { accountPlans, approvePlanIdeas, planIdeasByKey } from '../growth/account-plan';
@@ -47,7 +48,7 @@ export const ASSISTANT_SYSTEM = [
 ].join('\n');
 
 // ── signing: a proposal can only be executed as it was shown, by the user it was shown to, within 15 minutes ──
-const secret = () => process.env.SESSION_SECRET ?? '';
+const secret = () => sessionSecret();
 const signOf = (userId: string, tool: string, args: unknown, exp: number) => createHmac('sha256', secret()).update(JSON.stringify([userId, tool, args, exp])).digest('base64url');
 function propose(user: User, tool: Proposal['tool'], args: Record<string, unknown>, summary: string): Proposal {
   const exp = Date.now() + 15 * 60_000;

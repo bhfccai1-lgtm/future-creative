@@ -28,7 +28,9 @@ export const POST = api('products:manage', async (req, { user }) => {
     const r = await fetch(csvUrl, { redirect: 'follow', signal: AbortSignal.timeout(20_000) }).catch((e) => { throw new AppError('NETWORK', `تعذر تحميل الجدول: ${(e as Error).message}`, 502); });
     const ct = r.headers.get('content-type') ?? '';
     if (!r.ok || ct.includes('text/html')) throw new AppError('SHEET_PRIVATE', 'تعذر قراءة الجدول — شاركه «لأي شخص لديه الرابط (عارض)» ثم أعد المحاولة.', 422);
+    if (Number(r.headers.get('content-length') ?? 0) > 10 * 1024 * 1024) throw new AppError('VALIDATION', 'الجدول أكبر من 10MB.', 413);
     text = await r.text();
+    if (text.length > 10 * 1024 * 1024) throw new AppError('VALIDATION', 'الجدول أكبر من 10MB.', 413);
   } else throw new AppError('VALIDATION', 'أرفق ملف CSV أو ضع رابط Google Sheets.', 422);
   const { rows, errors } = parseProductCsv(text);
   if (rows.length > 5000) throw new AppError('VALIDATION', 'الحد الأقصى 5000 منتج في الاستيراد الواحد.', 422);

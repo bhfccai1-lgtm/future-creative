@@ -35,6 +35,12 @@ export interface AccountPlan {
 }
 
 const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+/** the numeric fields of a post from a provider metrics object — one place for the metric names (plan, brain, Drive) */
+export function metricFields(raw: unknown, o: { roundRates?: boolean } = {}) {
+  const m = (raw ?? {}) as M, round = o.roundRates ?? true;
+  const rate = (v: unknown) => (typeof v === 'number' ? (round ? Math.round(v) : v) : null);
+  return { views: n(m.views), reach: n(m.reach), likes: n(m.likes), comments: n(m.comments), saves: n(m.saves), shares: n(m.shares), retention: rate(m.retentionPct), skip: rate(m.skipRatePct) };
+}
 const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
 const firstLine = (c: string | null) => (c ?? '').split('\n').map((l) => l.trim()).find(Boolean) ?? '';
 export const isQuestion = (hook: string) => /[؟?]\s*[\p{Extended_Pictographic}\s]*$/u.test(hook);
@@ -85,12 +91,11 @@ export async function accountPlans(opts: { now?: Date; days?: number; accountId?
       orderBy: { scheduledFor: 'asc' },
     });
     const posts: PlanPost[] = jobs.map((j) => {
-      const m = (j.result?.metrics ?? {}) as M; const ad = j.advertisement;
+      const ad = j.advertisement;
       return {
         adId: ad.id, hook: firstLine(ad.caption).slice(0, 140), headline: ad.headline, format: ad.format, publishedAt: (j.result?.verifiedAt ?? j.scheduledFor).toISOString(),
         product: acc.language === 'ar' ? ad.product.titleAr : ad.product.titleEn ?? ad.product.titleAr, category: ad.product.category.slug,
-        views: n(m.views), reach: n(m.reach), likes: n(m.likes), comments: n(m.comments), saves: n(m.saves), shares: n(m.shares),
-        retention: typeof m.retentionPct === 'number' ? Math.round(m.retentionPct) : null, skip: typeof m.skipRatePct === 'number' ? Math.round(m.skipRatePct) : null,
+        ...metricFields(j.result?.metrics),
       };
     });
     const measured = jobs.filter((j) => j.result?.metricsFetchedAt).length;

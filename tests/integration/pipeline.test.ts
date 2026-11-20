@@ -4,7 +4,6 @@ import { storage } from '@/lib/storage';
 import { generateAdvertisement } from '@/lib/pipeline/generate';
 import { setAiProviderOverride } from '@/lib/ai';
 import { AiProviderError } from '@/lib/ai/types';
-import { updateSettings } from '@/lib/settings';
 import { findDuplicates } from '@/lib/dedup';
 import { recordUsage } from '@/lib/ai/cost';
 import { LogoUnavailableError } from '@/lib/brand/logo';

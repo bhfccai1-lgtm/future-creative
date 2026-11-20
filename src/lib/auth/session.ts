@@ -6,7 +6,13 @@ export const SESSION_TTL_SECONDS = 12 * 3600;
 
 export interface SessionClaims { sub: string; email: string; role: string; perms: string[]; sv: number; }
 
-const key = () => new TextEncoder().encode(process.env.SESSION_SECRET ?? '');
+/** The signing secret; refuses to work without a real one (never signs or verifies with an empty key). */
+export function sessionSecret(): string {
+  const s = process.env.SESSION_SECRET ?? '';
+  if (s.length < 32) throw new Error('SESSION_SECRET is missing or shorter than 32 characters');
+  return s;
+}
+const key = () => new TextEncoder().encode(sessionSecret());
 
 export async function signSession(c: SessionClaims): Promise<string> {
   return new SignJWT({ email: c.email, role: c.role, perms: c.perms, sv: c.sv })
