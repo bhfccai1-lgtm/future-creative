@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **🎙️ النطق الاحترافي (professional pronunciation)** — reel voice-overs:
+  - **Numbers are spoken as words** instead of being dropped: «خصم ٢٠٪ على 150 كوب» → «عشرين بالمئة… مئة وخمسين», «2.5» → «اثنين فاصلة خمسة». English works too. Phone numbers are never read.
+  - **Bug fix:** digits used to be removed before the pronunciation dictionary ran, so «A4/A3» never matched. Now the dictionary runs first, then numbers.
+  - **Smart retake:** when the listen-back check misses words, one small AI text call adds full diacritics to those words. It's used only if the words stay exactly the same (verified). The clearer take wins.
+  - **Learning:** words the voice stumbles on are counted and appear in the voice settings as «🎧 كلمات يتعثر فيها الصوت» (words the voice stumbles on), each with a suggested reading. One click adds it to the dictionary.
+  - **Wider built-in dictionary:** Instagram, TikTok, t-shirt, canvas, flex, vinyl, logo, Muharraq, Manama, Riffa, PVC, QR, PDF, CMYK…
 - **🧠 العميل الذكي (smart CRM)** — on «العملاء والطلبات» (customers & orders):
   - **Customer profile:** every request from the same WhatsApp/phone number is one customer, however the number was typed («+973 3331 6319», «33316319»). Each card shows «⭐ عميل سابق» (previous customer) with orders, lifetime value and the date of the last order.
   - **Lead score (hot / warm / cold, 0–100)** from real signals, each one shown: urgency or a date in the request, a quantity (only next to a unit, so sizes and prices aren't mistaken for one), a company or event, a quote sent, a repeat customer, and the request's age. No AI cost.

@@ -7,6 +7,7 @@ import { FreeLlmSettings } from '@/components/freellm-settings';
 import { GeminiForm } from '@/components/gemini-form';
 import { AudioSettings } from '@/components/audio-settings';
 import { prisma } from '@/lib/db';
+import { missedSuggestions } from '@/lib/audio/pron-learn';
 
 export default async function AiSettingsPage() {
   await requirePageUser('settings:ai');
@@ -24,7 +25,7 @@ export default async function AiSettingsPage() {
       <Card><AiSettingsForm ai={s.ai} keyStatus={key} /></Card>
       <Card title="FreeLLMAPI — أفكار مجانية (اختياري)" className="mt-6"><FreeLlmSettings domain={process.env.DOMAIN} /></Card>
       <Card title="Gemini Veo — إنتاج فيديو الريلز بالذكاء الاصطناعي" className="mt-6"><GeminiForm video={s.ai.video} keyStatus={await secretStatus('GEMINI_API_KEY')} /></Card>
-      <Card title="صوت الريلز — موسيقى مرخّصة، تعليق صوتي، مؤثرات" className="mt-6"><AudioSettings audio={s.ai.audio} tracks={(await prisma.audioTrack.findMany({ orderBy: { createdAt: 'desc' } })).map((t) => ({ id: t.id, name: t.name, mood: t.mood, durationSec: t.durationSec, startSec: t.startSec, licenseNote: t.licenseNote, active: t.active, uses: t.uses }))} /></Card>
+      <Card title="صوت الريلز — موسيقى مرخّصة، تعليق صوتي، مؤثرات" className="mt-6"><AudioSettings audio={s.ai.audio} stumbles={await missedSuggestions(s.ai.audio.lexicon)} tracks={(await prisma.audioTrack.findMany({ orderBy: { createdAt: 'desc' } })).map((t) => ({ id: t.id, name: t.name, mood: t.mood, durationSec: t.durationSec, startSec: t.startSec, licenseNote: t.licenseNote, active: t.active, uses: t.uses }))} /></Card>
     </>
   );
 }
