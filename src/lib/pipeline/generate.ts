@@ -437,6 +437,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const composed = await composeAdvertisement({
       scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,
       badge: brief.badge, features,
+      footer: lang === 'ar' ? `${business.nameAr} – مملكة البحرين` : `${business.nameEn} – Kingdom of Bahrain`,
     });
 
     // ── Pro reel: extra AI scenes (each a different shot of the SAME product), same layout + theme ──

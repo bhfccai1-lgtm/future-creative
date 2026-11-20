@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type OverlayOptions } from 'sharp';
 import { FORMAT_SIZE } from './templates';
 import { renderText, type RenderedText } from './text';
 import type { Lang } from './fonts';
@@ -13,13 +13,12 @@ import type { ComposeInput, ComposeResult, LayerManifest, PlacedLayer } from './
 export const POSTER_KEY = 'gold-poster';
 const W = 1080, H = 1920;
 const NAVY = '#0b1730', NAVY2 = '#14295c', WHITE = '#ffffff';
-const PANEL_Y = 1250; // curve apex ~1225 — the panel (order button + branches) ends above Instagram's bottom UI (IG_SAFE_1920)
-// Layout inside the Instagram safe zone: logo under the story/Reels header, phones above the caption / reply bar,
-// branch columns inset from the Reels side icons. The benefit-icon row lives on feed formats only (no room here).
-// Hierarchy: one hero (the gold badge), the headline second, the tagline quiet — and a product window of ~560 px
-// (was ~400) that matches the scene prompt's product band (34–63 % of the height), so the product is never cut.
-const L = { logo: { x: 360, y: 240, w: 360, h: 112 }, kicker: 366, badge: 446, tag: 602, sep: 672, cta: 1274, label: 1386, phone: 1460, colX: 110 };
-
+// Reference-style layout (premium Gulf print ad): big logo · huge GOLD product title · white promise line · gold arc ·
+// benefit icons row · large product window · gold «اطلب الآن» with a tapping hand · branch names + WhatsApp number
+// pills · gold footer ribbon with the Bahrain pin. Logo, order button and numbers stay inside the Instagram safe zone
+// (IG_SAFE_1920: 236–1540); the footer ribbon is decoration below it.
+const L = { logo: { x: 290, y: 236, w: 500, h: 168 }, title: 414, sub: 544, sep: 616, feat: 636, cta: 1258, label: 1374, phone: 1430, footer: 1748, colX: 110 };
+const PANEL_Y = L.cta - 90; // where the bottom shade becomes solid enough for the order block
 const goldGrad = (id: string) => `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdeeb0"/><stop offset="0.45" stop-color="#e6c25a"/><stop offset="1" stop-color="#b8892a"/></linearGradient>`;
 const goldLine = (id: string) => `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b8892a" stop-opacity="0"/><stop offset="0.2" stop-color="#f6d77a"/><stop offset="0.5" stop-color="#fff1b8"/><stop offset="0.8" stop-color="#f6d77a"/><stop offset="1" stop-color="#b8892a" stop-opacity="0"/></linearGradient>`;
 
@@ -32,7 +31,6 @@ export const ICONS: Record<string, string> = {
 };
 const ICON_ORDER = ['design', 'quality', 'occasion', 'gift'];
 const CART = '<path d="M6 16 H20 L31 62 H78 L90 28 H26" fill="none"/><circle cx="38" cy="80" r="8"/><circle cx="72" cy="80" r="8"/>';
-const PIN = '<path d="M50 92 C50 92 18 58 18 37 A32 32 0 0 1 82 37 C82 58 50 92 50 92 Z"/><circle cx="50" cy="37" r="12" fill="#fdeeb0"/>';
 const PHONE = '<path d="M28 10 C22 10 14 16 16 28 C22 62 46 86 78 92 C88 94 94 86 94 80 L94 68 L72 60 L62 72 C48 66 38 56 32 42 L44 32 L36 10 Z"/>';
 
 async function svgPng(svg: string) { return sharp(Buffer.from(svg)).png().toBuffer(); }
@@ -42,116 +40,146 @@ async function enhanceScene(scene: Buffer) {
     .modulate({ brightness: 1.04, saturation: 1.12 }).linear(1.06, -6).sharpen({ sigma: 0.8 }).png().toBuffer();
 }
 
-/** Scene + static vector decoration (top shade, swooshes, curved panel, dividers). Shared by stills and reel scenes. */
+/** Scene + static vector decoration (shades, gold corner bands, product glow). Shared by stills and reel scenes. */
 export async function buildPosterBackground(sceneBuf: Buffer, features: number): Promise<Buffer> {
   const scene = await enhanceScene(sceneBuf);
-  void features; // the benefit row is not drawn on 1920 (Instagram safe zone) — kept for the call signature
-  const dividers = '';
+  void features;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
     <defs>
-      <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.9"/><stop offset="0.76" stop-color="${NAVY}" stop-opacity="0.82"/><stop offset="0.88" stop-color="${NAVY}" stop-opacity="0.38"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient>
-      <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}"/><stop offset="1" stop-color="${NAVY}"/></linearGradient>
+      <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.92"/><stop offset="0.87" stop-color="${NAVY}" stop-opacity="0.84"/><stop offset="0.94" stop-color="${NAVY}" stop-opacity="0.45"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient>
+      <linearGradient id="bot" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.11" stop-color="${NAVY}" stop-opacity="0.7"/><stop offset="0.26" stop-color="${NAVY}" stop-opacity="0.9"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.97"/></linearGradient>
+      <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#ffe9a8" stop-opacity="0.32"/><stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/></radialGradient>
       ${goldGrad('gg')}${goldLine('gl')}
-      <linearGradient id="sw" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset="0.5" stop-color="#e2bd52"/><stop offset="1" stop-color="#9c7420" stop-opacity="0.2"/></linearGradient>
+      <linearGradient id="band" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset="0.45" stop-color="#e2bd52"/><stop offset="1" stop-color="#8a6417"/></linearGradient>
     </defs>
-    <rect x="0" y="0" width="${W}" height="${L.sep + 190}" fill="url(#top)"/>
-    <path d="M-40 330 C 90 190 230 70 470 -30" fill="none" stroke="url(#sw)" stroke-width="8" stroke-linecap="round" opacity="0.85"/>
-    <path d="M-40 380 C 120 230 270 110 540 -30" fill="none" stroke="url(#sw)" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
-    <path d="M1120 260 C 1000 150 900 70 760 -30" fill="none" stroke="url(#sw)" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
-    <rect x="${W / 2 - 200}" y="${L.sep}" width="400" height="4" rx="2" fill="url(#gl)"/>
-    <path d="M0 ${PANEL_Y + 40} Q ${W / 2} ${PANEL_Y - 90} ${W} ${PANEL_Y + 40} L ${W} ${H} L 0 ${H} Z" fill="url(#panel)" fill-opacity="0.97"/>
-    <path d="M0 ${PANEL_Y + 40} Q ${W / 2} ${PANEL_Y - 90} ${W} ${PANEL_Y + 40}" fill="none" stroke="url(#gg)" stroke-width="9"/>
-    <path d="M0 ${PANEL_Y + 62} Q ${W / 2} ${PANEL_Y - 66} ${W} ${PANEL_Y + 62}" fill="none" stroke="url(#gg)" stroke-width="2" opacity="0.6"/>
-    ${dividers}
-    <rect x="${W / 2 - 1}" y="${L.label + 6}" width="2" height="146" fill="url(#gl)" opacity="0.7"/>
-    <rect x="0" y="${H - 10}" width="${W}" height="10" fill="url(#gg)"/>
+    <ellipse cx="${W / 2}" cy="${(L.feat + 110 + PANEL_Y) / 2 + 40}" rx="460" ry="330" fill="url(#glow)"/>
+    <rect x="0" y="0" width="${W}" height="${L.feat + 200}" fill="url(#top)"/>
+    <rect x="0" y="${PANEL_Y - 20}" width="${W}" height="${H - PANEL_Y + 20}" fill="url(#bot)"/>
+    <path d="M0 250 C 120 150 250 70 420 0 L 380 0 C 230 60 110 130 0 210 Z" fill="url(#band)"/>
+    <path d="M0 300 C 150 180 290 90 480 0" fill="none" stroke="url(#band)" stroke-width="3" opacity="0.8"/>
+    <path d="M${W} 250 C ${W - 120} 150 ${W - 250} 70 ${W - 420} 0 L ${W - 380} 0 C ${W - 230} 60 ${W - 110} 130 ${W} 210 Z" fill="url(#band)" opacity="0.9"/>
+    <path d="M0 ${H - 230} C 160 ${H - 150} 300 ${H - 70} 420 ${H} L 360 ${H} C 250 ${H - 60} 130 ${H - 130} 0 ${H - 190} Z" fill="url(#band)" opacity="0.9"/>
+    <path d="M${W} ${H - 230} C ${W - 160} ${H - 150} ${W - 300} ${H - 70} ${W - 420} ${H} L ${W - 360} ${H} C ${W - 250} ${H - 60} ${W - 130} ${H - 130} ${W} ${H - 190} Z" fill="url(#band)" opacity="0.9"/>
+    <path d="M${W / 2 - 330} ${L.sep + 10} Q ${W / 2} ${L.sep - 18} ${W / 2 + 330} ${L.sep + 10}" fill="none" stroke="url(#gl)" stroke-width="4" stroke-linecap="round"/>
+    <rect x="${W / 2 - 1}" y="${L.label + 4}" width="2" height="132" fill="url(#gl)" opacity="0.75"/>
   </svg>`;
   return sharp(scene).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
 }
-
-const sparkles = (cx: number, cy: number, halfW: number) => {
-  const l = (x1: number, y1: number, x2: number, y2: number) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#f2cf5b" stroke-width="6" stroke-linecap="round" opacity="0.9"/>`;
-  const L = cx - halfW - 20, R = cx + halfW + 20;
-  return [l(L, cy - 38, L - 26, cy - 58), l(L - 4, cy, L - 42, cy), l(L, cy + 38, L - 26, cy + 58), l(R, cy - 38, R + 26, cy - 58), l(R + 4, cy, R + 42, cy), l(R, cy + 38, R + 26, cy + 58)].join('');
-};
 
 function place(id: PlacedLayer['id'], png: Buffer, left: number, top: number, w: number, h: number, box: PlacedLayer['box'], r: Pick<RenderedText, 'fits' | 'missing' | 'fontSize'> | null, text?: string, color?: string, solid?: boolean): PlacedLayer & { solid?: boolean } {
   return { id, png, left: Math.round(left), top: Math.round(top), width: Math.round(w), height: Math.round(h), box, fits: r?.fits ?? true, missing: r?.missing ?? [], fontSize: r?.fontSize, text, color, solid };
 }
 
-export async function composePoster(input: ComposeInput & { badge?: string | null; features?: string[] }): Promise<ComposeResult> {
+/** white text → gold-gradient text with a soft dark shadow (premium headline look) */
+async function goldText(t: RenderedText, shadow: RenderedText): Promise<{ png: Buffer; w: number; h: number }> {
+  const pad = 14, w = t.width + pad * 2, h = t.height + pad * 2;
+  const grad = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${t.width}" height="${t.height}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff4c2"/><stop offset="0.38" stop-color="#f3d36b"/><stop offset="0.7" stop-color="#d9a93a"/><stop offset="1" stop-color="#a87a22"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>`);
+  const gold = await sharp(grad).composite([{ input: t.png, blend: 'dest-in' }]).png().toBuffer();
+  const sh = await sharp(shadow.png).blur(5).png().toBuffer();
+  const png = await sharp({ create: { width: w, height: h, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: sh, left: pad + 3, top: pad + 5 }, { input: gold, left: pad, top: pad }]).png().toBuffer();
+  return { png, w, h };
+}
+
+const HAND = '<path d="M40 34 V64 M40 34 C40 25 53 25 53 34 V54 M53 42 C53 34 65 34 65 42 V56 M65 48 C65 40 77 40 77 48 V68 C77 84 67 95 53 95 H49 C39 95 32 88 27 80 L19 64 C15 56 25 50 31 57 L40 67"/><path d="M40 4 V16 M18 14 L27 23 M62 14 L53 23 M12 34 H24"/>';
+const WA = '<path d="M50 6 A44 44 0 0 0 12 72 L6 94 L29 88 A44 44 0 1 0 50 6 Z" fill="none" stroke-width="7"/><path d="M36 28 C32 28 28 33 29 39 C32 55 45 68 61 71 C67 72 72 68 72 64 L72 58 L61 54 L56 60 C49 57 43 51 40 44 L46 39 L42 28 Z"/>';
+const BH_PIN = '<defs><clipPath id="pc"><path d="M50 96 C50 96 14 60 14 38 A36 36 0 0 1 86 38 C86 60 50 96 50 96 Z"/></clipPath></defs><g clip-path="url(#pc)"><rect x="0" y="0" width="100" height="100" fill="#ce1126"/><path d="M0 0 H38 L48 8 L38 16 L48 24 L38 32 L48 40 L38 48 L48 56 L38 64 L48 72 L38 80 L48 88 L38 96 H0 Z" fill="#fff"/></g><path d="M50 96 C50 96 14 60 14 38 A36 36 0 0 1 86 38 C86 60 50 96 50 96 Z" fill="none" stroke="#fff" stroke-width="5"/>';
+
+export async function composePoster(input: ComposeInput & { badge?: string | null; features?: string[]; footer?: string | null }): Promise<ComposeResult> {
   const lang: Lang = input.lang;
   const background = await buildPosterBackground(input.scene, 0);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
-  // logo (original, proportional)
+  // logo — big, no frame (the brand leads, as in a printed flyer)
   const lb = { ...L.logo };
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
   layers.push(place('logo', logoPng, lb.x + (lb.w - lm.width!) / 2, lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
 
-  // kicker line
-  const kb = { x: 70, y: L.kicker, w: 940, h: 72 };
-  const k = await renderText({ text: input.headline, lang, weight: 'bold', color: WHITE, maxSize: 62, minSize: 40, boxW: kb.w, boxH: kb.h, maxLines: 1 });
-  layers.push(place('headline', k.png, kb.x + (kb.w - k.width) / 2, kb.y + (kb.h - k.height) / 2, k.width, k.height, kb, k, input.headline, WHITE));
-
-  // gold badge with the product keyword
+  // the product keyword as a huge gold title (falls back to the headline when there is no badge)
   const badgeText = (input.badge ?? '').trim();
-  if (badgeText) {
-    const t = await renderText({ text: badgeText, lang, weight: 'extrabold', color: NAVY, maxSize: 104, minSize: 62, boxW: 680, boxH: 110, maxLines: 1 });
-    const pw = Math.min(820, Math.max(400, t.width + 130)), ph = 140, py = L.badge;
-    const cw = pw + 180, ch = ph + 12, x0 = 90; // sparkles live in the side margins of this canvas
-    const pill = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}"><defs>${goldGrad('g')}<linearGradient id="hi" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
-      <rect x="${x0 + 6}" y="8" width="${pw}" height="${ph}" rx="${ph / 2}" fill="#000" opacity="0.28"/>
-      <rect x="${x0}" y="2" width="${pw}" height="${ph}" rx="${ph / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="4"/>
-      <rect x="${x0 + 14}" y="12" width="${pw - 28}" height="${ph * 0.42}" rx="${ph * 0.21}" fill="url(#hi)"/>
-      <rect x="${x0 + 10}" y="12" width="${pw - 20}" height="${ph - 20}" rx="${(ph - 20) / 2}" fill="none" stroke="#fff3c4" stroke-width="2" opacity="0.7"/>
-      ${sparkles(cw / 2, 2 + ph / 2, pw / 2)}</svg>`;
-    const base = await svgPng(pill);
-    const png = await sharp(base).composite([{ input: t.png, left: Math.round((cw - t.width) / 2), top: Math.round(2 + (ph - t.height) / 2) }]).png().toBuffer();
-    layers.push(place('badge' as PlacedLayer['id'], png, (W - cw) / 2, py, cw, ch, { x: Math.round((W - cw) / 2), y: py, w: cw, h: ch }, t, badgeText, NAVY, true));
+  const titleText = badgeText || input.headline;
+  {
+    const tb = { x: 60, y: L.title, w: 960, h: 124 };
+    const spec = { text: titleText, lang, weight: 'extrabold' as const, maxSize: 124, minSize: 64, boxW: tb.w - 30, boxH: tb.h - 24, maxLines: 1 };
+    const t = await renderText({ ...spec, color: WHITE });
+    const sh = await renderText({ ...spec, color: '#02070f' });
+    const g = await goldText(t, sh);
+    layers.push(place((badgeText ? 'badge' : 'headline') as PlacedLayer['id'], g.png, (W - g.w) / 2, tb.y + (tb.h - g.h) / 2, g.w, g.h, tb, t, titleText, '#f0cc62'));
   }
 
-  // tagline
-  if (input.supportingCopy?.trim()) {
-    const sb = { x: 80, y: L.tag, w: 920, h: 60 };
-    const sp = await renderText({ text: input.supportingCopy.trim(), lang, weight: 'regular', color: '#f6e7b8', maxSize: 46, minSize: 32, boxW: sb.w, boxH: sb.h, maxLines: 1 });
+  // white promise line (the headline when the title is the badge, else the supporting copy)
+  const subText = (badgeText ? input.headline : input.supportingCopy ?? '').trim();
+  if (subText) {
+    const sb = { x: 70, y: L.sub, w: 940, h: 66 };
+    const sp = await renderText({ text: subText, lang, weight: 'bold', color: WHITE, maxSize: 56, minSize: 34, boxW: sb.w, boxH: sb.h, maxLines: 1 });
+    layers.push(place(badgeText ? 'headline' : 'support', sp.png, sb.x + (sb.w - sp.width) / 2, sb.y + (sb.h - sp.height) / 2, sp.width, sp.height, sb, sp, subText, WHITE));
+  }
+
+  // benefit row: gold stroke icons + labels with thin gold dividers (or the supporting line when no benefits are set)
+  const feats = (input.features ?? []).map((f) => f.trim()).filter(Boolean).slice(0, 4);
+  if (feats.length >= 2) {
+    const n = feats.length, x0 = 70, rowW = W - 2 * x0, colW = rowW / n, iconD = 58;
+    const cols = lang === 'ar' ? feats.map((f, i) => ({ f, i })).reverse() : feats.map((f, i) => ({ f, i }));
+    const row = sharp({ create: { width: rowW, height: 112, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } });
+    const parts: OverlayOptions[] = [];
+    let allFit = true; const miss: string[] = [];
+    for (const [k, c] of cols.entries()) {
+      const icon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${iconD}" height="${iconD}" viewBox="0 0 100 100"><defs>${goldGrad('g')}</defs><g fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">${ICONS[ICON_ORDER[c.i % ICON_ORDER.length]]}</g></svg>`);
+      const lt = await renderText({ text: c.f, lang, weight: 'bold', color: WHITE, maxSize: 32, minSize: 22, boxW: Math.round(colW - 24), boxH: 42, maxLines: 1 });
+      allFit &&= lt.fits; miss.push(...lt.missing);
+      const cx = colW * k + colW / 2;
+      parts.push({ input: icon, left: Math.round(cx - iconD / 2), top: 0 }, { input: lt.png, left: Math.round(cx - lt.width / 2), top: iconD + 10 + Math.round((42 - lt.height) / 2) });
+      if (k > 0) parts.push({ input: await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="3" height="96"><rect width="2" height="96" fill="#e6c25a" opacity="0.7"/></svg>`), left: Math.round(colW * k), top: 8 });
+    }
+    const png = await row.composite(parts).png().toBuffer();
+    layers.push(place('support', png, x0, L.feat, rowW, 112, { x: x0, y: L.feat, w: rowW, h: 112 }, { fits: allFit, missing: miss, fontSize: 32 }, feats.join(' · '), WHITE));
+  } else if (badgeText && input.supportingCopy?.trim()) {
+    const sb = { x: 80, y: L.feat + 10, w: 920, h: 58 };
+    const sp = await renderText({ text: input.supportingCopy.trim(), lang, weight: 'regular', color: '#f6e7b8', maxSize: 44, minSize: 30, boxW: sb.w, boxH: sb.h, maxLines: 1 });
     layers.push(place('support', sp.png, sb.x + (sb.w - sp.width) / 2, sb.y + (sb.h - sp.height) / 2, sp.width, sp.height, sb, sp, input.supportingCopy.trim(), '#f6e7b8'));
   }
 
-  // (no benefit-icon row on 1920: no room inside Instagram's safe zone — feed formats keep it)
-
-  // CTA — gold pill with cart icon
+  // CTA — gold pill with a tapping hand
   {
-    const cw = 600, chh = 100, cy = L.cta;
-    const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: 62, minSize: 30, boxW: cw - 200, boxH: 88, maxLines: 1 });
-    const cart = `<g transform="translate(${lang === 'ar' ? 56 : cw - 130} 16) scale(0.74)" fill="none" stroke="${NAVY}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">${CART}</g>`;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${chh}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${cw - 4}" height="${chh - 4}" rx="${(chh - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="4"/><rect x="14" y="10" width="${cw - 28}" height="${chh * 0.38}" rx="${chh * 0.19}" fill="#fff" opacity="0.28"/>${cart}</svg>`;
+    const cw = 580, chh = 104, cy = L.cta;
+    const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: 66, minSize: 30, boxW: cw - 190, boxH: 90, maxLines: 1 });
+    const hand = `<g transform="translate(${lang === 'ar' ? cw - 128 : 40} 8) scale(0.88)" fill="none" stroke="${NAVY}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">${HAND}</g>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${chh}"><defs>${goldGrad('g')}<linearGradient id="hi" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.6"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs><rect x="2" y="2" width="${cw - 4}" height="${chh - 4}" rx="${(chh - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="4"/><rect x="18" y="8" width="${cw - 36}" height="${chh * 0.38}" rx="${chh * 0.19}" fill="url(#hi)"/>${hand}</svg>`;
     const base = await svgPng(svg);
-    const tx = lang === 'ar' ? Math.round(160 + (cw - 200 - t.width) / 2) : Math.round(40 + (cw - 200 - t.width) / 2);
+    const tx = lang === 'ar' ? Math.round(40 + (cw - 190 - t.width) / 2) : Math.round(150 + (cw - 190 - t.width) / 2);
     const png = await sharp(base).composite([{ input: t.png, left: Math.max(10, tx), top: Math.round((chh - t.height) / 2) }]).png().toBuffer();
     layers.push(place('cta', png, (W - cw) / 2, cy, cw, chh, { x: (W - cw) / 2, y: cy, w: cw, h: chh }, t, input.cta, NAVY, true));
   }
 
-  // branches: gold pill label with pin + phone icon and number
+  // branches: name in white, number inside a navy pill with a gold outline and a WhatsApp icon
   const order = lang === 'ar' ? [...input.contacts].reverse() : input.contacts;
   const colW2 = (W - 2 * L.colX) / Math.max(1, order.length);
   for (let i = 0; i < order.length; i++) {
     const c = order[i];
     const cx = L.colX + colW2 * i + colW2 / 2;
-    const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: NAVY, maxSize: 38, minSize: 26, boxW: 300, boxH: 54, maxLines: 1 });
-    const pw = Math.min(colW2 - 60, lt.width + 112), ph = 66;
-    const pinX = lang === 'ar' ? pw - 66 : 16;
-    const pillSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${(ph - 4) / 2}" fill="url(#g)" stroke="#8a6417" stroke-width="3"/><g transform="translate(${pinX + 4} 9) scale(0.48)" fill="${NAVY}">${PIN}</g></svg>`;
-    const lpng = await sharp(await svgPng(pillSvg)).composite([{ input: lt.png, left: Math.round(lang === 'ar' ? (pw - 70 - lt.width) / 2 + 6 : 70 + (pw - 70 - lt.width) / 2 - 6), top: Math.round((ph - lt.height) / 2) }]).png().toBuffer();
-    layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lpng, cx - pw / 2, L.label, pw, ph, { x: Math.round(cx - pw / 2), y: L.label, w: pw, h: ph }, lt, c.label, NAVY, true));
+    const lt = await renderText({ text: c.label, lang, weight: 'bold', color: WHITE, maxSize: 44, minSize: 28, boxW: Math.round(colW2 - 60), boxH: 52, maxLines: 1 });
+    layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, L.label, lt.width, lt.height, { x: Math.round(cx - colW2 / 2 + 20), y: L.label, w: Math.round(colW2 - 40), h: 52 }, lt, c.label, WHITE));
 
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 68, minSize: 42, boxW: Math.round(colW2 - 110), boxH: 78, maxLines: 1, ltr: true });
-    const iconD = 62, gap = 16, rw = Math.round(iconD + gap + nt.width), rh = Math.max(iconD, nt.height);
-    const phoneIcon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${iconD}" height="${iconD}"><defs>${goldGrad('g')}</defs><circle cx="${iconD / 2}" cy="${iconD / 2}" r="${iconD / 2 - 2}" fill="url(#g)"/><g transform="translate(15 15) scale(0.38)" fill="${NAVY}">${PHONE}</g></svg>`);
-    const ppng = await sharp({ create: { width: rw, height: rh, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-      .composite([{ input: phoneIcon, left: 0, top: Math.round((rh - iconD) / 2) }, { input: nt.png, left: iconD + gap, top: Math.round((rh - nt.height) / 2) }]).png().toBuffer();
-    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - rw / 2, L.phone, rw, rh, { x: Math.round(cx - colW2 / 2 + 10), y: L.phone, w: Math.round(colW2 - 20), h: 82 }, { ...nt, fits: nt.fits && rw <= colW2 - 30 }, c.phone, WHITE));
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 60, minSize: 38, boxW: Math.round(colW2 - 160), boxH: 66, maxLines: 1, ltr: true });
+    const pw = Math.round(Math.min(colW2 - 30, nt.width + 140)), ph = 86, iconD = 58;
+    const iconX = lang === 'ar' ? 22 : pw - iconD - 22;
+    const pill = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="3" y="3" width="${pw - 6}" height="${ph - 6}" rx="${(ph - 6) / 2}" fill="#081226" fill-opacity="0.92" stroke="url(#g)" stroke-width="5"/><g transform="translate(${iconX} ${(ph - iconD) / 2}) scale(${iconD / 100})" fill="url(#g)" stroke="url(#g)">${WA}</g></svg>`);
+    const tx = lang === 'ar' ? iconX + iconD + Math.round((pw - iconD - 44 - nt.width) / 2) : Math.round((pw - iconD - 44 - nt.width) / 2) + 22;
+    const ppng = await sharp(pill).composite([{ input: nt.png, left: Math.max(8, tx), top: Math.round((ph - nt.height) / 2) }]).png().toBuffer();
+    layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - pw / 2, L.phone, pw, ph, { x: Math.round(cx - colW2 / 2 + 10), y: L.phone, w: Math.round(colW2 - 20), h: ph }, { ...nt, fits: nt.fits && pw <= colW2 - 20 }, c.phone, WHITE, true));
+  }
+
+  // footer ribbon: the shop name + Bahrain pin (decoration under Instagram's reply bar)
+  if (input.footer?.trim()) {
+    const fw = 760, fh = 78;
+    const ft = await renderText({ text: input.footer.trim(), lang, weight: 'bold', color: NAVY, maxSize: 38, minSize: 24, boxW: fw - 170, boxH: 56, maxLines: 1 });
+    const pinX = lang === 'ar' ? fw - 112 : 52;
+    const rib = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${fw}" height="${fh}"><defs>${goldGrad('g')}</defs><path d="M24 2 H${fw - 2} L${fw - 24} ${fh - 2} H2 Z" fill="url(#g)" stroke="#8a6417" stroke-width="3"/><g transform="translate(${pinX} 6) scale(0.66)">${BH_PIN}</g></svg>`);
+    const tx = lang === 'ar' ? Math.round(40 + (fw - 170 - ft.width) / 2) : Math.round(130 + (fw - 170 - ft.width) / 2);
+    const fpng = await sharp(rib).composite([{ input: ft.png, left: Math.max(10, tx), top: Math.round((fh - ft.height) / 2) }]).png().toBuffer();
+    layers.push(place('support' as PlacedLayer['id'], fpng, (W - fw) / 2, L.footer, fw, fh, { x: (W - fw) / 2, y: L.footer, w: fw, h: fh }, ft, input.footer.trim(), NAVY, true));
+    layers[layers.length - 1].id = 'footer' as PlacedLayer['id'];
   }
 
   const png = await sharp(background).composite(layers.map((l) => ({ input: l.png, left: l.left, top: l.top }))).png().toBuffer();
