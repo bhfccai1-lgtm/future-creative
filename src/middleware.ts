@@ -21,6 +21,10 @@ export async function middleware(req: NextRequest) {
   if (mutating) {
     const len = Number(req.headers.get('content-length') ?? '0');
     const multipart = (req.headers.get('content-type') ?? '').startsWith('multipart/form-data');
+    // a chunked body without Content-Length would slip past the limit above → refused (browsers always send the length;
+    // webhooks / integrations are authenticated server-to-server callers and keep working)
+    const chunked = /chunked/i.test(req.headers.get('transfer-encoding') ?? '') && !req.headers.get('content-length');
+    if (chunked && !pathname.startsWith('/api/webhooks/') && !pathname.startsWith('/api/integrations/')) return NextResponse.json({ error: 'LENGTH_REQUIRED', message: 'حجم الطلب غير معروف' }, { status: 411 });
     if (len > (multipart ? 60 : 1) * 1024 * 1024) return NextResponse.json({ error: 'PAYLOAD_TOO_LARGE', message: multipart ? 'الملف أكبر من 60 ميغابايت' : 'حجم الطلب أكبر من المسموح' }, { status: 413 });
   }
 
