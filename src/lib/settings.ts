@@ -24,6 +24,12 @@ export const SettingsSchema = z.object({
   /** Idea bank: weekly rated ideas per active account; approved ideas feed automatic generation. */
   /** occasions the owner switched off — never picked automatically, hidden from the calendar suggestions */
   disabledOccasions: z.array(z.string().max(60)).max(100).default([]),
+  /** «☀️ موجز الصباح الذكي»: 07:35 every day — free by default; the AI phrasing (1 small call/day) and WhatsApp are opt-in */
+  briefing: z.object({
+    enabled: z.boolean().default(true),
+    aiWrite: z.boolean().default(false),
+    whatsapp: z.boolean().default(false),
+  }).prefault({}),
   /** «🔥 رادار الترند»: today's Google searches in these countries → safe, product-matched ideas in the bank (off by default; 1 small AI text call a day) */
   trends: z.object({
     enabled: z.boolean().default(false),
