@@ -51,6 +51,7 @@ async function main() {
   await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
   await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
+  await sched.upsertJobScheduler('morning-brief', { pattern: '35 7 * * *', tz: TZ }, { name: 'morning-brief' }); // ☀️ the day's three priorities
   await sched.upsertJobScheduler('trends', { pattern: '20 6 * * *', tz: TZ }, { name: 'trends' }); // only acts when enabled in settings
   await sched.upsertJobScheduler('brain', { pattern: '55 4 * * *', tz: TZ }, { name: 'brain' }); // learn every account's performance memory
   await sched.upsertJobScheduler('drive-smart', { pattern: '40 4 * * *', tz: TZ }, { name: 'drive-smart' }); // only acts when enabled in settings
@@ -110,6 +111,7 @@ async function main() {
       if (job.name === 'ideas-weekly') return (await import('../lib/ideas/bank')).weeklyIdeas();
       if (job.name === 'winners') return (await import('../lib/growth/winners')).boostWinners();
       if (job.name === 'campaigns') return runCampaignCycle();
+      if (job.name === 'morning-brief') return (await import('../lib/ops/briefing')).runMorningBrief();
       if (job.name === 'trends') return (await import('../lib/growth/trends')).runTrendRadar();
       if (job.name === 'brain') return (await import('../lib/growth/brain')).learnBrains();
       if (job.name === 'drive-smart') {

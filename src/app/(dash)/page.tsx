@@ -7,9 +7,14 @@ import { Card, PageHeader, Stat, buttonVariants } from '@/components/ui';
 import { StateBadge, PLATFORM_AR } from '@/components/state-badge';
 import { ActionButton } from '@/components/action-button';
 import { setupChecklist } from '@/lib/ops/setup-checklist';
+import { requirePageUser } from '@/lib/auth/server';
+import { MorningBrief } from '@/components/morning-brief';
+import { latestBrief } from '@/lib/ops/briefing';
 
 export default async function Dashboard() {
+  const user = await requirePageUser();
   const s = await getSettings();
+  const brief = await latestBrief();
   const today = startOfDayInTz();
   const [connected, autoAccounts, genToday, publishedToday, scheduled, failed, pending, nextJob, nextAcc, spend, recent, perAccount] = await Promise.all([
     prisma.socialConnection.count({ where: { status: 'CONNECTED' } }),
@@ -38,6 +43,7 @@ export default async function Dashboard() {
             ? <ActionButton url="/api/automation" body={{ action: 'stop' }} label="إيقاف النشر الآلي" variant="outline" size="lg" />
             : <ActionButton url="/api/automation" body={{ action: 'start' }} label="تشغيل النشر الآلي" variant="success" size="lg" confirm="سيبدأ المجدول بالعمل كل ساعة للحسابات المفعّلة فقط. متابعة؟" />}
         </>} />
+      <MorningBrief brief={brief} cfg={s.briefing} canControl={user.perms.includes('automation:control')} />
       {setup.next && (
         <Link href="/setup" className="mb-5 flex items-center gap-3 rounded-2xl border-2 border-navy-200 bg-white p-4 hover:shadow-sm">
           <div className="flex-1">

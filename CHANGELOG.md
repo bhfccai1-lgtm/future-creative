@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **☀️ موجز الصباح الذكي (smart morning brief)** — at the top of the dashboard, every day at 07:35:
+  - **One page that joins every module:** approvals waiting and ready to publish, the hottest customers and overdue follow-ups, sales vs target, the best recent post, today's trend ideas, what the health advisor flags, Google visibility gaps and the AI budget.
+  - **«أهم ٣ خطوات اليوم» (top 3 steps today):** the three actions worth doing first, ranked and linked, e.g. «كلّم أم محمد أولًا (درجة 89)».
+  - **Delivery:** a notification, plus readable by the smart assistant («شنو أسوي اليوم؟», what should I do today?). Free by default.
+  - **Optional:** AI phrasing in Gulf Arabic (facts only, one small call a day) and sending it to your number on WhatsApp.
 - **🔎 الظهور في Google (Google visibility)** — public product pages (`/p/<slug>`) are now ready for search engines:
   - **`/sitemap.xml`** lists every active product, and **`/robots.txt`** opens the product pages only. The dashboard, API and private links are `noindex` and blocked.
   - **Per page:** a title and description with the place and the branches («لوحات الأكريليك في البحرين | مطبعة إبداع المستقبل»), a canonical URL, OpenGraph/Twitter cards, and **schema.org structured data**: a Product with an Offer (price from, BHD, Bahrain) sold by the local business with its branches and phones.
