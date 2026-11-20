@@ -20,7 +20,7 @@ describe('🔎 Google visibility of the public product pages', () => {
     expect(seoTitle(q, b)).toMatch(/في البحرين \| /);
     expect(seoDescription(q, b)).toMatch(/فروع .*البحرين\. اطلب عبر واتساب\.$/);
     expect(seoDescription(q, b).length).toBeLessThanOrEqual(160);
-    const ld = productJsonLd(q, b, { hasImage: true }) as Record<string, any>;
+    const ld = productJsonLd(q, b, { hasImage: true }) as Record<string, unknown> & { offers: { seller: unknown } };
     expect(ld).toMatchObject({ '@type': 'Product', name: q.titleAr, image: expect.stringMatching(/\/p\/.+\/image$/) });
     expect(ld.offers).toMatchObject({ '@type': 'Offer', price: '1.500', priceCurrency: 'BHD', areaServed: 'BH' });
     expect(ld.offers.seller).toMatchObject({ '@type': 'LocalBusiness', address: { addressCountry: 'BH' } });
