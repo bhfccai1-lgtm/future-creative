@@ -26,7 +26,7 @@ function mapError(e: unknown): AiProviderError {
  * We never send sampling parameters by default; if a model still rejects one of these optional
  * parameters, it is removed and the request is retried — core fields (model, messages, prompt) are never touched.
  */
-export const DROPPABLE_PARAMS = ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'seed', 'logprobs', 'top_logprobs', 'quality', 'n', 'max_tokens'] as const;
+export const DROPPABLE_PARAMS = ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'seed', 'logprobs', 'top_logprobs', 'quality', 'n', 'max_tokens', 'input_fidelity'] as const;
 
 /** Returns the optional parameter a 400 error complains about, if any. */
 export function rejectedParam(e: unknown, sent: Record<string, unknown>): string | null {
@@ -263,7 +263,12 @@ export class OpenAiProvider implements AiProvider {
       if (opts.references?.length) {
         const image = await Promise.all(opts.references.slice(0, 4).map((b, i) => toFile(b, `reference-${i + 1}.png`, { type: 'image/png' })));
         return callWithParamFallback(
-          { model, prompt, image, size: opts.size, quality: opts.quality, n: 1, input_fidelity: 'high' },
+          {
+            model, prompt, image, size: opts.size, quality: opts.quality, n: 1,
+            // GPT Image 2 uses high input fidelity automatically and rejects this parameter.
+            // Request it explicitly only for the older models known to support the high setting.
+            ...(/^gpt-image-1(?:\.5)?(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? { input_fidelity: 'high' } : {}),
+          },
           (p) => this.client.images.edit(p as unknown as OpenAI.Images.ImageEditParamsNonStreaming), warnDrop('image-edit'));
       }
       return callWithParamFallback(
