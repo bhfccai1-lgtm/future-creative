@@ -10,6 +10,7 @@ export function SalesAction({ leadId, scriptKey, label, due, text, wa }: { leadI
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState(text);
   const [pending, start] = useTransition();
+  const [drafting, setDrafting] = useState(false);
   const log = () => start(async () => { try { const r = await apiCall<{ message: string }>(`/api/leads/${leadId}/touch`, { body: { key: scriptKey } }); toast(r.message); router.refresh(); } catch (e) { toast((e as Error).message, 'error'); } });
   const link = wa ? wa.replace(/text=[^&]*/, `text=${encodeURIComponent(msg)}`) : null;
   return (
@@ -22,6 +23,10 @@ export function SalesAction({ leadId, scriptKey, label, due, text, wa }: { leadI
         {link
           ? <a href={link} target="_blank" rel="noreferrer" onClick={log} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">📲 إرسال عبر واتساب</a>
           : <span className="text-[11px] text-slate-500">لا يوجد رقم واتساب — انسخ الرسالة وأرسلها من حيث تواصل العميل.</span>}
+        <button type="button" disabled={drafting} className="rounded-lg border border-gold-500 bg-white px-3 py-1.5 text-xs font-bold text-navy-800" onClick={async () => {
+          setDrafting(true);
+          try { const r = await apiCall<{ text: string; message: string }>(`/api/leads/${leadId}/draft`, { body: {} }); setMsg(r.text); setOpen(true); toast(r.message); } catch (e) { toast((e as Error).message, 'error'); } finally { setDrafting(false); }
+        }}>{drafting ? '…' : '✨ صياغة ذكية'}</button>
         <button type="button" disabled={pending} className="rounded-lg border bg-white px-3 py-1.5 text-xs font-bold text-navy-800" onClick={async () => { try { await navigator.clipboard.writeText(msg); } catch { /* clipboard blocked */ } toast('نُسخت الرسالة'); log(); }}>📋 نسخ وتسجيل</button>
       </div>
     </div>

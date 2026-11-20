@@ -24,7 +24,7 @@ export interface ChatTurn { role: 'user' | 'assistant'; content: string }
 export interface Proposal { tool: 'design_now' | 'approve_plan_ideas'; args: Record<string, unknown>; summary: string; exp: number; sig: string }
 export interface AssistantReply { reply: string; proposal: Proposal | null; used: string[]; source: 'ai' | 'rules' }
 
-const READ_TOOLS = ['system_status', 'list_accounts', 'accounts_summary', 'account_plan', 'pending_approvals', 'find_products', 'trends'] as const;
+const READ_TOOLS = ['system_status', 'list_accounts', 'accounts_summary', 'account_plan', 'pending_approvals', 'find_products', 'trends', 'hot_leads'] as const;
 const ACTION_TOOLS: Record<Proposal['tool'], Permission> = { design_now: 'ads:create', approve_plan_ideas: 'ads:create' };
 const FORMATS = ['REEL_VIDEO', 'IMAGE_FEED', 'IMAGE_SQUARE', 'IMAGE_STORY', 'IMAGE_CAROUSEL'] as const;
 
@@ -38,6 +38,7 @@ export const ASSISTANT_SYSTEM = [
   '- account_plan {"account": "<name or handle>"} → what the account brain learnt (rules with sample sizes), best post, problems with fixes, idea keys',
   '- pending_approvals {} → designs waiting for approval',
   '- find_products {"query": "<word>"} → product names and ids',
+  '- hot_leads {} → the customers to contact first today (score hot/warm/cold with reasons, overdue follow-ups, repeat customers)',
   '- trends {} → today\'s safe Google trends in Bahrain/Saudi (with search volume) and the trend ideas waiting in the idea bank',
   '- design_now {"account": "<name>", "idea": "<the idea in Arabic>", "format": "REEL_VIDEO|IMAGE_FEED|IMAGE_SQUARE|IMAGE_STORY|IMAGE_CAROUSEL"?, "product": "<product name>"?} → ACTION (costs one AI design): becomes a proposal the owner confirms',
   '- approve_plan_ideas {"account": "<name>", "keys": ["sequel","product_first",...]} → ACTION: puts plan ideas in the idea bank for the automatic schedule',
@@ -90,6 +91,10 @@ export async function runReadTool(name: string, args: Record<string, unknown>): 
       const { lastRadar, trendIdeas } = await import('../growth/trends');
       const r = await lastRadar();
       return { at: r?.at ?? null, enabled: (await getSettings()).trends.enabled, trends: r ? Object.entries(r.geos).map(([g, ts]) => ({ country: g, top: ts.slice(0, 8).map((t) => `${t.title} (${t.traffic})`) })) : [], ideas: (await trendIdeas()).filter((i) => i.status === 'NEW' || i.status === 'APPROVED').slice(0, 8).map((i) => ({ account: i.account, trend: i.trend, title: i.title, status: i.status })) };
+    }
+    case 'hot_leads': {
+      const { todayPriorities } = await import('../leads/intel');
+      return (await todayPriorities(new Date(), 8)).map((t) => ({ customer: t.name, need: t.need.slice(0, 120), status: t.status, score: t.score, tier: t.tier, reasons: t.reasons, overdue: t.overdue }));
     }
     case 'find_products': {
       const q = String(args.query ?? '').trim();

@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **🧠 العميل الذكي (smart CRM)** — on «العملاء والطلبات» (customers & orders):
+  - **Customer profile:** every request from the same WhatsApp/phone number is one customer, however the number was typed («+973 3331 6319», «33316319»). Each card shows «⭐ عميل سابق» (previous customer) with orders, lifetime value and the date of the last order.
+  - **Lead score (hot / warm / cold, 0–100)** from real signals, each one shown: urgency or a date in the request, a quantity (only next to a unit, so sizes and prices aren't mistaken for one), a company or event, a quote sent, a repeat customer, and the request's age. No AI cost.
+  - **«🎯 ابدأ بهؤلاء اليوم» (start with these today):** the open requests to contact first, by score, plus a push for overdue follow-ups.
+  - **«✨ صياغة ذكية» (smart drafting):** one small AI text call writes the next WhatsApp message from the customer's own words and history, in Gulf Arabic, with no invented prices. A person reviews it and presses send. Without an AI key the ready message is used.
+  - **The smart assistant** can answer «مين أكلم اليوم؟» (who do I contact today?).
 - **🔥 رادار الترند (trend radar)** — new page under «النمو والتحليل» (growth & analytics), off by default:
   - **Real searches, not guesses:** every morning (06:20) it reads Google Trends' free daily feed for Bahrain and Saudi Arabia (UAE, Kuwait, Qatar and Oman are optional), with search volumes.
   - **Safe by design:** deaths, accidents, disasters, wars, politics, crime and religious disputes are dropped before any AI sees them, and the AI double-checks the rest.
