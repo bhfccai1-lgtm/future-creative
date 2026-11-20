@@ -10,8 +10,10 @@ import { SalesAction } from '@/components/sales-action';
 import { SalesSettings } from '@/components/sales-settings';
 import { getSettings } from '@/lib/settings';
 import { contactLines, getBusiness } from '@/lib/business';
+import { customerKey, customerProfiles, priorProfile, scoreLead, TIER_AR, todayPriorities, type Tier } from '@/lib/leads/intel';
 export const dynamic = 'force-dynamic';
 
+const TIER_TONE: Record<Tier, 'red' | 'amber' | 'slate'> = { hot: 'red', warm: 'amber', cold: 'slate' };
 const TONE: Record<LeadStatus, 'blue' | 'amber' | 'gold' | 'green' | 'slate'> = { NEW: 'blue', CONTACTED: 'amber', QUOTED: 'gold', WON: 'green', LOST: 'slate' };
 const ago = (d: Date) => { const h = (Date.now() - d.getTime()) / 3600_000; return h < 1 ? 'الآن' : h < 24 ? `قبل ${Math.round(h)} س` : `قبل ${Math.round(h / 24)} يوم`; };
 const bhd = (n: number) => `${n.toLocaleString('en-US', { maximumFractionDigits: 3 })} د.ب`;
@@ -30,6 +32,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     prisma.lead.groupBy({ by: ['status'], _count: true }),
     salesOverview(), getSettings(), getBusiness(),
   ]);
+  // 🧠 customer profiles (all requests of the same number) + a score per open request, and today's priorities
+  const [profiles, today] = await Promise.all([customerProfiles(list.map((l) => l.contact)), tab === 'open' ? todayPriorities() : Promise.resolve([])]);
   const ctx = { business: business.nameAr, branches: contactLines(business, 'ar'), reactivationDays: settings.sales.reactivationDays };
   const canSettings = user.perms.includes('accounts:manage');
   const n = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;
@@ -60,19 +64,37 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         <Stat label="نسبة التحويل" value={stats.conversion == null ? '—' : `${stats.conversion}%`} hint="مكتمل ÷ (مكتمل + لم يكتمل)" tone="gold" />
         <Stat label="سرعة أول رد (الوسيط)" value={stats.medianHoursToContact == null ? '—' : `${stats.medianHoursToContact} س`} hint="الهدف: أقل من ساعة" />
       </div>
+      {today.length > 0 && (
+        <Card className="mb-4" title="🎯 ابدأ بهؤلاء اليوم">
+          <ol className="space-y-1.5 text-sm">{today.map((t, i) => (
+            <li key={t.id} className="flex flex-wrap items-center gap-2">
+              <span className="w-5 text-xs font-bold text-slate-400">{i + 1}</span>
+              <a href={`#lead-${t.id}`} className="font-bold text-navy-800 underline">{t.name}</a>
+              <Badge tone={TIER_TONE[t.tier]}>{TIER_AR[t.tier]} {t.score}</Badge>{t.overdue && <Badge tone="red">متأخر</Badge>}
+              <span className="min-w-0 flex-1 truncate text-xs text-slate-600">{t.need}</span>
+              {t.reasons.length > 0 && <span className="text-[11px] text-slate-500">{t.reasons.join(' · ')}</span>}
+            </li>
+          ))}</ol>
+          <p className="mt-2 text-[11px] text-slate-500">الترتيب من إشارات حقيقية في الطلب (الاستعجال، الكمية، عرض السعر، العميل السابق، عمر الطلب) + المتابعات المتأخرة — بدون تكلفة.</p>
+        </Card>
+      )}
       {canEdit && <Card title="+ عميل جديد (اتصال، واتساب، زيارة)" className="mb-4"><LeadForm accounts={accounts} products={products.map((p) => ({ id: p.id, name: p.titleAr }))} /></Card>}
       <nav className="mb-3 flex flex-wrap gap-1.5 text-sm">{tabs.map(([k, ar, c]) => <Link key={k} href={k === 'open' ? '/leads' : `/leads?s=${k}`} className={`rounded-full border px-3 py-1.5 font-bold ${tab === k ? 'border-navy-800 bg-navy-800 text-white' : 'bg-white text-slate-700'}`}>{ar}<span className="mr-1 opacity-70">{c}</span></Link>)}</nav>
       <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {list.map((l) => {
           const due = l.nextFollowUpAt && l.nextFollowUpAt.getTime() <= now && ['NEW', 'CONTACTED', 'QUOTED'].includes(l.status);
           const u = `/api/leads/${l.id}`;
+          const open = ['NEW', 'CONTACTED', 'QUOTED'].includes(l.status);
+          const prior = priorProfile(profiles.get(customerKey(l.contact) ?? ''), l);
+          const sc = open ? scoreLead(l, prior) : null;
           return (
-            <article key={l.id} className={`rounded-2xl border bg-white p-3 shadow-sm ${due ? 'border-red-300' : ''}`}>
+            <article key={l.id} id={`lead-${l.id}`} className={`scroll-mt-20 rounded-2xl border bg-white p-3 shadow-sm ${due ? 'border-red-300' : ''}`}>
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                 <b className="truncate text-navy-900">{l.name ?? l.contact ?? 'عميل'}</b>
-                <div className="flex gap-1"><Badge tone={TONE[l.status as LeadStatus]}>{STATUS_AR[l.status as LeadStatus]}</Badge>{due && <Badge tone="red">متابعة اليوم</Badge>}</div>
+                <div className="flex gap-1">{open && <span title={sc!.reasons.join(' · ') || 'لا إشارات قوية بعد'}><Badge tone={TIER_TONE[sc!.tier]}>{TIER_AR[sc!.tier]} {sc!.score}</Badge></span>}<Badge tone={TONE[l.status as LeadStatus]}>{STATUS_AR[l.status as LeadStatus]}</Badge>{due && <Badge tone="red">متابعة اليوم</Badge>}</div>
               </div>
               <p className="text-sm text-slate-800">{l.need}</p>
+              {prior && prior.requests > 0 && <p className="mt-1 rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-800">⭐ عميل سابق: {prior.won} طلب{prior.lifetimeBhd > 0 ? ` · ${bhd(prior.lifetimeBhd)}` : ''}{prior.lastWonAt ? ` · آخر طلب ${ago(prior.lastWonAt)}` : ''}{prior.lost > 0 ? ` · لم يكتمل ${prior.lost}` : ''}</p>}
               <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-slate-500">
                 <span>{SOURCE_AR[l.source] ?? l.source}</span>{l.account && <span>من {l.account.name}</span>}{l.product && <span>{l.product.titleAr}</span>}<span>{ago(l.createdAt)}</span>
                 {l.contact && l.contact !== l.name && <span className="ltr">{l.contact}</span>}
