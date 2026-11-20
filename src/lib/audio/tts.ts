@@ -26,15 +26,16 @@ export function ttsInstructions(persona: Persona, lang: VoiceLang, o: { pace?: '
 
 /** Removes anything that must never be spoken; null when the script breaks the ad rules (caller falls back to the verified copy). */
 export function sanitizeScript(script: string, maxWords: number): string | null {
-  const clean = script.replace(/https?:\/\/\S+|www\.\S+|#\S+|[0-9٠-٩۰-۹]+/g, '').replace(/["“”«»]/g, '').replace(/\s+/g, ' ').trim();
+  // short numbers stay (they are spoken as words later); long digit runs — phone numbers — are never read
+  const clean = script.replace(/https?:\/\/\S+|www\.\S+|#\S+|\+?[0-9٠-٩۰-۹][0-9٠-٩۰-۹\s-]{6,}[0-9٠-٩۰-۹]|[0-9٠-٩۰-۹]{5,}/g, '').replace(/["“”«»]/g, '').replace(/\s+/g, ' ').trim();
   if (!clean || findClaims(clean).length) return null;
   const words = clean.split(' ');
   return words.length > maxWords + 4 ? words.slice(0, maxWords).join(' ') : clean;
 }
 
-/** Spoken script built from verified layers only. Digits and URLs are dropped. */
+/** Spoken script built from verified layers only. URLs and long digit runs are dropped; short numbers are spoken as words. */
 export function voiceScript(p: { headline: string; badge?: string | null; support?: string | null; cta?: string | null }) {
-  const parts = [p.headline, p.badge, p.support, p.cta].map((x) => (x ?? '').replace(/https?:\/\/\S+|www\.\S+|[0-9٠-٩]+/g, '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const parts = [p.headline, p.badge, p.support, p.cta].map((x) => (x ?? '').replace(/https?:\/\/\S+|www\.\S+|[0-9٠-٩]{5,}/g, '').replace(/\s+/g, ' ').trim()).filter(Boolean);
   return [...new Set(parts)].join('… ');
 }
 

@@ -85,3 +85,19 @@ describe('voice personas and dialects', () => {
     expect(await shapeVoice(src, v.personaOf('ad_male')!)).toBe(src);
   });
 });
+
+describe('numbers are spoken as words; phone numbers are never read', () => {
+  it('Arabic and English number words, percent, decimals, lexicon first', async () => {
+    const { arabicNumber, englishNumber, spellNumbers, prepareSpoken, sameWords } = await import('@/lib/audio/pronounce');
+    expect([1, 2, 11, 12, 21, 105, 250, 1000, 2000, 3000, 11000, 12500].map(arabicNumber)).toEqual(['واحد', 'اثنين', 'أحد عشر', 'اثني عشر', 'واحد وعشرين', 'مئة وخمسة', 'مئتين وخمسين', 'ألف', 'ألفين', 'ثلاثة آلاف', 'أحد عشر ألف', 'اثني عشر ألف وخمسمئة']);
+    expect(englishNumber(121)).toBe('one hundred twenty-one');
+    expect(spellNumbers('خصم ٢٠٪ على 150 كوب', 'ar-bh')).toBe('خصم عشرين بالمئة على مئة وخمسين كوب');
+    expect(spellNumbers('سعر 2.5 دينار', 'ar')).toBe('سعر اثنين فاصلة خمسة دينار');
+    expect(spellNumbers('اتصل 33316319 أو +973 3431 5316', 'ar')).toBe('اتصل أو');
+    expect(spellNumbers('50% off', 'en-us')).toBe('fifty percent off');
+    expect(spellNumbers('١٢٣ کوب', 'ml')).toBe('123 کوب'); // no number words for this language → digits for the voice
+    expect(prepareSpoken('طباعة A4 بجودة', [], 'ar')).toBe('طباعة إِيه فُور بجودة'); // used to lose the «4» before the lexicon
+    expect(sameWords('مَطْبَعَة إبداع', 'مطبعة ابداع')).toBe(true);
+    expect(sameWords('مطبعة إبداع', 'مطبعة جديدة')).toBe(false);
+  });
+});

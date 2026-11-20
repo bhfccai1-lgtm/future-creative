@@ -12,7 +12,7 @@ type Track = { id: string; name: string; mood: string; durationSec: number; star
 const MOODS: [string, string][] = [['upbeat', 'حماسي'], ['calm', 'هادئ'], ['luxury', 'فاخر'], ['festive', 'احتفالي'], ['corporate', 'رسمي للشركات']];
 const DEFAULTS: [string, string][] = [['none', 'بدون صوت'], ['upbeat', 'إيقاع حماسي (مولد)'], ['ambient', 'موسيقى هادئة (مولدة)'], ['library', 'من مكتبة موسيقاك المرخّصة'], ['voiceover', 'تعليق صوتي + موسيقى'], ['instagram', 'صوت من مكتبة إنستغرام']];
 
-export function AudioSettings({ audio, tracks }: { audio: Audio; tracks: Track[] }) {
+export function AudioSettings({ audio, tracks, stumbles = [] }: { audio: Audio; tracks: Track[]; stumbles?: { word: string; count: number; suggestion: string | null }[] }) {
   const router = useRouter();
   const [v, setV] = useState(audio);
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
@@ -83,7 +83,18 @@ export function AudioSettings({ audio, tracks }: { audio: Audio; tracks: Track[]
           <p className="mt-1 text-xs text-slate-500">اكتب أي جملة ثم «استمع لجملتك» بالأعلى — يظهر لك ما قُرئ وما سُمع ونسبة الوضوح. الأرقام لا تُقرأ في الإعلانات.</p></div>
         <div><label className="label" htmlFor="lexicon">قاموس النطق — كلمة = طريقة نطقها (سطر لكل كلمة)</label>
           <textarea id="lexicon" rows={5} className="input font-mono text-sm leading-7" value={lexText} onChange={(e) => setLexText(e.target.value)} placeholder={'سلماباد = سَلْمَابَاد\nفلكس = فْلِكْس\nاسم منتجك = نطقه بالتشكيل'} />
-          <p className="mt-1 text-xs text-slate-500">مدمج مسبقًا: اسم المطبعة، سار، سلماباد، البحرين، ملصقات، رول أب، بنرات، واتساب، DTF، UV وغيرها. كلماتك هنا تتقدّم عليها. احفظ بعد التعديل.</p></div>
+          {stumbles.length > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs">
+              <b>🎧 كلمات يتعثر فيها الصوت</b> <span className="text-slate-600">(من فحص الاستماع في الريلز — أضفها للقاموس ليُقرأ صحيحًا في المرة القادمة):</span>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">{stumbles.map((m) => {
+                const line = `${m.word} = ${m.suggestion ?? m.word}`;
+                const added = lexText.split('\n').some((l) => l.split('=')[0]?.trim() === m.word);
+                return <button key={m.word} type="button" disabled={added} title={m.suggestion ? `النطق المقترح: ${m.suggestion}` : 'أضفها ثم اكتب نطقها بالتشكيل'} className="rounded-full border border-amber-300 bg-white px-2 py-0.5 font-bold disabled:opacity-50"
+                  onClick={() => setLexText((t) => (t.trim() ? `${t.trim()}\n${line}` : line))}>{added ? '✓ ' : '+ '}{m.word}{m.suggestion ? ` ← ${m.suggestion}` : ''} <span className="text-slate-500">×{m.count}</span></button>;
+              })}</div>
+            </div>
+          )}
+          <p className="mt-1 text-xs text-slate-500">مدمج مسبقًا: اسم المطبعة، سار، سلماباد، البحرين، ملصقات، رول أب، بنرات، واتساب، إنستغرام، تيشيرت، المحرق، المنامة، DTF، UV، PDF وغيرها. الأرقام تُنطق كلمات («٢٠٪» ← «عشرين بالمئة») وأرقام الهواتف لا تُقرأ. كلماتك هنا تتقدّم عليها. احفظ بعد التعديل.</p></div>
       </fieldset>
 
       <fieldset className="rounded-xl border p-3">

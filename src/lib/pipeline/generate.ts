@@ -12,7 +12,8 @@ import { prisma } from '../db';
 import { getSecret, getSettings, updateSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
 import { fakeSpeech, openaiSpeak, openaiTranscribe, estimateSttCost, sanitizeScript, voiceScript, estimateTtsCost } from '../audio/tts';
-import { applyLexicon, missedWords, speakVerified } from '../audio/pronounce';
+import { missedWords, prepareSpoken, speakVerified } from '../audio/pronounce';
+import { recordMissed, vocaliseFix } from '../audio/pron-learn';
 
 /** speech-to-text language code for a voice-over dialect id (ar_bh → ar, ml → ml) */
 const sttLang = (id: string) => (id.startsWith('ar') ? 'ar' : /^[a-z]{2}/.exec(id)?.[0]);
@@ -537,9 +538,9 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
             else {
               const key = await getSecret('OPENAI_API_KEY');
               if (!key) throw new Error('مفتاح OpenAI غير مضبوط');
-              // what the voice reads: the pronunciation lexicon (built-in + owner's) applied to the script
+              // what the voice reads: the pronunciation lexicon (built-in + owner's), then numbers as words
               displayScript = script; // captions show the script as written (the lexicon only changes what the voice reads)
-              const spoken = applyLexicon(script, s.ai.audio.lexicon);
+              const spoken = prepareSpoken(script, s.ai.audio.lexicon, vlang.id);
               const r = await speakVerified(spoken, {
                 pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
                 speak: async (text, pace, note) => {
@@ -552,10 +553,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
                   await recordUsage({ provider: 'openai', model: 'gpt-4o-mini-transcribe', kind: 'audio', costUsd: estimateSttCost(seconds) });
                   return t;
                 } : undefined,
+                fix: s.ai.audio.verifyPronunciation ? vocaliseFix(provider, s) : undefined,
               });
               voice = r.best.audio;
-              pronunciation = { accuracy: r.best.accuracy, takes: r.takes.length, pace: r.best.pace, ...(r.best.accuracy !== null && r.best.accuracy < 0.85 ? { missed: missedWords(spoken, r.best.heard ?? '') } : {}) };
-              script = spoken;
+              pronunciation = { accuracy: r.best.accuracy, takes: r.takes.length, pace: r.best.pace, ...(r.best.accuracy !== null && r.best.accuracy < 0.85 ? { missed: missedWords(r.best.text, r.best.heard ?? '') } : {}) };
+              // learning: what the first take missed is counted (with the vocalised form the re-take used)
+              const firstMissed = r.takes[0].accuracy !== null && r.takes[0].accuracy < 0.85 ? missedWords(spoken, r.takes[0].heard ?? '') : [];
+              if (firstMissed.length) await recordMissed(firstMissed, spoken, r.takes[1]?.text !== spoken ? r.takes[1]?.text ?? null : null).catch(() => undefined);
+              script = r.best.text;
             }
             audioNote = { voiceScript: script, persona: persona.id, voiceLang: vlang.id, ...(pronunciation ? { pronunciation } : {}) };
           } catch (e) {
