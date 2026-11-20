@@ -12,7 +12,7 @@ import { ContentSchema, PRESETS, SettingsSchema, STEPS, type StepId, type StepSt
 import { generateContent, regenerateSection } from './content';
 import { renderDoc, defaultPanelOrder, resolveStyle } from './render';
 import { buildPdf, inspectPdf } from './pdf';
-import { plannedSlots } from './art';
+import { plannedSlots, sectionSlot, type Slot } from './art';
 import { generateChecked, qualitySummary } from '../creative/checked-image';
 import { runQc, type EduQc } from './qc';
 
@@ -80,7 +80,10 @@ export async function imagePlan(id: string, user: User) {
   const s = settingsOf(p), c = contentOf(p);
   const settings = await getSettings();
   const have = (p.images as Record<string, string> | null) ?? {};
-  const slots = c ? plannedSlots(s, c) : [];
+  // planned + the existing/needed panel illustrations from the smart filler (so the count and cost are honest)
+  const extra = c ? [...c.sections.filter((x) => have[`sec:${x.id}`]).map((x) => sectionSlot(s, c, x)), ...(await smartSectionSlots(s, c, have).catch(() => []))] : [];
+  const base = c ? plannedSlots(s, c) : [];
+  const slots = [...base, ...extra.filter((x, i, a) => !base.some((b) => b.id === x.id) && a.findIndex((y) => y.id === x.id) === i)];
   const quality = s.images === 'medium' || s.images === 'rich' ? 'medium' : 'low';
   const missing = slots.filter((x) => !have[x.id]);
   const live = !(await getAiProvider(settings)).isDryRun;
@@ -99,7 +102,11 @@ export async function generateImages(id: string, user: User, opts: { only?: stri
   const provider = await getAiProvider(settings);
   if (provider.isDryRun) throw new AppError('NO_AI', 'توليد الصور يحتاج مفتاح OpenAI (وضع التجربة مفعّل).', 412);
   const have = { ...((p.images as Record<string, string> | null) ?? {}) };
-  const all = plannedSlots(s, c);
+  // the planned slots + illustrations for panels that would otherwise stay half empty
+  const planned = plannedSlots(s, c);
+  const all = [...planned, ...(opts.only
+    ? c.sections.filter((x) => opts.only!.includes(`sec:${x.id}`) && !planned.some((p) => p.id === `sec:${x.id}`)).map((x) => sectionSlot(s, c, x)) // redraw one the filler added
+    : await smartSectionSlots(s, c, have).catch(() => []))];
   const todo = all.filter((x) => (opts.only ? opts.only.includes(x.id) : !have[x.id]));
   if (!todo.length) return { project: p, generated: 0, failed: [] as string[] };
   const quality = s.images === 'medium' || s.images === 'rich' ? 'medium' : 'low';
@@ -140,6 +147,29 @@ export async function generateImages(id: string, user: User, opts: { only?: stri
   const upd = await prisma.eduProject.update({ where: { id }, data: { images: have as unknown as Prisma.InputJsonValue, steps: steps as unknown as Prisma.InputJsonValue, versions: await snapshot(p, 'قبل توليد الصور') } });
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'edu.images', targetType: 'edu_project', targetId: id, details: { generated, failed: failed.length, retried, flagged: flagged.length, slots: todo.map((x) => x.id) } });
   return { project: upd, generated, failed };
+}
+
+/**
+ * SMART PANEL FILLER: renders the brochure as it is, measures the empty height left at the bottom of every panel,
+ * and plans an illustration (no text, the cover's style) for a section that sits in a panel with room for it
+ * (a panel picture is about half as tall as the panel is wide) — one per panel, at most 4. So short lessons stop
+ * leaving blank panels, and long ones never get pictures that would push the text out. «rich» already plans all.
+ */
+export async function smartSectionSlots(s: ReturnType<typeof settingsOf>, c: NonNullable<ReturnType<typeof contentOf>>, images: Record<string, string>): Promise<Slot[]> {
+  if (s.images === 'none' || s.images === 'rich' || !['panels', 'poster'].includes(PRESETS[s.type].engine)) return [];
+  const doc = await renderDoc(s, c, { dpi: 40, images });
+  const want: Slot[] = [];
+  for (const page of doc.pages) for (const reg of page.regions) {
+    const inside = page.placed.filter((x) => x.region === reg.id);
+    if (!inside.length || want.length >= 4) continue;
+    const used = Math.max(...inside.map((x) => x.rect.y + x.rect.h));
+    const free = reg.rect.y + reg.rect.h - used;
+    const need = reg.rect.w * (PRESETS[s.type].engine === 'panels' ? 0.5 : 0.33) * 1.2;
+    if (free < need) continue;
+    const sec = c.sections.find((x) => !images[`sec:${x.id}`] && !want.some((w) => w.id === `sec:${x.id}`) && inside.some((p) => p.id.startsWith(`${x.id}:`)));
+    if (sec) want.push(sectionSlot(s, c, sec));
+  }
+  return want;
 }
 
 /** STEP 9: edits — content and/or settings; every change keeps the previous version (undo). */
