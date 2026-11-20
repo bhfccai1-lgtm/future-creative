@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
-import { isQuestion, postScore, type PlanPost } from './account-plan';
+import { isQuestion, metricFields, postScore, type PlanPost } from './account-plan';
 import { CONCEPTS, DESIGN_TYPES } from '../creative/options';
 
 /**
@@ -74,10 +74,9 @@ export async function learnBrains(now = new Date()) {
   const fromTrend = new Set((await prisma.idea.findMany({ where: { source: 'trend', usedAdId: { in: jobs.map((j) => j.advertisementId) } }, select: { usedAdId: true } })).map((i) => i.usedAdId));
   const byAcc = new Map<string, Row[]>();
   for (const j of jobs) {
-    const m = (j.result?.metrics ?? {}) as Record<string, number | undefined>;
     const cap = j.advertisement.caption ?? '';
     const p: PlanPost = { adId: j.advertisementId, hook: cap.split('\n').map((l) => l.trim()).find(Boolean) ?? '', headline: j.advertisement.headline, format: j.advertisement.format, publishedAt: '', product: '', category: '',
-      views: m.views ?? 0, reach: m.reach ?? 0, likes: m.likes ?? 0, comments: m.comments ?? 0, saves: m.saves ?? 0, shares: m.shares ?? 0, retention: m.retentionPct ?? null, skip: m.skipRatePct ?? null };
+      ...metricFields(j.result?.metrics, { roundRates: false }) };
     const dir = ((j.advertisement.options ?? {}) as { direction?: { occasion?: string | null; art?: VisualArt | null } }).direction;
     const occ = dir?.occasion;
     byAcc.set(j.accountId, [...(byAcc.get(j.accountId) ?? []), { p, hour: bhHour(j.result?.verifiedAt ?? j.scheduledFor), occasion: !!occ && occ !== 'everyday', captionLen: cap.split('\n\n#')[0].length, category: j.advertisement.product.category.nameAr, trend: fromTrend.has(j.advertisementId), art: dir?.art ?? undefined }]);

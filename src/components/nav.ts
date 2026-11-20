@@ -1,4 +1,4 @@
-import { Rocket, Lightbulb, Repeat, LayoutDashboard, Users, PlusCircle, Sparkles, Package, Images, CalendarClock, CheckSquare, CalendarDays, History, BarChart3, AlertTriangle, BadgeCheck, Bot, PlugZap, LogOut, FileBarChart, Stethoscope, Swords, PartyPopper, MessageCircle, TrendingUp, Contact, Camera, GraduationCap, Printer, UserCog, ClipboardList, MessageSquareText, Flame } from 'lucide-react';
+import { Rocket, Lightbulb, Repeat, LayoutDashboard, Users, PlusCircle, Sparkles, Package, Images, CalendarClock, CheckSquare, CalendarDays, History, BarChart3, AlertTriangle, BadgeCheck, Bot, PlugZap, FileBarChart, Stethoscope, Swords, PartyPopper, MessageCircle, TrendingUp, Contact, Camera, GraduationCap, Printer, UserCog, ClipboardList, MessageSquareText, Flame } from 'lucide-react';
 
 export type NavItem = readonly [string, string, typeof LayoutDashboard];
 /** the menu in groups that follow the daily work: make → publish → sell → measure → studios → settings */

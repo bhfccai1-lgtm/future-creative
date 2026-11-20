@@ -10,15 +10,21 @@ import { algoInputFromAd, algorithmScore } from '@/lib/growth/algorithm';
 const REASON = { MANUAL_MODE: 'الوضع اليدوي', ASSISTED_MODE: 'الوضع المساعد', QC_FAILED: 'فشل فحص الجودة' } as Record<string, string>;
 const FORMAT_AR: Record<string, string> = { REEL_VIDEO: 'ريلز', IMAGE_CAROUSEL: 'كاروسيل', IMAGE_FEED: 'منشور', IMAGE_SQUARE: 'مربع', IMAGE_STORY: 'ستوري' };
 
+const LIST_MAX = 100; // a long queue would load every design with its media at once
+
 export default async function ApprovalsPage() {
   const user = await requirePageUser();
   const canPublish = user.perms.includes('publish:now');
   const canPublishNow = canPublish;
-  const items = await prisma.approvalRequest.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' }, include: { advertisement: { include: { media: true, account: true, product: true, brief: { select: { hashtags: true } }, jobs: { select: { scheduledFor: true, primary: true } } } } } });
+  const items = await prisma.approvalRequest.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'asc' }, take: LIST_MAX, include: { advertisement: { include: { media: true, account: true, product: true, brief: { select: { hashtags: true } }, jobs: { select: { scheduledFor: true, primary: true } } } } } });
   // «فشل» but every final file exists (e.g. a late step was stopped) — can still be published by a person
   const stuck = (await prisma.advertisement.findMany({ where: { state: 'FAILED', dryRun: false, createdAt: { gte: new Date(Date.now() - 14 * 86400_000) }, media: { some: { role: 'FINAL' } } }, orderBy: { createdAt: 'desc' }, take: 12, include: { media: true, account: true } }))
     .filter((a) => a.format !== 'REEL_VIDEO' || a.media.some((m) => m.role === 'VIDEO'));
-  const ready = items.filter((r) => r.advertisement.qcPassed && !r.advertisement.dryRun && r.advertisement.state === 'QUALITY_REVIEW').length;
+  // counted in the database (not from the capped list) so «publish all» shows the real number
+  const [ready, pendingTotal] = await Promise.all([
+    prisma.approvalRequest.count({ where: { status: 'PENDING', advertisement: { qcPassed: true, dryRun: false, state: 'QUALITY_REVIEW' } } }),
+    prisma.approvalRequest.count({ where: { status: 'PENDING' } }),
+  ]);
   return (
     <>
       <PageHeader title="طابور الموافقات" subtitle="راجع كل تصميم ونصه قبل النشر. «نشر» يعتمد التصميم ويرسله لأقرب وقت آمن (بفاصل 30 دقيقة لكل حساب)." />
@@ -28,6 +34,7 @@ export default async function ApprovalsPage() {
           <ActionButton url="/api/approvals/publish-all" label={`✓ اعتماد ونشر الكل (${ready})`} variant="success" confirm={`نشر ${ready} تصميم؟ يُوزَّع النشر بفاصل 30 دقيقة لكل حساب. راجع الصور أولًا.`} />
         </div>
       )}
+      {pendingTotal > items.length && <p className="mb-3 text-xs text-slate-500">يظهر أقدم {items.length} من {pendingTotal} تصميمًا بانتظار الموافقة — اعتمد أو ارفض لتظهر البقية.</p>}
       {!items.length && !stuck.length && <Empty>لا توجد عناصر بانتظار الموافقة. 🎉</Empty>}
       {stuck.length > 0 && (
         <section className="mb-5 rounded-2xl border-2 border-amber-200 bg-amber-50 p-3">

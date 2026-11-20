@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
-import { accountPlans, approvePlanIdeas, isQuestion, planIdeasByKey, scriptOf } from '@/lib/growth/account-plan';
+import { accountPlans, approvePlanIdeas, isQuestion, metricFields, planIdeasByKey, scriptOf } from '@/lib/growth/account-plan';
 import { resetDb, seedBase } from './helpers';
 
 beforeEach(async () => { await resetDb(); });
@@ -48,6 +48,12 @@ describe('accounts plan (content strategist from real numbers)', () => {
     expect(p.measured).toBe(0); expect(p.top).toBeNull();
     expect(p.issues[0].id).toBe('little_data');
     expect(p.ideas.length).toBeGreaterThanOrEqual(3);
+  });
+  it('metricFields: one conversion for plan, brain and Drive (rates rounded unless asked not to)', () => {
+    const m = { views: 120, reach: 90, likes: 7, saves: 2, retentionPct: 61.6, skipRatePct: 38.4 };
+    expect(metricFields(m)).toEqual({ views: 120, reach: 90, likes: 7, comments: 0, saves: 2, shares: 0, retention: 62, skip: 38 });
+    expect(metricFields(m, { roundRates: false })).toMatchObject({ retention: 61.6, skip: 38.4 });
+    expect(metricFields(null)).toEqual({ views: 0, reach: 0, likes: 0, comments: 0, saves: 0, shares: 0, retention: null, skip: null });
   });
   it('helpers', () => {
     expect(isQuestion('منو يستاهل هدية؟ 🎁')).toBe(true);
