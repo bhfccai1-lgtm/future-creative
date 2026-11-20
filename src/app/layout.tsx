@@ -13,6 +13,7 @@ const cairo = localFont({
 
 export const metadata: Metadata = {
   title: 'نظام إبداع المستقبل للنشر الذكي', description: 'FUTURE CREATIVE AI PUBLISHING SYSTEM',
+  robots: { index: false, follow: false }, // the dashboard and private links; public product pages opt in
   appleWebApp: { capable: true, title: 'إبداع المستقبل', statusBarStyle: 'black-translucent' },
   icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
 };

@@ -6,6 +6,7 @@ import { Card, PageHeader } from '@/components/ui';
 import { ProductForm } from '@/components/product-form';
 import { ProductImport, ProductTable } from '@/components/product-catalog';
 import { listPresets } from '@/lib/catalog/import';
+import { seoHealth } from '@/lib/seo/catalog';
 export const dynamic = 'force-dynamic';
 
 const PER = 50;
@@ -29,6 +30,24 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader title="المنتجات والخدمات" subtitle={`${totalAll} منتج/خدمة — ${activeAll} نشط · ${categories.length} فئة`} />
+      {await (async () => {
+        const h = await seoHealth();
+        const pct = (n: number) => (h.total ? Math.round((n / h.total) * 100) : 0);
+        return (
+          <Card title="🔎 الظهور في Google (صفحات المنتجات العامة)" className="mb-6" collapsible>
+            <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+              {[['صفحات قابلة للفهرسة', String(h.total)], ['بوصف كافٍ', `${pct(h.withDescription)}٪`], ['بصورة', `${pct(h.withImage)}٪`], ['بسعر يبدأ من', `${pct(h.withPrice)}٪`]].map(([k, v]) => (
+                <div key={k} className="rounded-lg bg-slate-50 p-2"><div className="text-lg font-extrabold text-navy-900">{v}</div><div className="text-slate-500">{k}</div></div>
+              ))}
+            </div>
+            <ol className="mt-3 list-decimal space-y-1 ps-5 text-xs text-slate-700">
+              <li>أضف الموقع في <b>Google Search Console</b> ثم أرسل خريطة الموقع: <span className="ltr inline-block rounded bg-slate-100 px-1 font-mono">{h.sitemap}</span></li>
+              <li>كل صفحة منتج فيها عنوان ووصف بالبحرين والفروع، وبيانات منظّمة (منتج + سعر + المطبعة وفروعها) وروابط لمنتجات مشابهة — تلقائيًا.</li>
+              <li>الوصف أهم عامل تملكه: الصفحات بوصف قصير أو بدون وصف تظهر أقل. {h.missingDescription.length > 0 && <>ابدأ بهذه: {h.missingDescription.map((p, i) => <span key={p.slug}>{i ? '، ' : ''}<Link className="font-bold text-navy-700 underline" href={`/p/${encodeURIComponent(p.slug)}`} target="_blank">{p.titleAr}</Link></span>)}</>}</li>
+            </ol>
+          </Card>
+        );
+      })()}
       <Card title="استيراد جماعي (Excel / Google Sheets)" className="mb-6"><ProductImport presets={await listPresets()} /></Card>
       <Card className="mb-6">
         <form className="mb-3 flex flex-wrap gap-2">
