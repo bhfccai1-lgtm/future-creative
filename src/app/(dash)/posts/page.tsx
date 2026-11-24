@@ -9,19 +9,23 @@ import { ActionButton } from '@/components/action-button';
 import { DeleteAdButton } from '@/components/delete-ad-button';
 import type { QcReport } from '@/lib/qc';
 
+// the states this page filters by (an unknown ?state= value is ignored instead of crashing the query)
+const FILTER_STATES = ['QUEUED', 'PUBLISHING', 'SCHEDULED', 'PUBLISHED', 'UNKNOWN', 'FAILED', 'REJECTED'] as const;
+const isFilterState = (v: string | undefined): v is (typeof FILTER_STATES)[number] => !!v && (FILTER_STATES as readonly string[]).includes(v);
+
 export default async function PostsPage({ searchParams }: { searchParams: Promise<{ state?: string; account?: string }> }) {
   const user = await requirePageUser();
   const canPublish = user.perms.includes('publish:now'), canEdit = user.perms.includes('ads:approve');
   const sp = await searchParams;
   const jobs = await prisma.publicationJob.findMany({
-    where: { ...(sp.state ? { state: sp.state as AdState } : {}), ...(sp.account ? { accountId: sp.account } : {}) },
+    where: { ...(isFilterState(sp.state) ? { state: sp.state as AdState } : {}), ...(sp.account ? { accountId: sp.account } : {}) },
     orderBy: { scheduledFor: 'desc' }, take: 200, include: { account: true, advertisement: true, result: true, _count: { select: { attempts: true } } },
   });
   return (
     <>
       <PageHeader title="سجل المنشورات" subtitle="«منشور» يعني فقط أن المزود أكد النشر فعليًا. «مجدول» يعني أن المزود استلم الطلب ولم يؤكد النشر بعد." />
       <form className="mb-4 flex gap-2">
-        <select name="state" defaultValue={sp.state ?? ''} className="input" style={{ width: "14rem" }}><option value="">كل الحالات</option>{['QUEUED', 'PUBLISHING', 'SCHEDULED', 'PUBLISHED', 'UNKNOWN', 'FAILED', 'REJECTED'].map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        <select name="state" defaultValue={sp.state ?? ''} className="input" style={{ width: "14rem" }}><option value="">كل الحالات</option>{FILTER_STATES.map((s) => <option key={s} value={s}>{s}</option>)}</select>
         <button className="rounded-lg bg-navy-800 px-4 text-sm font-bold text-white">تصفية</button>
       </form>
       {!jobs.length ? <Empty>لا توجد سجلات نشر بعد.</Empty> : (
