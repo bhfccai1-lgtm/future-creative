@@ -8,9 +8,15 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      # majors arrive as ONE pull request with ONE lockfile: merging several separate major PRs left main's
+      # lockfile out of sync (npm ci failed). Each still needs its migration checked before merging.
+      majors:
+        update-types: [major]
     ignore:
       # major upgrades of the core stack are planned manually (breaking changes)
       - dependency-name: next
+        update-types: ['version-update:semver-major']
+      - dependency-name: eslint-config-next # must match the next major
         update-types: ['version-update:semver-major']
       - dependency-name: prisma
         update-types: ['version-update:semver-major']
