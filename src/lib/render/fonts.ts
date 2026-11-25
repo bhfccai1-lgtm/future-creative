@@ -6,10 +6,10 @@ import type { Font } from 'opentype.js';
 // resolve parse() from whichever shape is present (the default import was undefined inside Next.js routes)
 const opentype = ((opentypeNs as unknown as { default?: typeof opentypeNs }).default ?? opentypeNs) as typeof opentypeNs;
 
-export type Lang = 'ar' | 'en' | 'ml';
+export type Lang = 'ar' | 'en' | 'ml' | 'hi';
 export type Weight = 'regular' | 'bold' | 'extrabold';
 
-const FILES: Record<'latin-arabic' | 'malayalam', Record<Weight, { file: string; desc: string }>> = {
+const FILES: Record<'latin-arabic' | 'malayalam' | 'devanagari', Record<Weight, { file: string; desc: string }>> = {
   'latin-arabic': {
     regular: { file: 'Cairo_400Regular.ttf', desc: 'Cairo' },
     bold: { file: 'Cairo_700Bold.ttf', desc: 'Cairo Bold' },
@@ -20,12 +20,18 @@ const FILES: Record<'latin-arabic' | 'malayalam', Record<Weight, { file: string;
     bold: { file: 'NotoSansMalayalam_700Bold.ttf', desc: 'Noto Sans Malayalam Bold' },
     extrabold: { file: 'NotoSansMalayalam_700Bold.ttf', desc: 'Noto Sans Malayalam Bold' },
   },
+  // Hindi (Devanagari) — also carries Latin letters, digits and @ # for brand and account names
+  devanagari: {
+    regular: { file: 'NotoSansDevanagari_400Regular.ttf', desc: 'Noto Sans Devanagari' },
+    bold: { file: 'NotoSansDevanagari_700Bold.ttf', desc: 'Noto Sans Devanagari Bold' },
+    extrabold: { file: 'NotoSansDevanagari_800ExtraBold.ttf', desc: 'Noto Sans Devanagari ExtraBold' },
+  },
 };
 
 export const fontDir = () => path.resolve(process.env.FONT_DIR ?? './assets/fonts');
 
 export function fontFor(lang: Lang, weight: Weight) {
-  const f = FILES[lang === 'ml' ? 'malayalam' : 'latin-arabic'][weight];
+  const f = FILES[lang === 'ml' ? 'malayalam' : lang === 'hi' ? 'devanagari' : 'latin-arabic'][weight];
   return { fontfile: path.join(fontDir(), f.file), desc: f.desc };
 }
 

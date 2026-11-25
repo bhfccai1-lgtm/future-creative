@@ -60,9 +60,9 @@ export function seasonalWindows(year: number): Window[] {
     around('arabic_language_day', d(`${year}-12-18`), 10, 0.35, { langs: ['ar'] }),
     // communities in Bahrain
     around('vishu', d(`${year}-04-14`), 10, 0.5, { langs: ['ml'] }),
-    around('india_independence', d(`${year}-08-15`), 8, 0.45, { langs: ['ml', 'en'] }),
-    around('india_republic', d(`${year}-01-26`), 8, 0.4, { langs: ['ml', 'en'] }),
-    around('christmas', d(`${year}-12-25`), 14, 0.35, { langs: ['en', 'ml'] }),
+    around('india_independence', d(`${year}-08-15`), 8, 0.45, { langs: ['ml', 'en', 'hi'] }),
+    around('india_republic', d(`${year}-01-26`), 8, 0.4, { langs: ['ml', 'en', 'hi'] }),
+    around('christmas', d(`${year}-12-25`), 14, 0.35, { langs: ['en', 'ml', 'hi'] }),
   ];
   const l = LUNAR[year];
   if (l) {
@@ -73,7 +73,7 @@ export function seasonalWindows(year: number): Window[] {
     w.push({ key: 'eid_adha', from: addDays(a, -14), to: addDays(a, 3), peak: a, weight: 0.6 });
     w.push(around('hijri_new_year', d(l.hijriNewYear), 6, 0.35, { langs: ['ar'] }));
     w.push(around('mawlid', d(l.mawlid), 6, 0.3, { langs: ['ar'] }));
-    if (l.diwali) w.push({ key: 'diwali', from: addDays(d(l.diwali), -14), to: addDays(d(l.diwali), 1), peak: d(l.diwali), weight: 0.6, langs: ['ml', 'en'] });
+    if (l.diwali) w.push({ key: 'diwali', from: addDays(d(l.diwali), -14), to: addDays(d(l.diwali), 1), peak: d(l.diwali), weight: 0.6, langs: ['ml', 'en', 'hi'] });
     if (l.onam) w.push({ key: 'onam', from: addDays(d(l.onam), -10), to: addDays(d(l.onam), 1), peak: d(l.onam), weight: 0.6, langs: ['ml'] });
   }
   return w;

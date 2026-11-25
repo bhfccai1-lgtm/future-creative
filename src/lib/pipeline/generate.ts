@@ -549,7 +549,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
               const spoken = prepareSpoken(script, s.ai.audio.lexicon, vlang.id);
               // the feeling of the read (occasion → category) and the word to stress (the product, when the script says it)
               const mood = voiceMood({ category, occasion: p.direction?.occasion ?? null });
-              const title = lang === 'en' ? product.titleEn : lang === 'ml' ? product.titleMl : product.titleAr;
+              const title = lang === 'en' || lang === 'hi' ? product.titleEn : lang === 'ml' ? product.titleMl : product.titleAr;
               const emphasisWord = title && spoken.includes(title) ? title : undefined;
               const r = await speakVerified(spoken, {
                 pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
@@ -586,7 +586,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           voice, sfx: s.ai.audio.sfx, musicVolume: s.ai.audio.musicVolume,
           ...(voice && displayScript && s.ai.audio.captions ? { captions: { text: displayScript, lang } } : {}),
           // final contact screen: brand + product name beside the finished product, both branches with WhatsApp
-          endCard: { brand: lang === 'en' ? business.nameEn : business.nameAr, brandLang: lang === 'en' ? 'en' : 'ar', product: (lang === 'en' ? product.titleEn : lang === 'ml' ? (product.titleMl ?? product.titleEn) : product.titleAr) ?? undefined, lang },
+          endCard: { brand: lang === 'en' || lang === 'hi' ? business.nameEn : business.nameAr, brandLang: lang === 'en' || lang === 'hi' ? 'en' : 'ar', product: (lang === 'en' || lang === 'hi' ? product.titleEn : lang === 'ml' ? (product.titleMl ?? product.titleEn) : product.titleAr) ?? undefined, lang },
         });
       } catch (e) { videoError = (e as Error).message; }
     }
@@ -718,13 +718,13 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   }
 }
 
-export function buildCaption(b: CreativeBriefOut, o: { mentions?: string[]; ownHandle?: string | null; lang?: 'ar' | 'en' | 'ml' } = {}) {
+export function buildCaption(b: CreativeBriefOut, o: { mentions?: string[]; ownHandle?: string | null; lang?: 'ar' | 'en' | 'ml' | 'hi' } = {}) {
   // Instagram accepts at most 5 hashtags — keep the first 5 unique ones the model ranked highest
   const tags = [...new Set(b.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '_')))].slice(0, 5).join(' ');
   // the owner's Instagram accounts, mentioned at the end of every caption — never an account in its own post
   const own = (o.ownHandle ?? '').replace(/^@/, '').toLowerCase();
   const mentions = [...new Set(o.mentions ?? [])].filter((m) => m.replace(/^@/, '').toLowerCase() !== own && !b.caption.includes(m));
-  const follow = mentions.length ? `${o.lang === 'en' ? 'Follow us' : o.lang === 'ml' ? 'Follow us' : 'تابعونا'}: ${mentions.join(' ')}` : '';
+  const follow = mentions.length ? `${o.lang === 'en' || o.lang === 'ml' ? 'Follow us' : o.lang === 'hi' ? 'हमें फॉलो करें' : 'تابعونا'}: ${mentions.join(' ')}` : '';
   return [b.caption.trim(), follow, tags].filter(Boolean).join('\n\n');
 }
 

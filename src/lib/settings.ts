@@ -66,6 +66,7 @@ export const SettingsSchema = z.object({
     ar: z.array(z.string().max(24)).max(4).default(['تصاميم مخصصة', 'جودة طباعة عالية', 'مناسبات خاصة', 'هدايا الشركات']),
     en: z.array(z.string().max(24)).max(4).default(['Custom designs', 'Premium print', 'Special occasions', 'Corporate gifts']),
     ml: z.array(z.string().max(32)).max(4).default(['കസ്റ്റം ഡിസൈനുകൾ', 'മികച്ച പ്രിന്റ്', 'പ്രത്യേക അവസരങ്ങൾ', 'കോർപ്പറേറ്റ് ഗിഫ്റ്റുകൾ']),
+    hi: z.array(z.string().max(32)).max(4).default(['कस्टम डिज़ाइन', 'बेहतरीन प्रिंट', 'खास मौके', 'कॉर्पोरेट गिफ्ट']),
   }).prefault({}),
   ai: z.object({
     dryRun: z.boolean().default(true),
@@ -85,7 +86,7 @@ export const SettingsSchema = z.object({
     maxDailyAds: z.number().int().min(0).default(48),
     maxRetries: z.number().int().min(0).max(5).default(2),
     creativeStyle: z.string().default('Premium commercial product photography, cinematic lighting, deep navy and elegant gold accents, clean composition with negative space at top and bottom for text.'),
-    languages: z.array(z.enum(['ar', 'en', 'ml'])).default(['ar', 'en', 'ml']),
+    languages: z.array(z.enum(['ar', 'en', 'ml', 'hi'])).default(['ar', 'en', 'ml', 'hi']),
     useAiReview: z.boolean().default(false),
     /** IMAGE QUALITY GATE for ad scenes (layered designs and reel shots): text drawn inside the picture, softness,
      *  exposure — a failed scene is regenerated once with the reason. One small vision call per picture. */

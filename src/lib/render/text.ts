@@ -14,7 +14,7 @@ export interface RenderedText {
 }
 
 /** Cairo has very generous native line metrics, Noto Malayalam does not. */
-const lineSpacing = (lang: Lang, size: number) => (lang === 'ml' ? Math.round(size * 0.18) : -Math.round(size * 0.3));
+const lineSpacing = (lang: Lang, size: number) => (lang === 'ml' || lang === 'hi' ? Math.round(size * 0.18) : -Math.round(size * 0.3)); // Noto Indic fonts have tight native line metrics
 
 async function pango(markup: string, desc: string, size: number, fontfile: string, width: number | undefined, align: string, spacing: number) {
   return sharp({ text: { text: markup, font: `${desc} ${size}`, fontfile, width, rgba: true, align: align as 'centre', wrap: 'word', dpi: 72, spacing } })
@@ -35,7 +35,7 @@ export async function renderText(spec: TextSpec): Promise<RenderedText> {
   const markup = `<span foreground="${spec.color}">${escapeMarkup(body)}</span>`;
   // libvips crops text output to ink bounds, so measure: (a) this exact text unwrapped = one line,
   // (b) the per-line advance from a two-line probe.
-  const probe = spec.lang === 'ml' ? 'ക' : spec.lang === 'ar' ? 'ا' : 'H';
+  const probe = spec.lang === 'ml' ? 'ക' : spec.lang === 'hi' ? 'क' : spec.lang === 'ar' ? 'ا' : 'H';
   let last: RenderedText | null = null;
   for (let size = spec.maxSize; size >= spec.minSize; size -= 2) {
     const sp = lineSpacing(spec.lang, size);

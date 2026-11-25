@@ -10,6 +10,7 @@ export interface QcCheck { id: string; label: string; passed: boolean; severity:
 const SCRIPT = {
   ar: /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/u,
   ml: /[ഀ-ൿ]/u,
+  hi: /[\u0900-\u097F]/u,
   en: /[A-Za-z]/,
 };
 export function scriptRatio(text: string, lang: Lang) {

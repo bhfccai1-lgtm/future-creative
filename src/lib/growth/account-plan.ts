@@ -61,11 +61,11 @@ export const postScore = (p: PlanPost) => p.views * ((p.retention ?? 30) / 100) 
 
 function bioFor(lang: string, cats: string[], ksa: boolean) {
   const what = cats.slice(0, 3).join(' · ') || 'طباعة وهدايا مخصصة';
-  if (lang === 'en' || lang === 'ml') return `Custom printing in Bahrain${ksa ? ' — delivered to Saudi Arabia' : ''}\n${what}\n📩 DM your idea + quantity\n📍 Saar 33316319 | Salmabad 34315316`;
+  if (lang === 'en' || lang === 'ml' || lang === 'hi') return `Custom printing in Bahrain${ksa ? ' — delivered to Saudi Arabia' : ''}\n${what}\n📩 DM your idea + quantity\n📍 Saar 33316319 | Salmabad 34315316`;
   return `${ksa ? '🇸🇦 طباعة مخصصة لعملاء المملكة' : '🖨️ مطبعة إبداع المستقبل — البحرين'}\n${what}\n📩 أرسل فكرتك على الخاص ونجهز لك التصميم\n📍 سار 33316319 | سلماباد 34315316`;
 }
 function messagesFor(lang: string, product: string) {
-  if (lang === 'en' || lang === 'ml') return [
+  if (lang === 'en' || lang === 'ml' || lang === 'hi') return [
     `Hi 🌷 thanks for your comment on our ${product}! Is it for you or a gift?`,
     'Lovely! When do you need it? So we can plan the right date ☕',
     'Then I recommend [the right option] because [what you will see]. Send me the name / photo / logo and we will share the design for approval before printing. Price: [price]. Pick-up at Saar or Salmabad. Does that work?',
@@ -127,7 +127,7 @@ export async function accountPlans(opts: { now?: Date; days?: number; accountId?
     if (withM.length >= 5 && totals.comments + totals.shares === 0) issues.push({ id: 'no_conversation', level: 'medium', text: `صفر تعليقات ومشاركات في ${withM.length} منشورًا.`, fix: 'سؤال اختيار حقيقي في آخر الريل («أي وحدة تختار: ١ ولا ٢؟») ومحتوى يُرسل لصديق.' });
     if (frequency && frequency.first.avgViews && frequency.second.avgViews !== null && frequency.second.posts >= frequency.first.posts * 1.8 && frequency.second.avgViews <= frequency.first.avgViews * 0.6)
       issues.push({ id: 'frequency', level: 'medium', text: `النشر تضاعف (${frequency.first.posts} ← ${frequency.second.posts}) والمشاهدات للمنشور نزلت (${frequency.first.avgViews} ← ${frequency.second.avgViews}).`, fix: 'منشور إلى منشورين يوميًا، الريلز أولًا (ارتباط في الأرقام، ليس سببًا مثبتًا).' });
-    const wrongLang = posts.filter((p) => { const s = scriptOf(p.hook); return s !== null && s !== acc.language && !(acc.language === 'ml' && s === 'en'); }).length;
+    const wrongLang = posts.filter((p) => { const s = scriptOf(p.hook); return s !== null && s !== acc.language && !((acc.language === 'ml' || acc.language === 'hi') && s === 'en'); }).length;
     if (wrongLang) issues.push({ id: 'language', level: 'high', text: `${wrongLang} منشور بلغة غير لغة الحساب.`, fix: 'منشورات هذه اللغة تذهب لحسابها المخصص؛ لغة واحدة لكل حساب.' });
     if (market === 'KSA') {
       const leaked = jobs.filter((j) => /#\S*(بحرين|bahrain)/i.test(j.advertisement.caption ?? '')).length;

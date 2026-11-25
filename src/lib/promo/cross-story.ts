@@ -23,6 +23,7 @@ const COPY: Record<Lang, { kicker: string; cta: string }> = {
   ar: { kicker: 'جديد على حسابنا', cta: 'زوروا الحساب وشوفوا التفاصيل' },
   en: { kicker: 'New on our page', cta: 'Visit the page for details' },
   ml: { kicker: 'ഞങ്ങളുടെ പേജിൽ പുതിയത്', cta: 'വിവരങ്ങൾക്ക് പേജ് സന്ദർശിക്കൂ' },
+  hi: { kicker: 'हमारे पेज पर नया', cta: 'पूरी जानकारी के लिए पेज देखें' },
 };
 
 export async function renderCrossStory(o: { image: Buffer; logo: Buffer; handle: string; headline: string; lang: Lang }): Promise<{ jpeg: Buffer; fits: boolean }> {

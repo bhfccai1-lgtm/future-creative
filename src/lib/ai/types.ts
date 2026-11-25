@@ -43,7 +43,7 @@ export const CreativeBriefJsonSchema = {
 } as const;
 
 export interface BriefRequest {
-  language: 'ar' | 'en' | 'ml';
+  language: 'ar' | 'en' | 'ml' | 'hi';
   product: { slug: string; name: string; titleAr: string; titleEn: string; titleMl?: string | null; targetAudience: string[]; occasions: string[]; visualGuidelines: string; recommendedMessages: Record<string, string[]> };
   accountName: string; businessCategory?: string | null;
   creativeStyle: string; defaultCta: string;

@@ -12,7 +12,7 @@ import { DirectionSchema } from '@/lib/validation';
 const Body = z.object({
   accountId: z.string(), productId: z.string().optional(),
   format: z.enum(['IMAGE_STORY', 'IMAGE_FEED', 'IMAGE_SQUARE', 'REEL_VIDEO', 'IMAGE_CAROUSEL']).optional(),
-  language: z.enum(['ar', 'en', 'ml']).optional(),
+  language: z.enum(['ar', 'en', 'ml', 'hi']).optional(),
   direction: DirectionSchema,
 });
 
