@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../db';
 import { SESSION_COOKIE, verifySession, type SessionClaims } from './session';
 import { can, type Permission } from './rbac';
-import { AppError } from '../errors';
+import { AppError, explainInfraError } from '../errors';
 import { ZodError } from 'zod';
 
 /** Verifies JWT *and* that the user still exists, is active, and the session version is current. */
@@ -51,5 +51,7 @@ export function errorResponse(e: unknown) {
   if (e instanceof ZodError) return NextResponse.json({ error: 'VALIDATION', message: 'بيانات غير صالحة', details: e.issues }, { status: 422 });
   if ((e as { code?: string; name?: string })?.code === 'P2025' || (e as { name?: string })?.name === 'NotFoundError') return NextResponse.json({ error: 'NOT_FOUND', message: 'العنصر المطلوب غير موجود.' }, { status: 404 });
   console.error('[api] unhandled', e);
+  const infra = explainInfraError(e); // database down / not migrated / missing setting → say so, with a code
+  if (infra) return NextResponse.json({ error: infra.code, message: infra.message }, { status: infra.status });
   return NextResponse.json({ error: 'INTERNAL', message: 'خطأ داخلي في الخادم' }, { status: 500 });
 }
