@@ -14,7 +14,7 @@ interface Concept { key: 'A' | 'B' | 'C'; name: string; idea: string; metaphor: 
 interface PageInfo { key: string; v: string; label: string; widthPx: number; heightPx: number; dpi: number; trimMm: { w: number; h: number }; bleedMm: number; folds: number[]; cut: string | null; kissCut: number; hidden: { label: string; rect: { x: number; y: number; w: number; h: number } }[]; safe: { x: number; y: number; w: number; h: number }[]; note: string | null }
 interface Qa { checks: { level: string; id: string; label: string; status: Status; detail?: string }[]; levels: Record<string, Status>; overall: Status; productionReady: boolean }
 interface Project { id: string; title: string; productId: string; status: string; brief: Brief; conceptKey: string | null; images: Record<string, string> | null; versions: { at: string; note: string }[] | null; exports: { at: string; files: { kind: string; name: string; key: string; bytes: number; note?: string }[] } | null; mockupKey: string | null; approvedAt: string | null; production?: { stage: string; history: { stage: string; at: string; by: string; note?: string }[] } | null; proofToken?: string | null; proofExpiresAt?: string | null; clientDecision?: { status: string; name: string; note: string; at: string } | null }
-interface Brief { productId: string; request: string; business: string; activity: string; audience: string; lang: 'ar' | 'en' | 'bi'; sizeId: string; orientation: 'portrait' | 'landscape'; sides?: 1 | 2; pages?: number; material?: string; finishes: string[]; outputs: 'print' | 'ad' | 'both'; viewM?: number; conditions: { outdoor: boolean; waterproof: boolean; food: boolean; darkFabric: boolean }; finishTarget?: 'logo_headline' | 'logo' | 'headline' | 'name'; texts: Texts; shopBrandingConsent: boolean; logoKey?: string; dielineKey?: string; dieline?: { wMm: number; hMm: number; panels: { x: number; y: number; w: number; h: number }[]; fold: string[]; warnings: string[] }; frontPanel?: number; artIdea?: string }
+interface Brief { productId: string; request: string; business: string; activity: string; audience: string; lang: 'ar' | 'en' | 'bi'; sizeId: string; orientation: 'portrait' | 'landscape'; sides?: 1 | 2; pages?: number; material?: string; finishes: string[]; outputs: 'print' | 'ad' | 'both'; viewM?: number; conditions: { outdoor: boolean; waterproof: boolean; food: boolean; darkFabric: boolean }; finishTarget?: 'logo_headline' | 'logo' | 'headline' | 'name'; texts: Texts; shopBrandingConsent: boolean; logoKey?: string; dielineKey?: string; dieline?: { wMm: number; hMm: number; panels: { x: number; y: number; w: number; h: number }[]; fold: string[]; warnings: string[] }; frontPanel?: number }
 
 /** same text on the server and in the browser (no locale / time-zone drift → no hydration mismatch) */
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bahrain', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -264,9 +264,8 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
   const [guides, setGuides] = useState(true);
   const [plan, setPlan] = useState<ImagePlan | null>(null);
   const [texts, setTexts] = useState<Record<string, string> | null>(null);
-  const [artIdea, setArtIdea] = useState('');
   const load = useCallback(async () => {
-    const r = await call<{ project: Project }>(`/api/print/projects/${id}`); setP(r.project); setArtIdea(r.project.brief.artIdea ?? ''); setTexts({ ...r.project.brief.texts, extra: r.project.brief.texts.extra.join('\n') });
+    const r = await call<{ project: Project }>(`/api/print/projects/${id}`); setP(r.project); setTexts({ ...r.project.brief.texts, extra: r.project.brief.texts.extra.join('\n') });
     const v = await call<{ pages: PageInfo[]; qa: Qa; analysis: Analysis; concepts: Concept[]; concept: string }>(`/api/print/projects/${id}/preview`, { method: 'POST' }); setPv(v); setPage((x) => Math.min(x, v.pages.length - 1));
     call<ImagePlan>(`/api/print/projects/${id}/image`).then(setPlan).catch(() => setPlan(null));
   }, [id]);
@@ -318,8 +317,7 @@ function ProjectView({ id, L, ui, accounts, run, busy, onChanged, onDeleted }: {
                 <p className="text-[11px] text-slate-500">{L('مشهد حسب النشاط والاتجاه — بدون نصوص أو شعارات داخله. لا يُعاد توليد بقية التصميم.', 'A scene for the activity — no text or logos inside. The rest of the design is kept.')}</p>
                 {plan?.heroQuality && <QualityBadge q={plan.heroQuality} L={L} />}
                 {plan?.areaMm && <ResolutionInfo plan={plan} L={L} />}
-                <IdeaBox id={id} L={L} busy={busy} value={artIdea} onChange={setArtIdea} run={run} />
-                {plan && (plan.live ? <HeroGenerator plan={plan} L={L} busy={busy} onGenerate={(quality, variants) => act('image', L('يرسم الصورة…', 'Painting…'), L('أُضيفت الصورة ✓', 'Picture added ✓'), { quality, variants, idea: artIdea })} /> : <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">{L('يحتاج مفتاح OpenAI — يظهر مكان الصورة في المعاينة فقط.', 'Needs an OpenAI key — the picture area shows in the preview only.')}</p>)}
+                {plan && (plan.live ? <HeroGenerator plan={plan} L={L} busy={busy} onGenerate={(quality, variants) => act('image', L('يرسم الصورة…', 'Painting…'), L('أُضيفت الصورة ✓', 'Picture added ✓'), { quality, variants })} /> : <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">{L('يحتاج مفتاح OpenAI — يظهر مكان الصورة في المعاينة فقط.', 'Needs an OpenAI key — the picture area shows in the preview only.')}</p>)}
                 {plan?.plan && <ul className="mt-2 list-disc space-y-0.5 ps-4 text-[11px] text-slate-500">{[`${L('لوحة النموذج', 'Model canvas')} ${plan.plan.size} · ${L('نسبة المساحة', 'box ratio')} ${plan.plan.ratioBox}:1`, ...plan.plan.notes].map((n, i) => <li key={i}>{n}</li>)}</ul>}
                 {(plan?.variants?.length ?? 0) > 1 && <div className="mt-2 grid grid-cols-3 gap-1.5">{plan!.variants!.map((k, i) => <button key={k} type="button" disabled={busy || plan!.chosen === i} onClick={() => act('pick', L('اختيار…', 'Choosing…'), L('اختيرت الصورة ✓', 'Chosen ✓'), { index: i })} className={`overflow-hidden rounded-lg border-2 ${plan!.chosen === i ? 'border-indigo-700' : 'border-transparent'}`}><img src={`/api/media/${k}`} alt={`${L('بديل', 'variant')} ${i + 1}`} className="aspect-square w-full bg-slate-100 object-contain" />{plan!.qualities?.[k] && <span className={`block text-[10px] font-bold ${plan!.qualities[k].pass ? 'text-emerald-700' : 'text-red-700'}`}>{plan!.qualities[k].pass ? '✓' : '⚠'} {plan!.qualities[k].judge ?? plan!.qualities[k].score}</span>}</button>)}</div>}
                 {plan?.current && plan.current.verdict !== 'ok' && <button type="button" disabled={busy} onClick={() => act('upscale', L('تكبير الصورة…', 'Upscaling…'), L('كُبّرت الصورة — البكسلات أنعم (لا تفاصيل جديدة) ✓', 'Upscaled ✓'))} className="mt-2 w-full rounded-lg border border-indigo-300 px-3 py-2 text-xs font-bold text-indigo-800">{L('تكبير احترافي لتنعيم البكسلات', 'Professional upscale (smoother pixels)')}{plan.current.upscale > 1 ? ` (${L('الحالي', 'now')} ×${plan.current.upscale})` : ''}</button>}
@@ -466,39 +464,6 @@ function ProofPanel({ L, p, busy, onCreate }: { L: (a: string, e: string) => str
 }
 
 /** quality tier + number of variants, with the cost shown before anything is generated */
-/** «فكرتك للتصميم»: the owner writes the picture idea, or picks one of 5 suggestions fitted to the activity and product */
-interface PrintIdea { title: string; idea: string; why: string }
-function IdeaBox({ id, L, busy, value, onChange, run }: { id: string; L: (a: string, e: string) => string; busy: boolean; value: string; onChange: (v: string) => void; run: <T>(label: string, fn: () => Promise<T>, ok?: string) => Promise<T | null> }) {
-  const [ideas, setIdeas] = useState<PrintIdea[] | null>(null);
-  const [source, setSource] = useState<'ai' | 'templates' | null>(null);
-  const suggest = async () => {
-    const r = await run(L('يقترح أفكارًا…', 'Suggesting ideas…'), () => call<{ ideas: PrintIdea[]; source: 'ai' | 'templates' }>(`/api/print/projects/${id}/ideas`, { method: 'POST' }));
-    if (r) { setIdeas(r.ideas); setSource(r.source); }
-  };
-  return (
-    <div className="mt-2 space-y-2 rounded-xl bg-slate-50 p-2.5">
-      <label htmlFor="art-idea" className="block text-xs font-extrabold">✍️ {L('فكرتك للتصميم (اختياري)', 'Your design idea (optional)')}</label>
-      <textarea id="art-idea" className="input min-h-[72px] text-xs" maxLength={600} value={value} onChange={(e) => onChange(e.target.value)}
-        placeholder={L('مثال: كوب قهوة على طاولة خشب قرب نافذة في الصباح، بخار خفيف وضوء ذهبي دافئ', 'e.g. a coffee cup on a wooden table by a window in the morning, soft steam, warm golden light')} />
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <button type="button" disabled={busy} onClick={suggest} className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold text-indigo-800 disabled:opacity-50">💡 {L('اقترح أفكارًا لهذا التصميم', 'Suggest ideas')}</button>
-        <span className="text-[10px] text-slate-500">{value.length}/600</span>
-      </div>
-      <p className="text-[10px] text-slate-500">{L('صف المشهد فقط (الموضوع، الزاوية، الإضاءة، الخامة). الاسم والأرقام والشعار يضعها النظام بنفسه — لا تُكتب داخل الصورة.', 'Describe the scene only. The name, numbers and logo are laid out by the system, never drawn inside the picture.')}</p>
-      {ideas && (
-        <div className="space-y-1.5">
-          <div className="text-[10px] font-bold text-slate-500">{source === 'ai' ? L('أفكار من الذكاء الاصطناعي حسب النشاط والمنتج — اضغط فكرة لتعدّلها', 'AI ideas for this activity and product — tap one to edit') : L('أفكار جاهزة حسب المنتج (بدون تكلفة) — اضغط فكرة لتعدّلها', 'Ready ideas for this product (free) — tap one to edit')}</div>
-          {ideas.map((x, i) => (
-            <button key={i} type="button" onClick={() => onChange(x.idea)} className={`block w-full rounded-lg border bg-white p-2 text-right text-xs hover:border-indigo-400 ${value === x.idea ? 'border-indigo-600 ring-1 ring-indigo-600' : ''}`}>
-              <b>{x.title}</b><span className="block text-slate-700">{x.idea}</span>{x.why && <span className="block text-[10px] text-slate-500">💡 {x.why}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function HeroGenerator({ plan, L, busy, onGenerate }: { plan: ImagePlan; L: (a: string, e: string) => string; busy: boolean; onGenerate: (q: 'low' | 'medium' | 'high', n: number) => void }) {
   const [q, setQ] = useState<'low' | 'medium' | 'high'>(plan.plan?.quality ?? 'medium');
   const [n, setN] = useState(1);

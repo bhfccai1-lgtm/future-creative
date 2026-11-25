@@ -21,7 +21,6 @@ import { buildMockup } from './mockup';
 import { runPrintQa, type QaReport } from './qa';
 import { buildPrintPdf } from './pdf';
 import { parseDieline, type Dieline } from './dieline';
-import { IDEAS_SYSTEM, ideasUserPrompt, parseIdeas, templateIdeas } from './ideas';
 import { artPlan, extendToRatio } from './artdirection';
 import { generateChecked, qualitySummary } from '../creative/checked-image';
 import { assessImage } from '../creative/image-quality';
@@ -151,15 +150,8 @@ export async function upscalePrint(id: string, user: User) {
   return { project: upd, factor };
 }
 /** the AI picture planned for its exact box (art direction per size) — 1–3 variants, chosen quality, cost checked first */
-export async function generateHero(id: string, user: User, opts: { quality?: 'low' | 'medium' | 'high'; variants?: number; idea?: string } = {}) {
-  let p = await loadPrint(id, user);
-  // the owner's idea is part of the design (stored in the brief → it is in the history and the approval fingerprint)
-  if (opts.idea !== undefined) {
-    const idea = opts.idea.replace(/\s+/g, ' ').trim().slice(0, 600);
-    const cur = briefOf(p);
-    if ((cur.artIdea ?? '') !== idea) p = await prisma.printProject.update({ where: { id }, data: { brief: { ...cur, artIdea: idea || undefined } as never } });
-  }
-  const ctx = await context(p); const { s } = ctx;
+export async function generateHero(id: string, user: User, opts: { quality?: 'low' | 'medium' | 'high'; variants?: number } = {}) {
+  const p = await loadPrint(id, user); const ctx = await context(p); const { s } = ctx;
   const provider = await getAiProvider(s);
   if (provider.isDryRun) throw new AppError('NO_AI', 'توليد الصور يحتاج مفتاح OpenAI (وضع التجربة مفعّل).', 412);
   const box = (await imagePlanPrint(id, user)).areaMm;
@@ -372,19 +364,3 @@ export async function deletePrint(id: string, user: User) {
   await audit({ actorId: user.sub, actorLabel: user.email, action: 'print.delete', targetType: 'print_project', targetId: id });
 }
 export type { PrintPage };
-
-/** 5 design ideas for the AI picture: from the AI when a key is set (one small text call), otherwise free templates */
-export async function suggestPrintIdeas(id: string, user: User) {
-  const p = await loadPrint(id, user); const ctx = await context(p); const { s } = ctx;
-  const provider = await getAiProvider(s);
-  if (!provider.isDryRun && provider.generateJson) {
-    try {
-      await assertBudget(s, estimateTextCost(s, 900, 700));
-      const r = await provider.generateJson(IDEAS_SYSTEM, ideasUserPrompt(ctx.a, ctx.b, ctx.concept), s.ai.textModel);
-      await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
-      const ideas = parseIdeas(r.json);
-      if (ideas.length >= 3) return { ideas, source: 'ai' as const, current: ctx.b.artIdea ?? '' };
-    } catch { /* fall back to the templates */ }
-  }
-  return { ideas: templateIdeas(ctx.a, ctx.b), source: 'templates' as const, current: ctx.b.artIdea ?? '' };
-}

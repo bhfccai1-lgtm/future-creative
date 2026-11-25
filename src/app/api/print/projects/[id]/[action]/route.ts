@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { api } from '@/lib/auth/server';
 import { AppError } from '@/lib/errors';
-import { adFromPrint, approvePrint, exportPrint, generateHero, imagePlanPrint, mockupPrint, pickHero, previewPrint, undoPrint, suggestPrintIdeas, upscalePrint } from '@/lib/print/service';
+import { adFromPrint, approvePrint, exportPrint, generateHero, imagePlanPrint, mockupPrint, pickHero, previewPrint, undoPrint, upscalePrint } from '@/lib/print/service';
 import { createProof } from '@/lib/print/proof';
 import { quoteDraft, quoteFromPrint, quoteMessage } from '@/lib/print/quote';
 import { STAGES, readyMessage, setStage } from '@/lib/print/production';
@@ -32,8 +32,7 @@ export const POST = api<P>('ads:create', async (req, { params, user }) => {
     case 'approve': return NextResponse.json({ ok: true, project: await approvePrint(id, u) });
     case 'export': return NextResponse.json({ ok: true, ...(await exportPrint(id, u)) });
     case 'mockup': return NextResponse.json({ ok: true, ...(await mockupPrint(id, u)) });
-    case 'image': { const b = z.object({ quality: z.enum(['low', 'medium', 'high']).optional(), variants: z.number().int().min(1).max(3).optional(), idea: z.string().max(600).optional() }).parse(await req.json().catch(() => ({}))); return NextResponse.json({ ok: true, project: await generateHero(id, u, b) }); }
-    case 'ideas': return NextResponse.json({ ok: true, ...(await suggestPrintIdeas(id, u)) });
+    case 'image': { const b = z.object({ quality: z.enum(['low', 'medium', 'high']).optional(), variants: z.number().int().min(1).max(3).optional() }).parse(await req.json().catch(() => ({}))); return NextResponse.json({ ok: true, project: await generateHero(id, u, b) }); }
     case 'pick': { const b = z.object({ index: z.number().int().min(0).max(2) }).parse(await req.json()); return NextResponse.json({ ok: true, project: await pickHero(id, b.index, u) }); }
     case 'quote': {
       if (!can(user.perms, 'ads:approve')) throw new AppError('FORBIDDEN', 'عروض الأسعار لمن يملك صلاحية المبيعات.', 403);
