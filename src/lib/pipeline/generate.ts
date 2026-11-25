@@ -328,7 +328,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       ? ({ png: await sharp(realPhoto).resize(1024, 1536, { fit: 'cover', position: sharp.strategy.attention }).png().toBuffer(), model: 'real-photo' } as Scene)
       : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: [] /* typeset by the system in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system': typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system')) })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone);
       const prompt = refPrompt ? `${basePrompt}\n${refPrompt}` : basePrompt;
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
@@ -365,8 +365,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       // Self-correcting full-AI poster: read the drawn text BEFORE composing; misspelled/missing words → re-draw with an exact correction note
       let pool = candidates;
       if (aiFull && provider.readText && !provider.isDryRun) {
-        const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted].filter((x) => x.trim());
-        const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h).bottomPct;
+        const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted, ...(s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [])].filter((x) => x.trim());
+        const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system').bottomPct;
         const spell = async (c: (typeof candidates)[number]) => {
           try {
             await assertBudget(s, estimateTextCost(s, 1500, 260));
@@ -437,7 +437,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
     // Premium gold poster by default for vertical formats; classic templates alternate for feed/square (decided above).
     const templateKey = aiFull ? 'ai-poster' : layeredKey;
-    const features = s.brandFeatures[lang] ?? [];
+    const features = templateKey === 'ai-poster' && s.ai.featuresRow !== 'system' ? [] : (s.brandFeatures[lang] ?? []);
     const composed = await composeAdvertisement({
       scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,
       badge: brief.badge, features,
