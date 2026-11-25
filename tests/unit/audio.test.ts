@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import { voiceScript, fakeSpeech } from '@/lib/audio/tts';
 import { sfxTimeline } from '@/lib/audio/sfx';
 import { composeAdvertisement } from '@/lib/render/compose';
-import { renderReel } from '@/lib/video/reel';
+import { captionCenterY, captionChunks, captionClean, endCardSeconds, renderReel, voicePlan } from '@/lib/video/reel';
 import { DryRunProvider } from '@/lib/ai/dry-run-provider';
 import { run } from '@/lib/video/probe';
 import { promises as fs } from 'node:fs';
@@ -106,4 +106,72 @@ describe('numbers are spoken as words; phone numbers are never read', () => {
     expect(sameWords('مَطْبَعَة إبداع', 'مطبعة ابداع')).toBe(true);
     expect(sameWords('مطبعة إبداع', 'مطبعة جديدة')).toBe(false);
   });
+});
+
+describe('voice-over timing and caption placement', () => {
+  it('the voice is never cut at the end card; only a voice longer than the reel is sped up (≤15 %)', () => {
+    // real case: 12 s reel, the end card starts at 9 s, the voice lasted ~11 s → it used to be cut at 8.8 s mid-word
+    expect(voicePlan(11, 12)).toMatchObject({ tempo: 1 });
+    expect(voicePlan(11, 12).end).toBeCloseTo(11.35, 2);
+    expect(voicePlan(11, 12).trim).toBeLessThanOrEqual(11.8);
+    expect(voicePlan(13, 12).tempo).toBeCloseTo(1.15, 2); // too long even for the whole reel → capped speed-up, then cut
+    expect(voicePlan(5, 12)).toMatchObject({ tempo: 1 });
+    expect(voicePlan(5, 12).end).toBeCloseTo(5.35, 2);
+  });
+  it('captions sit just above the CTA / phone block, not over the product in the middle of the frame', () => {
+    const ph = 110;
+    expect(captionCenterY([{ id: 'headline', top: 200 }, { id: 'cta', top: 1580 }, { id: 'contact:s:phone', top: 1780 }], ph)).toBe(1580 - 28 - 55);
+    expect(captionCenterY([{ id: 'headline', top: 200 }], ph)).toBe(Math.round(1920 * 0.78)); // no bottom block → lower third
+    expect(captionCenterY([{ id: 'cta', top: 700 }], ph)).toBe(Math.round(1920 * 0.78)); // a CTA high in the frame is not a bottom block
+  });
+  it('renders a reel whose voice runs over the end card, with its last caption shown on the end card', async () => {
+    const scene = (await new DryRunProvider().generateScene('', { size: '1024x1536', seedHint: 'cap' })).png;
+    const logo = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="500" height="200"><rect width="500" height="200" fill="#d4af37"/></svg>')).png().toBuffer();
+    const c = await composeAdvertisement({ scene, format: 'REEL_VIDEO', lang: 'ar', headline: 'أكواب بتصميمك', supportingCopy: 'هدية', cta: 'اطلب الآن', logo, contacts: [{ key: 's', label: 'فرع سار', phone: '33316319' }] });
+    const text = 'هدية من القلب تفرح أحبابك كل يوم، اطلبيها الحين ودزي لنا كلمة على الخاص';
+    const r = await renderReel(c, 8, { audio: 'voiceover', voice: fakeSpeech(text + ' ' + text.slice(0, 20)), captions: { text, lang: 'ar' } });
+    expect(r.probe.valid).toBe(true);
+    // 8 s reel: the end card starts at 5 s; the ~7 s voice is still talking at 6.5 s → a caption pill is on the end card
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-cap-')), f = path.join(dir, 'v.mp4');
+    await fs.writeFile(f, r.mp4);
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-ss', '6.5', '-i', f, '-frames:v', '1', path.join(dir, 'e.png')]);
+    const y = captionCenterY(c.manifest.layers.map((l) => ({ id: l.id, top: l.rect.top })), 110);
+    const { data } = await sharp(path.join(dir, 'e.png')).extract({ left: 0, top: y - 80, width: 1080, height: 160 }).raw().toBuffer({ resolveWithObject: true });
+    let gold = 0; for (let i = 0; i < data.length; i += 3) if (data[i] > 170 && data[i + 1] > 140 && data[i + 2] < 140) gold++;
+    expect(gold).toBeGreaterThan(200); // the pill's gold outline
+    await fs.rm(dir, { recursive: true, force: true });
+  }, 300_000);
+});
+
+describe('brand final screen and clean captions', () => {
+  it('captions drop the pronunciation-only diacritics but keep the shadda', () => {
+    expect(captionClean('أمْلاح على الخاص')).toBe('أملاح على الخاص');
+    expect(captionClean('دزّي لنا كلمة')).toBe('دزّي لنا كلمة');
+    expect(captionChunks('تَصْمِيمَك  على ذوقك')).toEqual(['تصميمك على ذوقك']);
+  });
+  it('the final screen lasts 4 s on reels of 14 s+, 3 s on short and AI-video reels', () => {
+    expect(endCardSeconds(15, false)).toBe(4);
+    expect(endCardSeconds(10, false)).toBe(3);
+    expect(endCardSeconds(11, true)).toBe(3);
+    expect(endCardSeconds(15, false, 2)).toBe(2);
+  });
+  it('renders the final screen with the brand, the product and a WhatsApp mark beside each number', async () => {
+    const scene = (await new DryRunProvider().generateScene('', { size: '1024x1536', seedHint: 'end' })).png;
+    const logo = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="500" height="200"><rect width="500" height="200" fill="#d4af37"/></svg>')).png().toBuffer();
+    const c = await composeAdvertisement({ scene, format: 'REEL_VIDEO', lang: 'ar', headline: 'هدية من قلبهم', supportingCopy: 'لمسة مرتبة', cta: 'اطلب الآن', logo, contacts: [{ key: 'saar', label: 'فرع سار', phone: '33316319' }, { key: 'salmabad', label: 'فرع سلماباد', phone: '34315316' }] });
+    const r = await renderReel(c, 15, { endCard: { brand: 'مركز إبداع المستقبل', brandLang: 'ar', product: 'ملصقات تغليف الهدايا', lang: 'ar' } });
+    expect(r.probe.valid).toBe(true);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-end-')), f = path.join(dir, 'v.mp4');
+    await fs.writeFile(f, r.mp4);
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-ss', '13', '-i', f, '-frames:v', '1', path.join(dir, 'e.png')]);
+    const { data, info } = await sharp(path.join(dir, 'e.png')).raw().toBuffer({ resolveWithObject: true });
+    let green = 0, lowest = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      const [R, G, B] = [data[i], data[i + 1], data[i + 2]];
+      if (G > 170 && R < 90 && B < 140) { green++; lowest = Math.max(lowest, Math.floor(i / info.channels / info.width)); }
+    }
+    expect(green).toBeGreaterThan(800); // two WhatsApp marks
+    expect(lowest).toBeLessThan(1440); // contact block stays above Instagram's bottom caption/buttons area
+    await fs.rm(dir, { recursive: true, force: true });
+  }, 300_000);
 });

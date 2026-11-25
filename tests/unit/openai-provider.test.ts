@@ -129,7 +129,7 @@ describe('regression: "الموجز لا يطابق المخطط: String must co
     expect(r.brief.headline.endsWith(' ')).toBe(false);
     expect(r.brief.headline).toMatch(/^مطبوعات المدارس/);
     expect([...r.brief.badge].length).toBeLessThanOrEqual(24);
-    expect(r.brief.hashtags).toHaveLength(12);
+    expect(r.brief.hashtags).toHaveLength(5); // Instagram caps posts at 5
   });
   it('a really broken reply still fails, with an Arabic field-specific message', async () => {
     const e = await new OpenAiProvider('k', clientReturning({ ...validBrief, headline: undefined })).generateBrief(req, 'gpt-x').catch((x) => x);
