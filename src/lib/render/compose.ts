@@ -132,7 +132,7 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
     const phoneBox = { x, y: cy + Math.round(ch * 0.36), w: cardW, h: Math.round(ch * 0.64) };
     const label = await renderText({ text: c.label, lang: input.lang, weight: 'bold', color: th.label, maxSize: Math.round(36 * scale), minSize: Math.round(24 * scale), boxW: labelBox.w, boxH: labelBox.h, maxLines: 1 });
     // Phone digits are always Latin digits rendered with the Cairo font, isolated as LTR
-    const phone = await renderText({ text: c.phone, lang: input.lang === 'ml' ? 'en' : input.lang, weight: 'extrabold', color: th.phone, maxSize: Math.round(60 * scale), minSize: Math.round(34 * scale), boxW: phoneBox.w, boxH: phoneBox.h, maxLines: 1, ltr: true });
+    const phone = await renderText({ text: c.phone, lang: input.lang === 'ml' || input.lang === 'hi' ? 'en' : input.lang, weight: 'extrabold', color: th.phone, maxSize: Math.round(60 * scale), minSize: Math.round(34 * scale), boxW: phoneBox.w, boxH: phoneBox.h, maxLines: 1, ltr: true });
     // Stack label + gap + number, vertically centred in the card
     const gapPx = Math.round(14 * scale);
     const stackH = Math.min(label.height, labelBox.h) + gapPx + Math.min(phone.height, phoneBox.h);

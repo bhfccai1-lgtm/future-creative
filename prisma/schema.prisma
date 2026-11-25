@@ -12,6 +12,7 @@ enum Language {
   ar
   en
   ml
+  hi
 }
 
 enum SocialPlatform {

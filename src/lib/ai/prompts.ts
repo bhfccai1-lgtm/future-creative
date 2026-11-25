@@ -1,6 +1,6 @@
 import type { BriefRequest } from './types';
 
-const LANG_NAME = { ar: 'natural Bahraini / Gulf Arabic as spoken by customers in Bahrain (warm, conversational, correct spelling, no diacritics; MSA only for formal B2B wording)', en: 'English', ml: 'Malayalam (Unicode Malayalam script)' } as const;
+const LANG_NAME = { ar: 'natural Bahraini / Gulf Arabic as spoken by customers in Bahrain (warm, conversational, correct spelling, no diacritics; MSA only for formal B2B wording)', en: 'English', ml: 'Malayalam (Unicode Malayalam script)', hi: 'Hindi (Devanagari script), simple everyday Hindi the Indian community in Bahrain speaks — common English trade words (print, design, mug) may stay as Hindi speakers say them' } as const;
 
 export function briefSystemPrompt() {
   return [
@@ -100,7 +100,7 @@ export function scenePrompt(sceneDescription: string, style: string, art?: { lig
   ].filter(Boolean).join('\n');
 }
 
-const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
+const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam', hi: 'Hindi (Devanagari)' } as const;
 
 /**
  * "Full AI design" (ChatGPT-like): the image model designs the complete poster — typography, gold badge,
@@ -108,7 +108,7 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
  * the ORIGINAL logo (top) and the CTA + verified phone numbers (bottom band, added below the image).
  */
 export function fullPosterPrompt(p: {
-  lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
+  lang: 'ar' | 'en' | 'ml' | 'hi'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
   layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
 }) {

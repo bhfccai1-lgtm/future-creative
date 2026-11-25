@@ -161,7 +161,7 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
     const lt = await renderText({ text: c.label, lang, weight: 'bold', color: WHITE, maxSize: 44, minSize: 28, boxW: Math.round(colW2 - 60), boxH: 52, maxLines: 1 });
     layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, L.label, lt.width, lt.height, { x: Math.round(cx - colW2 / 2 + 20), y: L.label, w: Math.round(colW2 - 40), h: 52 }, lt, c.label, WHITE));
 
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 60, minSize: 38, boxW: Math.round(colW2 - 160), boxH: 66, maxLines: 1, ltr: true });
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' || lang === 'hi' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 60, minSize: 38, boxW: Math.round(colW2 - 160), boxH: 66, maxLines: 1, ltr: true });
     const pw = Math.round(Math.min(colW2 - 30, nt.width + 140)), ph = 86, iconD = 58;
     const iconX = lang === 'ar' ? 22 : pw - iconD - 22;
     const pill = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="3" y="3" width="${pw - 6}" height="${ph - 6}" rx="${(ph - 6) / 2}" fill="#081226" fill-opacity="0.92" stroke="url(#g)" stroke-width="5"/><g transform="translate(${iconX} ${(ph - iconD) / 2}) scale(${iconD / 100})" fill="url(#g)" stroke="url(#g)">${WA}</g></svg>`);
@@ -359,7 +359,7 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
     const c = order[i]; const cx = g.padX + col * i + col / 2 + (logoBottom && i >= order.length / 2 ? gap : 0);
     const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: '#f6d77a', maxSize: Math.round(labelH * 0.78), minSize: 24, boxW: Math.round(col - 60), boxH: labelH, maxLines: 1 });
     layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, labelY + (labelH - lt.height) / 2, lt.width, lt.height, { x: Math.round(cx - col / 2 + 30), y: labelY, w: Math.round(col - 60), h: labelH }, lt, c.label, '#f6d77a'));
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 150), boxH: pillH - 8, maxLines: 1, ltr: true });
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' || lang === 'hi' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 150), boxH: pillH - 8, maxLines: 1, ltr: true });
     const iconD = Math.round(pillH * 0.62), pw = Math.min(Math.round(col - 30), nt.width + iconD + 70);
     const psvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${pillH}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${pillH - 4}" rx="${(pillH - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="3"/>
       <rect x="12" y="6" width="${pw - 24}" height="${pillH * 0.34}" rx="${pillH * 0.17}" fill="#fff" opacity="0.28"/>
