@@ -55,3 +55,16 @@ describe('image realism rules', () => {
     expect(scene.length).toBeLessThan(4000); // well inside the image model's prompt limit
   });
 });
+
+describe('caption mentions the owner’s Instagram accounts', () => {
+  it('ends every caption with «تابعونا: @bhfcps @bhfcpss», never mentions an account in its own post, hashtags stay last', async () => {
+    const { buildCaption } = await import('@/lib/pipeline/generate');
+    const b = { caption: 'هدية تفرح القلب 🎁', hashtags: ['#البحرين', 'هدايا'] } as Parameters<typeof buildCaption>[0];
+    const c = buildCaption(b, { mentions: ['@bhfcps', '@bhfcpss'], ownHandle: null, lang: 'ar' });
+    expect(c).toBe('هدية تفرح القلب 🎁\n\nتابعونا: @bhfcps @bhfcpss\n\n#البحرين #هدايا');
+    expect(buildCaption(b, { mentions: ['@bhfcps', '@bhfcpss'], ownHandle: 'BHFCPS', lang: 'ar' })).toContain('تابعونا: @bhfcpss\n'); // not itself
+    expect(buildCaption(b, { mentions: ['@bhfcps'], ownHandle: '@bhfcps', lang: 'ar' })).not.toMatch(/تابعونا/); // nothing left to mention
+    expect(buildCaption(b, { mentions: ['@bhfcps'], lang: 'en' })).toContain('Follow us: @bhfcps');
+    expect(buildCaption(b)).toBe('هدية تفرح القلب 🎁\n\n#البحرين #هدايا'); // no mentions configured → unchanged
+  });
+});
