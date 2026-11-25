@@ -4,6 +4,8 @@ import { Card, PageHeader, Badge, Stat } from '@/components/ui';
 import { runDiagnostics } from '@/lib/ops/diagnostics';
 import { runAdvisor, healthHistory, CATEGORY_AR, SEVERITY_AR, type Advice, type Category, type Severity } from '@/lib/ops/advisor';
 import { fmtLocal } from '@/lib/time';
+import { runAnalysis, supportReport, type Verdict } from '@/lib/ops/analysis';
+import { CopyReportButton } from '@/components/copy-report-button';
 export const dynamic = 'force-dynamic';
 
 const TONE = { OK: 'green', WARN: 'amber', FAIL: 'red' } as const;
@@ -12,6 +14,10 @@ const SEV_TONE: Record<Severity, 'red' | 'amber' | 'blue' | 'slate'> = { critica
 const SEV_ICON: Record<Severity, string> = { critical: '🚨', high: '🔴', medium: '🟡', low: '🔵', info: 'ℹ️' };
 const GRADE_COLOR = { A: '#059669', B: '#65a30d', C: '#d97706', D: '#dc2626', F: '#991b1b' } as const;
 const val = (v: number | null, unit = '') => (v === null ? '—' : `${v}${unit}`);
+const VERDICT: Record<Verdict, { t: string; tone: 'green' | 'red' | 'slate' | 'blue' }> = {
+  improved: { t: '↑ تحسّن حقيقي', tone: 'green' }, worsened: { t: '↓ تراجع حقيقي', tone: 'red' }, stable: { t: '= ضمن التذبذب', tone: 'slate' }, insufficient: { t: 'عينة غير كافية', tone: 'blue' },
+};
+const SEV_RANK: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 
 function Gauge({ score, grade }: { score: number; grade: keyof typeof GRADE_COLOR }) {
   const r = 52, c = 2 * Math.PI * r, color = GRADE_COLOR[grade];
@@ -61,10 +67,13 @@ function AdviceCard({ a }: { a: Advice }) {
 
 export default async function DiagnosticsPage() {
   await requirePageUser();
-  const [d, adv, hist] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory()]);
+  const [d, adv, hist, an] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), runAnalysis()]);
   const k = adv.kpis;
+  // the analysis adds its own findings (trends, service levels, runtime, migrations) to the advisor's, by priority
+  const allAdvice = [...an.advice, ...adv.advice].sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity]);
+  const report = supportReport(an, { version: process.env.APP_VERSION ?? 'dev', overall: d.overall, score: adv.score, failedChecks: d.checks.filter((c) => c.status !== 'OK').map((c) => `${c.label}: ${c.detail}`) });
   const byCat = new Map<Category, Advice[]>();
-  for (const a of adv.advice) byCat.set(a.category, [...(byCat.get(a.category) ?? []), a]);
+  for (const a of allAdvice) byCat.set(a.category, [...(byCat.get(a.category) ?? []), a]);
   return (
     <>
       <PageHeader title="تشخيص النظام والمستشار الاحترافي" subtitle={`فحص مباشر وتوصيات مبنية على بياناتك الفعلية — ${fmtLocal(new Date(d.at))} (البحرين). لا تُعرض قيم المفاتيح السرية، ولا تُقدَّر أرقام غير موجودة.`}
@@ -95,8 +104,8 @@ export default async function DiagnosticsPage() {
         </div>
       </div>
 
-      <Card collapsible title={`توصيات المحترف (${adv.advice.length}) — مرتبة حسب الأولوية`} className="mb-6">
-        {!adv.advice.length ? <p className="text-sm text-emerald-700">لا توجد توصيات — النظام في حالة ممتازة ✅</p> : (
+      <Card collapsible title={`توصيات المحترف (${allAdvice.length}) — مرتبة حسب الأولوية`} className="mb-6">
+        {!allAdvice.length ? <p className="text-sm text-emerald-700">لا توجد توصيات — النظام في حالة ممتازة ✅</p> : (
           <div className="grid gap-5 lg:grid-cols-2">
             {[...byCat.entries()].map(([cat, list]) => (
               <section key={cat}>
@@ -106,6 +115,42 @@ export default async function DiagnosticsPage() {
             ))}
           </div>
         )}
+      </Card>
+
+      <Card collapsible title="التحليل المتقدم — هذا الأسبوع مقابل السابق" className="mb-6" actions={<CopyReportButton text={report} />}>
+        <p className="mb-3 text-xs text-slate-500">«تحسّن/تراجع حقيقي» فقط عندما تثبته اختبارات الدلالة الإحصائية بثقة 95٪ (z ≥ 1.96)؛ الفروق الصغيرة تُعدّ تذبذبًا طبيعيًا، والعينات الصغيرة لا يُحكم عليها.</p>
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr><th className="th">المؤشر</th><th className="th">الأسبوع السابق</th><th className="th">هذا الأسبوع</th><th className="th">العينة</th><th className="th">الحكم</th></tr></thead>
+          <tbody>{an.trends.map((t) => { const u = t.unit === '%' ? '%' : t.unit === '$' ? ' $' : ''; return <tr key={t.id} className="border-t"><td className="td font-bold">{t.label}</td><td className="td">{val(t.previous, u)}</td><td className="td font-bold">{val(t.current, u)}</td><td className="td text-xs text-slate-500">{t.n[0]} / {t.n[1]}{t.z !== null && <span className="ltr"> · z={t.z.toFixed(2)}</span>}</td><td className="td"><Badge tone={VERDICT[t.verdict].tone}>{VERDICT[t.verdict].t}</Badge></td></tr>; })}</tbody>
+        </table></div>
+
+        <h3 className="mb-2 mt-5 text-sm font-extrabold text-navy-800">مستويات الخدمة (SLO) — آخر 7 أيام</h3>
+        <div className="grid gap-3 md:grid-cols-3">
+          {an.slos.map((s) => (
+            <div key={s.id} className={`rounded-xl border p-3 text-sm ${s.ok === false ? 'border-red-300 bg-red-50' : s.ok ? 'border-emerald-200 bg-emerald-50/50' : ''}`}>
+              <div className="font-bold">{s.label}</div>
+              <div className="mt-1">الوسيط <b>{val(s.p50)}</b> · 90٪ خلال <b>{val(s.p90)}</b> {s.unit}</div>
+              <div className="mt-1 text-xs text-slate-500">الهدف: {s.targetOn === 'p50' ? 'الوسيط' : '90٪'} ≤ {s.target} {s.unit} · عينة {s.n} · {s.ok === null ? 'غير كافية للحكم' : s.ok ? 'محقق ✓' : 'غير محقق ✗'}</div>
+            </div>
+          ))}
+        </div>
+
+        <h3 className="mb-2 mt-5 text-sm font-extrabold text-navy-800">الأسباب الجذرية للأعطال (باريتو، 7 أيام) — {an.causesTotal} حالة</h3>
+        {!an.causes.length ? <p className="text-sm text-emerald-700">لا أعطال مسجلة هذا الأسبوع ✅</p> : (
+          <div className="space-y-1.5">{an.causes.map((c) => (
+            <div key={c.source + c.key} className="text-sm">
+              <div className="flex justify-between gap-3"><span><span className="text-xs text-slate-500">[{c.source}]</span> {c.key}</span><span className="shrink-0 font-bold">{c.count} · {c.share}%</span></div>
+              <div className="h-2 rounded bg-slate-100"><div className="h-2 rounded bg-gold-500" style={{ width: `${c.share}%` }} /></div>
+            </div>
+          ))}<p className="pt-1 text-xs text-slate-500">ابدأ من الأعلى: أول {an.causes.findIndex((c) => c.cumulative >= 80) + 1 || an.causes.length} أسباب تمثل ~80٪ من الأعطال.</p></div>
+        )}
+
+        <h3 className="mb-2 mt-5 text-sm font-extrabold text-navy-800">التشغيل</h3>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Stat label="الذاكرة" value={val(an.runtime.memory.usedPct, '%')} hint={an.runtime.memory.limitMb ? `من ${an.runtime.memory.limitMb} MB · التطبيق ${an.runtime.memory.rssMb} MB` : undefined} tone={an.runtime.memory.usedPct !== null && an.runtime.memory.usedPct > 90 ? 'red' : 'navy'} />
+          <Stat label="حمل المعالج / نواة" value={an.runtime.load1PerCpu} tone={an.runtime.load1PerCpu > 1.5 ? 'red' : 'navy'} hint={`يعمل منذ ${an.runtime.uptimeH} ساعة`} />
+          <Stat label="الطوابير (انتظار · فاشل)" value={an.runtime.queues ? `${an.runtime.queues.reduce((a, q) => a + q.waiting, 0)} · ${an.runtime.queues.reduce((a, q) => a + q.failed, 0)}` : '—'} hint={an.runtime.queues ? an.runtime.queues.map((q) => `${q.name.replace('fc-', '')} ${q.active} نشطة`).join(' · ') : 'Redis غير متاح'} />
+          <Stat label="تحديثات قاعدة البيانات" value={an.runtime.migrations ? (an.runtime.migrations.pending.length + an.runtime.migrations.failed.length ? `${an.runtime.migrations.pending.length + an.runtime.migrations.failed.length} غير مطبّق` : 'مكتملة ✓') : '—'} hint={an.runtime.migrations ? `${an.runtime.migrations.applied} مطبّق` : 'تعذّرت القراءة'} tone={an.runtime.migrations && an.runtime.migrations.pending.length + an.runtime.migrations.failed.length ? 'red' : 'green'} />
+        </div>
       </Card>
 
       <Card collapsible title="الفحوصات الفنية المباشرة" className="overflow-x-auto">
