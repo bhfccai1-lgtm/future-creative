@@ -442,6 +442,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,
       badge: brief.badge, features,
       footer: lang === 'ar' ? `${business.nameAr} – مملكة البحرين` : `${business.nameEn} – Kingdom of Bahrain`,
+      // full-AI poster: where the original logo goes, and the centre's name for «أعلى الوسط مع اسم المركز»
+      logoPosition: d.logoPosition ?? null, brandName: lang === 'ar' ? business.nameAr : business.nameEn,
     });
 
     // ── Pro reel: extra AI scenes (each a different shot of the SAME product), same layout + theme ──

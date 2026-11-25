@@ -30,6 +30,9 @@ export interface ComposeInput {
   features?: string[];
   /** Gold-poster layout only: footer ribbon (shop name · country) */
   footer?: string | null;
+  /** Full-AI poster: where the original logo goes; brandName is typed under it for 'top-center-name' */
+  logoPosition?: string | null;
+  brandName?: string | null;
 }
 
 export interface PlacedLayer {
