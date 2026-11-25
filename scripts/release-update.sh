@@ -9,6 +9,26 @@ exec 9>/tmp/fc-release-update.lock
 flock -n 9 || exit 0                                   # an update is already running
 STATE=.autoupdate-state                                # «tag result epoch» of the last attempt (git-ignored)
 REPO=$(git remote get-url origin 2>/dev/null | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+# ── «main» mode (bash scripts/autoupdate.sh on main): every merge into main whose GitHub CI is green is installed ──
+if [ "${FC_FOLLOW:-}" = main ]; then
+  git fetch -q origin main 2>/dev/null || exit 0
+  SHA=$(git rev-parse origin/main 2>/dev/null) || exit 0
+  RUNNING=$(docker compose exec -T web printenv APP_VERSION 2>/dev/null | tr -d '\r')
+  [ -n "$RUNNING" ] && [ "$(git rev-parse --short "$SHA")" = "$RUNNING" ] && exit 0          # already running
+  # only a finished, green CI (ci-ok) — a running CI is simply picked up on a later run, a red one never installed
+  CI=$(curl -fsS -m 15 -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$REPO/commits/$SHA/check-runs?check_name=ci-ok" 2>/dev/null \
+    | python3 -c 'import json,sys; r=json.load(sys.stdin).get("check_runs",[]); print("pending" if not r or any(x.get("status")!="completed" for x in r) else "success" if all(x.get("conclusion")=="success" for x in r) else "failure")' 2>/dev/null)
+  [ "$CI" = success ] || exit 0
+  TAG="main@${SHA:0:7}"
+  if [ -f "$STATE" ]; then
+    read -r LT LR LAT < "$STATE" || true
+    if [ "${LT:-}" = "$TAG" ] && [ "${LR:-}" = fail ] && [ $(( $(date +%s) - ${LAT:-0} )) -lt 21600 ]; then exit 0; fi
+  fi
+  echo "===== $(date -Is) $TAG — auto deploy (follows main) ====="
+  if FC_REF="$SHA" bash scripts/update.sh; then echo "$TAG ok $(date +%s)" > "$STATE"; echo "✓ $TAG running"
+  else echo "$TAG fail $(date +%s)" > "$STATE"; echo "✗ $TAG failed — still on the previous version, retry in 6 h"; fi
+  exit 0
+fi
 TAG=$(curl -fsS -m 15 -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
   | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))' 2>/dev/null)
 [ -n "$TAG" ] || exit 0                                # no release yet / GitHub not reachable — try again later
