@@ -75,6 +75,12 @@ export function ideasSystemPrompt() {
   ].join('\n');
 }
 
+/**
+ * Realism rules shared by every generated photo: the defects that make an image look AI-made (warped hands and faces,
+ * melted or duplicated objects, plastic skin, over-processed HDR, floating products) are named and forbidden.
+ */
+export const REALISM_RULES = 'Photographic realism: physically correct light — one consistent key-light direction, a soft contact shadow where the product touches the surface, natural reflections that match the environment; real material texture (paper grain, ceramic glaze, fabric weave, acrylic edges). If people or hands appear: natural anatomy, five fingers, relaxed realistic hands and faces, real skin texture — never waxy or plastic. No AI artefacts: nothing melted, warped, duplicated or floating, no extra limbs, no impossible geometry, no over-saturated colours, no HDR halos, no generic stock-photo look.';
+
 export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string }) {
   return [
     sceneDescription,
@@ -83,6 +89,7 @@ export function scenePrompt(sceneDescription: string, style: string, art?: { lig
     art?.lighting ? `Lighting: ${art.lighting}.` : '',
     art?.lens ? `Camera: ${art.lens}.` : '',
     'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
+    REALISM_RULES,
     'Vertical 9:16 premium advertising product photograph, photorealistic, ultra sharp focus on the product, high dynamic range, rich true-to-life colours, professional retouching.',
     'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 39% and 64% of the height); the upper 38% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 36% is the table/surface in soft focus.',
     'The printed surface of the product shows a vivid, high-quality printed illustration or pattern that suits the occasion — artwork only.',
@@ -110,6 +117,7 @@ export function fullPosterPrompt(p: {
     p.layout ? `Layout: ${p.layout}.` : '',
     p.concept ? `Creative concept for the product scene (striking, scroll-stopping, product stays the accurate hero): ${p.concept}.` : '',
     `Hero product photo: ${p.sceneDescription}`,
+    REALISM_RULES,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
     `Typography — render EXACTLY these words, perfectly spelled ${S} text${p.lang === 'ar' ? ' (correct right-to-left Arabic letter joining, bold modern Arabic display font)' : ''}, nothing else:`,
     `  • kicker line near the top: "${p.headline}"`,
