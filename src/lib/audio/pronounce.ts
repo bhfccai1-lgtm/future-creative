@@ -134,9 +134,11 @@ export function prepareSpoken(script: string, lexicon: LexEntry[], lang: string)
 /** Arabic-aware comparison form: no diacritics/tatweel, unified alef/ya/ta-marbuta/hamza seats, Latin lower-case. */
 export function normalizeForCompare(t: string): string[] {
   return t.normalize('NFKC').toLowerCase()
-    .replace(/[ً-ْٰـ]/g, '')
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/g, '') // all Arabic diacritics / Quranic marks + tatweel
     .replace(/[إأآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+    // keep combining marks (\p{M}): Devanagari/Malayalam vowel signs and viramas are part of the word — dropping them split
+    // «कीमत» into «क मत» and made a mispronounced Hindi/Malayalam take look correct (Arabic diacritics are removed above)
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
 }
 
 /** Share of the script's words heard in order (LCS / script length), 0–1. */
