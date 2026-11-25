@@ -10,6 +10,7 @@ import { setupChecklist } from '@/lib/ops/setup-checklist';
 import { requirePageUser } from '@/lib/auth/server';
 import { MorningBrief } from '@/components/morning-brief';
 import { latestBrief } from '@/lib/ops/briefing';
+import { financeReport } from '@/lib/ops/finance';
 
 export default async function Dashboard() {
   const user = await requirePageUser();
@@ -32,6 +33,8 @@ export default async function Dashboard() {
   ]);
   const newIdeas = await prisma.idea.count({ where: { status: 'NEW' } });
   const setup = await setupChecklist();
+  const fin = await financeReport().catch(() => null);
+  const confAr = { high: 'عالية', medium: 'متوسطة', low: 'منخفضة' } as const;
   const next = [nextJob?.scheduledFor, nextAcc?.nextPublishAt].filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime())[0];
   const budgetPct = spend / Math.max(0.01, s.ai.monthlyBudgetUsd);
   return (
@@ -75,6 +78,26 @@ export default async function Dashboard() {
         <Stat label="موعد النشر التالي" value={<span className="text-lg">{fmtLocal(next ?? null)}</span>} />
         <Stat label="تكلفة الذكاء الاصطناعي هذا الشهر" value={<span className="ltr">${spend.toFixed(2)}</span>} hint={`الحد: $${s.ai.monthlyBudgetUsd} · التقدير لكل إعلان: $${estimateAdCost(s).toFixed(3)}`} tone={budgetPct > 0.8 ? 'red' : 'navy'} />
       </div>
+      {fin && (
+        <Card title="💰 العائد والتوقع — آخر 30 يومًا" className="mt-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat label="إيراد العملاء المكسوبين" value={<span className="ltr">{fin.revenueBhd.toFixed(3)} د.ب</span>} hint={`${fin.won} طلب مكسوب`} tone="green" />
+            <Stat label="تكلفة الذكاء الاصطناعي" value={<span className="ltr">{fin.spendBhd.toFixed(3)} د.ب</span>} hint={`$${fin.spendUsd}`} />
+            <Stat label="العائد لكل دينار" value={fin.roi === null ? '—' : `×${fin.roi}`} hint="الإيراد ÷ التكلفة" tone={fin.roi !== null && fin.roi < 1 ? 'red' : 'navy'} />
+            <Stat label="المتوقع لهذا الشهر" value={<span className="ltr">{fin.forecast.expectedBhd.toFixed(3)} د.ب</span>} tone="gold"
+              hint={`مكسوب ${fin.forecast.wonThisMonthBhd.toFixed(3)} + ${fin.forecast.openLeads} طلب مفتوح × نسبة فوز ${fin.forecast.winRate === null ? '—' : `${Math.round(fin.forecast.winRate * 100)}%`} · ثقة ${confAr[fin.forecast.confidence]} (${fin.forecast.decided} قرار)`} />
+          </div>
+          {fin.accounts.some((a) => a.revenueBhd > 0 || a.leads > 0) && (
+            <div className="mt-4 overflow-x-auto"><table className="w-full">
+              <thead><tr><th className="th">الحساب</th><th className="th">عملاء</th><th className="th">إيراد (د.ب)</th><th className="th">تكلفة تقديرية</th><th className="th">العائد</th></tr></thead>
+              <tbody>{fin.accounts.filter((a) => a.designs > 0 || a.leads > 0).slice(0, 8).map((a) => (
+                <tr key={a.id} className="border-t"><td className="td">{a.name}</td><td className="td">{a.leads}</td><td className="td ltr">{a.revenueBhd.toFixed(3)}</td><td className="td ltr">{a.estCostBhd.toFixed(3)}</td><td className="td">{a.roi === null ? '—' : `×${a.roi}`}</td></tr>
+              ))}</tbody>
+            </table></div>
+          )}
+          <p className="mt-3 text-xs text-slate-500">الإيراد من صفحة العملاء (القيم التي تسجّلها أنت). تكلفة الحساب تقديرية موزعة على عدد تصاميمه. التوقع = المكسوب هذا الشهر + الطلبات المفتوحة × نسبة فوزك في آخر 90 يومًا — ثقته منخفضة تحت 10 قرارات.</p>
+        </Card>
+      )}
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card title="أحدث الإعلانات">
           <div className="overflow-x-auto"><table className="w-full"><tbody>

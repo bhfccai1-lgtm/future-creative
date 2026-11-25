@@ -8,6 +8,7 @@ import { monthToDateSpend } from '../ai/cost';
 import { startOfMonthInTz } from '../time';
 import { analyse, loadSamples, labelOf } from '../analytics/insights';
 import { HEARTBEAT_KEY } from './diagnostics';
+import { financeReport } from './finance';
 import { formatInTimeZone } from 'date-fns-tz';
 
 /**
@@ -208,6 +209,15 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
   // ───────── cost ─────────
   if (s.ai.monthlyBudgetUsd > 0 && kpis.projectedMonthSpend > s.ai.monthlyBudgetUsd) add({ id: 'budget_projection', category: 'cost', severity: kpis.monthSpend >= s.ai.monthlyBudgetUsd ? 'high' : 'medium', title: 'الإنفاق المتوقع يتجاوز الميزانية الشهرية', evidence: `أُنفق $${kpis.monthSpend} حتى اليوم ${dayOfMonth} · المتوقع $${kpis.projectedMonthSpend} من $${s.ai.monthlyBudgetUsd}`, why: 'عند بلوغ الحد يتوقف التوليد تلقائيًا حتى الشهر التالي.', steps: ['خفّض جودة الصور إلى medium', 'قلّل الريلز الاحترافية متعددة المشاهد وفيديوهات Veo', 'ركّز التوليد على الحسابات الأساسية', 'أو ارفع الميزانية إن كان العائد مبررًا'], link: '/settings/ai' });
   if (kpis.costPerVerifiedPost !== null && kpis.costPerVerifiedPost > 2) add({ id: 'cost_per_post', category: 'cost', severity: 'low', title: 'تكلفة المنشور المؤكد مرتفعة', evidence: `$${kpis.costPerVerifiedPost} لكل منشور مؤكد (7 أيام)`, why: 'تصاميم كثيرة تُولَّد ولا تُنشر (رفض/فشل/تكرار).', steps: ['ارفع نسبة الاعتماد (راجع توصيات المحتوى)', 'عالج أسباب فشل النشر'], link: '/analytics' });
+  // financial intelligence: accounts that keep costing designs but bring no recorded customer or revenue (30 days)
+  const fin = await financeReport(now).catch(() => null);
+  if (fin?.noReturn.length) add({
+    id: 'account_no_return', category: 'cost', severity: 'low', title: 'حسابات تستهلك تصاميم بلا عملاء مسجلين',
+    evidence: fin.noReturn.slice(0, 5).map((a) => `${a.name}: ${a.designs} تصميم · تكلفة تقديرية ${a.estCostBhd.toFixed(3)} د.ب · 0 عملاء`).join(' · '),
+    why: 'التكلفة تقديرية (موزعة على عدد التصاميم). قبل الحكم: تأكد أن عملاء هذا الحساب يُسجَّلون في «العملاء» مع الحساب المصدر — بدون التسجيل لا يظهر العائد.',
+    steps: ['سجّل كل عميل جاء من الحساب في صفحة العملاء واختر الحساب المصدر', 'إن بقي بلا عملاء بعد أسبوعين من التسجيل: خفّض «أقصى عدد يوميًا» لهذا الحساب ووجّه الميزانية لحساب يجلب عملاء'],
+    link: '/leads',
+  });
 
   // ───────── integrations ─────────
   const gemini = await secretStatus('GEMINI_API_KEY');
