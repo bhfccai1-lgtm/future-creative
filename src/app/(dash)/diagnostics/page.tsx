@@ -4,14 +4,9 @@ import { Card, PageHeader, Badge, Stat } from '@/components/ui';
 import { runDiagnostics } from '@/lib/ops/diagnostics';
 import { runAdvisor, healthHistory, CATEGORY_AR, SEVERITY_AR, type Advice, type Category, type Severity } from '@/lib/ops/advisor';
 import { fmtLocal } from '@/lib/time';
-import { runAnalysis, supportReport, type Verdict } from '@/lib/ops/analysis';
-import { CopyReportButton } from '@/components/copy-report-button';
-import { FixButton } from '@/components/fix-button';
-import { fixFor, safeFixesFor } from '@/lib/ops/fixes';
 import { can } from '@/lib/auth/rbac';
-import { runSocialAudit, type PlatformCard, type CheckStatus } from '@/lib/ops/social-audit';
-import { runBusinessAudit } from '@/lib/ops/business-audit';
-import { rankOpportunities, EFFORT_AR } from '@/lib/ops/opportunities';
+import { serverUpdateState } from '@/lib/ops/server-update';
+import { ServerUpdateButton } from '@/components/server-update-button';
 export const dynamic = 'force-dynamic';
 
 const TONE = { OK: 'green', WARN: 'amber', FAIL: 'red' } as const;
@@ -92,8 +87,8 @@ function AdviceCard({ a, canFix }: { a: Advice; canFix: boolean }) {
 
 export default async function DiagnosticsPage() {
   const user = await requirePageUser();
-  const canFix = can(user.perms, 'settings:integrations');
-  const [d, adv, hist, an, social, biz] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), runAnalysis(), runSocialAudit(), runBusinessAudit()]);
+  const canUpdate = can(user.perms, 'settings:integrations');
+  const [d, adv, hist, upd] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), canUpdate ? serverUpdateState() : null]);
   const k = adv.kpis;
   // the analysis adds its own findings (trends, service levels, runtime, migrations) to the advisor's, by priority
   const seenIds = new Set<string>();
@@ -110,6 +105,8 @@ export default async function DiagnosticsPage() {
     <>
       <PageHeader title="تشخيص النظام والمستشار الاحترافي" subtitle={`فحص مباشر وتوصيات مبنية على بياناتك الفعلية — ${fmtLocal(new Date(d.at))} (البحرين). لا تُعرض قيم المفاتيح السرية، ولا تُقدَّر أرقام غير موجودة.`}
         actions={<Badge tone={TONE[d.overall]}>الفحص الفني: {AR[d.overall]}</Badge>} />
+
+      {upd && <Card title="تحديث الخادم" className="mb-6"><ServerUpdateButton initial={upd} /></Card>}
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[auto_1fr]">
         <Card>

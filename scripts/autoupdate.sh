@@ -2,6 +2,8 @@
 # Automatic deploy of GitHub Releases on this server.
 #   bash scripts/autoupdate.sh on       → every 10 minutes: a new Release on GitHub is installed automatically
 #   bash scripts/autoupdate.sh on main  → every 10 minutes: every merge into main with a green GitHub CI is installed
+#   bash scripts/autoupdate.sh on button → no automatic updates; only the app's «تحديث الخادم» button (diagnostics page)
+#   (every mode also serves that button within a minute)
 #   bash scripts/autoupdate.sh off      → back to manual updates (bash scripts/update.sh)
 #   bash scripts/autoupdate.sh          → status: on/off, running version, latest release, last log lines
 set -uo pipefail
@@ -19,9 +21,12 @@ case "${1:-status}" in
     command -v python3 >/dev/null && command -v curl >/dev/null && command -v flock >/dev/null || { echo -e "${R}$(t "يحتاج python3 و curl و flock" "needs python3, curl and flock"): apt-get install -y python3 curl util-linux${N}"; exit 1; }
     printf '%s\n' '# Future Creative: install new GitHub Releases automatically (bash scripts/autoupdate.sh off to stop)' \
       'SHELL=/bin/bash' 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-      "*/10 * * * * root cd $DIR && FC_LANG=en FC_FOLLOW=${2:-release} bash scripts/release-update.sh >> $LOGF 2>&1" > "$CRON"
+      "* * * * * root cd $DIR && FC_LANG=en FC_FOLLOW=${2:-release} bash scripts/release-update.sh >> $LOGF 2>&1" > "$CRON"
     chmod 644 "$CRON"; touch "$LOGF"
-    if [ "${2:-}" = main ]; then
+    case "${2:-release}" in main|release|button) ;; *) echo -e "${R}on | on main | on button${N}"; rm -f "$CRON"; exit 1 ;; esac
+    if [ "${2:-}" = button ]; then
+      echo -e "${G}✓ $(t "زر «تحديث الخادم» في البرنامج مفعّل (بدون تحديث تلقائي)" "The app's «update server» button is ON (no automatic updates)")${N}"
+    elif [ "${2:-}" = main ]; then
       echo -e "${G}✓ $(t "التحديث التلقائي مفعّل — يتبع main" "Automatic updates are ON — following main")${N}"
       echo "   $(t "كل 10 دقائق: كل دمج في main نجح فحصه على GitHub يُثبَّت تلقائيًا." "Every 10 minutes: every merge into main with a green GitHub CI is installed automatically.")"
     else
@@ -35,6 +40,7 @@ case "${1:-status}" in
     rm -f "$CRON"; echo -e "${Y}$(t "أُوقف التحديث التلقائي — التحديث يدويًا" "Automatic updates OFF — update manually"): bash scripts/update.sh${N}" ;;
   status|*)
     if [ -f "$CRON" ] && grep -q 'FC_FOLLOW=main' "$CRON"; then echo -e "${G}$(t "التحديث التلقائي: مفعّل — يتبع main" "Automatic updates: ON — following main")${N}"
+    elif [ -f "$CRON" ] && grep -q 'FC_FOLLOW=button' "$CRON"; then echo -e "${G}$(t "زر التحديث في البرنامج: مفعّل (بدون تحديث تلقائي)" "App update button: ON (no automatic updates)")${N}"
     elif [ -f "$CRON" ]; then echo -e "${G}$(t "التحديث التلقائي للإصدارات: مفعّل" "Automatic release updates: ON")${N}"; else echo -e "${Y}$(t "التحديث التلقائي للإصدارات: متوقف" "Automatic release updates: OFF") (bash scripts/autoupdate.sh on)${N}"; fi
     echo "   $(t "الإصدار العامل" "Running version"): $(docker compose exec -T web printenv APP_VERSION 2>/dev/null | tr -d '\r')"
     REPO=$(git remote get-url origin 2>/dev/null | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
