@@ -49,3 +49,18 @@ describe('full-AI poster: the original logo goes where the design needs it', () 
     expect(designDirection({ ...EMPTY_DESIGN, renderMode: 'layered', logoPosition: 'top-right' }, 'IMAGE_FEED')).not.toHaveProperty('logoPosition');
   });
 });
+
+describe('no empty band at the top when the logo is in the footer', () => {
+  it('a feed post with the footer logo asks for a portrait design that fills from the top edge; other layouts unchanged', async () => {
+    const { aiPosterImageSize, aiPosterGeometry } = await import('@/lib/render/poster');
+    expect(aiPosterImageSize(1350, true)).toBe('1024x1536');
+    expect(aiPosterImageSize(1350)).toBe('1024x1024'); // the normal feed keeps its square design
+    expect(aiPosterGeometry(1350, true, true)).toMatchObject({ topBand: 0, topPct: 10 }); // wider top margin: the 2:3 design is trimmed ~8 %
+    const top = sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><rect width="1024" height="1536" fill="#f6e2b8"/><rect y="1300" width="1024" height="236" fill="#333"/></svg>')).png().toBuffer();
+    const c = await composeAdvertisement({ scene: await top, format: 'IMAGE_FEED', lang: 'ar', templateKey: 'ai-poster', headline: 'x', cta: 'اطلب الآن', logo: await logo(), contacts: [{ key: 'saar', label: 'سار', phone: '33316319' }, { key: 'salmabad', label: 'سلماباد', phone: '34315316' }], logoPosition: 'bottom-center' });
+    const { data, info } = await sharp(c.png).extract({ left: 0, top: 0, width: 1080, height: 60 }).raw().toBuffer({ resolveWithObject: true });
+    let far = 0; // pixels in the top 60 rows that are not the design's own colour (a blurred band / dark seam would be)
+    for (let i = 0; i < data.length; i += info.channels) if (Math.abs(data[i] - 0xf6) + Math.abs(data[i + 1] - 0xe2) + Math.abs(data[i + 2] - 0xb8) > 30) far++;
+    expect(far / (info.width * info.height)).toBeLessThan(0.01);
+  });
+});
