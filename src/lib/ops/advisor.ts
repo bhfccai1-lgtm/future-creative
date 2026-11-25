@@ -10,6 +10,7 @@ import { analyse, loadSamples, labelOf } from '../analytics/insights';
 import { HEARTBEAT_KEY } from './diagnostics';
 import { financeReport } from './finance';
 import { formatInTimeZone } from 'date-fns-tz';
+import { errorSignature } from './signature';
 
 /**
  * Professional advisor: deterministic rules over REAL system data (no AI call, no cost). Every advice carries the
@@ -87,7 +88,7 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
     prisma.publicationResult.findMany({ where: { verifiedAt: { gte: ago(30) } }, select: { engagementScore: true, metrics: true, metricsSource: true } }),
     prisma.aiUsage.aggregate({ _sum: { costUsd: true }, where: { createdAt: { gte: ago(7) } } }),
     prisma.publicationJob.count({ where: { state: 'UNKNOWN' } }),
-    prisma.publicationJob.groupBy({ by: ['lastError'], _count: true, where: { state: 'FAILED', updatedAt: { gte: ago(7) } }, orderBy: { _count: { lastError: 'desc' } }, take: 3 }),
+    prisma.publicationJob.groupBy({ by: ['lastError'], _count: true, where: { state: 'FAILED', updatedAt: { gte: ago(7) } }, orderBy: { _count: { lastError: 'desc' } }, take: 200 }), // grouped by error shape below (ids differ per post)
     redis().get(HEARTBEAT_KEY).catch(() => null),
   ]);
   const ads7 = ads14.filter((a) => a.createdAt >= ago(7));
@@ -125,7 +126,7 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
   }
   if (unknown) add({ id: 'unknown_jobs', category: 'publishing', severity: 'high', title: 'منشورات بنتيجة غير مؤكدة تنتظر قرارك', evidence: `${unknown} مهمة في حالة UNKNOWN`, why: 'لا يُعاد الإرسال تلقائيًا لتجنب النشر المكرر — القرار للمشغّل.', steps: ['افتح Metricool وتحقق من وجود المنشور في الموعد', 'في سجل المنشورات: «بحث ثم إعادة الإرسال» أو «إلغاء»'], link: '/posts?state=UNKNOWN' });
   const finished = published14 + failed14 + unknown14;
-  if (finished >= 5 && failed14 / finished > 0.2) add({ id: 'high_failure_rate', category: 'publishing', severity: 'high', title: 'نسبة فشل النشر مرتفعة', evidence: `${failed14} من ${finished} (${pct(failed14, finished)}%) خلال 14 يومًا · أكثر الأسباب: ${failedReasons.map((f) => `${(f.lastError ?? '—').slice(0, 60)} (${f._count})`).join('؛ ') || '—'}`, why: 'الفشل المتكرر يهدر تكلفة التوليد ويترك فجوات في الجدول.', steps: ['عالج السبب الأكثر تكرارًا أولًا (أعلاه)', 'أخطاء 401/403: أعد ربط الحساب في Metricool', '«قنوات غير متاحة»: اربط الشبكة بالعلامة في Metricool أو أزلها من القنوات'], link: '/posts?state=FAILED' });
+  if (finished >= 5 && failed14 / finished > 0.2) add({ id: 'high_failure_rate', category: 'publishing', severity: 'high', title: 'نسبة فشل النشر مرتفعة', evidence: `${failed14} من ${finished} (${pct(failed14, finished)}%) خلال 14 يومًا · أكثر الأسباب: ${[...failedReasons.reduce((m, f) => { const k = errorSignature(f.lastError ?? ''); m.set(k, (m.get(k) ?? 0) + f._count); return m; }, new Map<string, number>())].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, n]) => `${k.slice(0, 70)} (${n})`).join('؛ ') || '—'}`, why: 'الفشل المتكرر يهدر تكلفة التوليد ويترك فجوات في الجدول.', steps: ['عالج السبب الأكثر تكرارًا أولًا (أعلاه)', 'أخطاء 401/403: أعد ربط الحساب في Metricool', '«قنوات غير متاحة»: اربط الشبكة بالعلامة في Metricool أو أزلها من القنوات'], link: '/posts?state=FAILED' });
 
   // disk space on media storage
   try {
