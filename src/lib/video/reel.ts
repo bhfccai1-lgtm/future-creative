@@ -105,6 +105,28 @@ export function captionTimings(chunks: string[], start: number, span: number) {
   let t = start;
   return chunks.map((c) => { const d = Math.max(0.45, (span * (c.length + 2)) / total); const r = { text: c, start: t, end: t + d }; t += d; return r; });
 }
+/** Voice starts 0.35 s in (adelay). */
+export const VOICE_START = 0.35;
+/**
+ * Where the voice-over may run: it continues over the end card (the CTA moment) instead of being cut there — cutting
+ * at the end card chopped the last words mid-word. Only a voice longer than the whole reel is sped up (≤ 15 %, pitch
+ * kept by atempo). `end` = when the voice finishes (captions follow it), `trim` = where the audio is cut.
+ */
+export function voicePlan(voiceSec: number, D: number) {
+  const room = D - 0.45 - VOICE_START;
+  const tempo = voiceSec > room ? Math.min(1.15, voiceSec / room) : 1;
+  const end = Math.min(D - 0.45, VOICE_START + voiceSec / tempo);
+  return { tempo: Math.round(tempo * 1000) / 1000, end, trim: Math.min(D - 0.2, end + 0.2) };
+}
+/**
+ * Caption centre: just above the design's bottom block (CTA / phone numbers) — not over the middle of the frame where
+ * the product is. Falls back to the lower third when the layout has no bottom block.
+ */
+export function captionCenterY(layers: { id: string; top: number }[], ph: number, H = 1920): number {
+  const bottom = layers.filter((l) => (l.id === 'cta' || l.id.startsWith('contact:')) && l.top > H * 0.55).map((l) => l.top);
+  const y = bottom.length ? Math.min(...bottom) - 28 - ph / 2 : H * 0.78;
+  return Math.round(Math.max(H * 0.45, Math.min(H * 0.86, y))); // never pushed down onto the CTA
+}
 async function audioSeconds(file: string): Promise<number> {
   const r = await run(process.env.FFPROBE_PATH ?? 'ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], 30_000);
   const n = Number(r.stdout.trim());
@@ -206,22 +228,27 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       idx++;
     }
     // burned-in captions timed to the voice (or spread over the reel without a voice) — readable with the sound off
+    // the voice's real length decides its tempo, where it is cut and how the captions are timed
+    let vplan: ReturnType<typeof voicePlan> | null = null;
+    if (opts.voice) { const vf0 = path.join(dir, 'voice-probe.audio'); await fs.writeFile(vf0, opts.voice); const sec = await audioSeconds(vf0); if (sec) vplan = voicePlan(sec, D); }
+    const capOverlays: string[] = []; // applied AFTER the end card, so the last words stay captioned over it
     if (opts.captions?.text.trim()) {
-      let vStart = 0.35, span = Math.max(1.5, endStart - 0.8);
-      if (opts.voice) { const vf0 = path.join(dir, 'voice-probe.audio'); await fs.writeFile(vf0, opts.voice); const sec = await audioSeconds(vf0); if (sec) span = Math.min(sec, endStart - vStart); }
+      let vStart = VOICE_START, span = Math.max(1.5, endStart - 0.8), capEnd = endStart;
+      if (vplan) { span = vplan.end - VOICE_START; capEnd = vplan.end; }
+      else if (opts.voice) span = Math.min(span, endStart - vStart);
       else vStart = 0.6;
       for (const cap of captionTimings(captionChunks(opts.captions.text), vStart, span)) {
-        if (cap.start >= endStart) break;
+        if (cap.start >= capEnd) break;
         const t = await renderText({ text: cap.text, lang: opts.captions.lang, weight: 'extrabold', color: '#ffffff', maxSize: 80, minSize: 44, boxW: 920, boxH: 200, maxLines: 2 });
         const pw = t.width + 64, ph = t.height + 34;
         const pill = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${Math.min(40, ph / 2)}" fill="#0b1730" fill-opacity="0.78" stroke="#e6c25a" stroke-width="3"/></svg>`);
         const png = await sharp(pill).composite([{ input: t.png, left: 32, top: 17 }]).png().toBuffer();
         const f = path.join(dir, `cap${idx}.png`); await fs.writeFile(f, png);
         addStill(f);
-        const a = cap.start.toFixed(2), b = Math.min(cap.end, endStart).toFixed(2);
+        const a = cap.start.toFixed(2), b = Math.min(cap.end, capEnd).toFixed(2);
         filters.push(`[${idx}:v]${timedStill},fade=t=in:st=${a}:d=0.08:alpha=1[c${idx}]`);
-        filters.push(`[${base}][c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${1060 - Math.round(ph / 2)}:enable='between(t,${a},${b})'[v${idx}]`);
-        base = `v${idx}`; idx++;
+        capOverlays.push(`[c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${captionCenterY(c.manifest.layers.map((l) => ({ id: l.id, top: l.rect.top })), ph) - Math.round(ph / 2)}:enable='between(t,${a},${b})'`);
+        idx++;
       }
     }
     const end = await buildEndCard(c);
@@ -238,7 +265,10 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       loopIdx = idx++;
       filters.push(`[${loopIdx}:v]${timedStill},fade=t=in:st=${(D - 0.5).toFixed(2)}:d=0.45:alpha=1[loopin]`);
     }
-    filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})'${loopIdx >= 0 ? '[ended];[ended][loopin]overlay=0:0:enable=\'gte(t,' + (D - 0.5).toFixed(2) + ')\'' : ''},unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
+    // end card, then the captions on top of it (the voice now continues over the end card), then the loop dissolve
+    let ended = `[${base}][end]overlay=0:0:enable='gte(t,${endStart})'`;
+    capOverlays.forEach((o, i) => { ended += `[cap${i}];[cap${i}]${o}`; });
+    filters.push(`${ended}${loopIdx >= 0 ? '[ended];[ended][loopin]overlay=0:0:enable=\'gte(t,' + (D - 0.5).toFixed(2) + ')\'' : ''},unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
     // ── Audio: music bed (native Veo / licensed track / synthesised) + voice-over with ducking + sound design, mastered to −14 LUFS ──
     const useNative = !!opts.baseVideo && !!opts.nativeAudio && baseHasAudio;
     const silent = !useNative && (audio === 'none' || audio === 'instagram');
@@ -262,7 +292,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       await fs.writeFile(vf, opts.voice);
       inputs.push('-i', vf);
       const vol = Math.max(0.1, Math.min(1, opts.musicVolume ?? 0.35));
-      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},adelay=350|350,apad,atrim=duration=${Math.max(1, endStart - 0.2)},afade=t=out:st=${Math.max(0, endStart - 0.6)}:d=0.4,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
+      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},${vplan && vplan.tempo > 1 ? `atempo=${vplan.tempo},` : ''}adelay=350|350,apad,atrim=duration=${(vplan?.trim ?? endStart - 0.2).toFixed(2)},afade=t=out:st=${Math.max(0, (vplan?.trim ?? endStart - 0.2) - 0.3).toFixed(2)}:d=0.3,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
       filters.push(`[mus]volume=${vol}[mbed]`, `[mbed][vo1]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[mduck]`);
       mix.push('[mduck]', '[vo2]');
       idx++;
