@@ -119,8 +119,15 @@ export const SettingsSchema = z.object({
     conceptTournament: z.boolean().default(true),
     /** FreeLLMAPI (self-hosted, free provider tiers) — used ONLY for idea suggestions; copy, poster and text checks stay on OpenAI */
     freeLlm: z.object({ enabled: z.boolean().default(false), model: z.string().max(120).default('auto') }).prefault({}),
-    /** full-AI text still wrong after the re-draws → re-render the design with system-typeset (verified) Arabic text */
+    /** (legacy, no longer read — replaced by aiTextFallback) */
     verifiedTextFallback: z.boolean().default(true),
+    /**
+     * Full-AI text still wrong after the re-draws:
+     *  'review'   (default) → keep the best AI-designed poster and send it to the owner for approval with the wrong words
+     *               marked — never published automatically; the layout stays designed for the idea, not a fixed template
+     *  'template' → re-render it in a fixed layered template with system-typeset (verified) text
+     */
+    aiTextFallback: z.enum(['review', 'template']).default('review'),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),

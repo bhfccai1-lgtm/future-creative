@@ -31,7 +31,7 @@ import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
 import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
-import { TEMPLATES, FORMAT_SIZE } from '../render/templates';
+import { TEMPLATES, FORMAT_SIZE, productZone } from '../render/templates';
 import { aiPosterImageSize, aiPosterGeometry } from '../render/poster';
 import { loadReference, referencePrompt, slotsFor } from '../creative/references';
 import { captionIssues } from '../creative/caption-quality';
@@ -304,6 +304,13 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const refPrompt = referencePrompt(refs, styleBrief, aiFull ? 'poster' : 'scene'), references = refs.length ? refs.map((r) => r.png) : undefined;
     const realPhoto = d.realPhotoKey ? await loadReference(d.realPhotoKey) : null;
     if (d.realPhotoKey && !realPhoto) throw new AppError('NO_PHOTO', 'صورة العمل المنجز غير موجودة — ارفعها مرة أخرى.', 422);
+    // the layout is decided BEFORE the image, so the scene leaves the template's text areas free (product zone)
+    const vertical = format === 'IMAGE_STORY' || format === 'REEL_VIDEO';
+    // (a full-AI design that fails text verification falls back to this layered template, with the same free zone)
+    const layeredKey = d.layout && (vertical || d.layout !== 'gold-poster') ? d.layout
+      : vertical ? 'gold-poster'
+      : TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
+    const zone = productZone(layeredKey, FORMAT_SIZE[format].w, FORMAT_SIZE[format].h);
     type Scene = Awaited<ReturnType<typeof provider.generateScene>>;
     // ── IMAGE QUALITY GATE (layered scenes + reel shots): text drawn by mistake, softness, exposure ──
     const gateOn = s.ai.imageQualityGate && !provider.isDryRun && !realPhoto;
@@ -322,7 +329,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
         ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: [] /* typeset by the system in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
-        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
+        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone);
       const prompt = refPrompt ? `${basePrompt}\n${refPrompt}` : basePrompt;
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
       const n = !provider.isDryRun && provider.judgeImages ? s.ai.bestOf : 1;
@@ -412,10 +419,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // ── STEP 07: drawn text still unverified after the re-draws → never ship it: re-render with system-typeset Arabic ──
     let textFallback = false;
     let scene = sceneFirst;
-    if (aiFull && (textCheck as { textPassed?: boolean } | null)?.textPassed === false && s.ai.verifiedTextFallback) {
+    if (aiFull && (textCheck as { textPassed?: boolean } | null)?.textPassed === false && s.ai.aiTextFallback === 'template') {
       await assertBudget(s, estimateImageCost(s, imgQuality));
       scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
         await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         return img;
       });
@@ -428,12 +435,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Step 9: deterministic layered composition ──
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
-    // Premium gold poster by default for vertical formats; classic templates alternate for feed/square.
-    const vertical = format === 'IMAGE_STORY' || format === 'REEL_VIDEO';
-    const templateKey = aiFull ? 'ai-poster'
-      : d.layout && (vertical || d.layout !== 'gold-poster') ? d.layout
-      : vertical ? 'gold-poster'
-      : TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
+    // Premium gold poster by default for vertical formats; classic templates alternate for feed/square (decided above).
+    const templateKey = aiFull ? 'ai-poster' : layeredKey;
     const features = s.brandFeatures[lang] ?? [];
     const composed = await composeAdvertisement({
       scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,

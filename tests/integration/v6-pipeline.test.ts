@@ -19,8 +19,8 @@ class Studio extends FakeAiProvider {
 const OUT = process.env.V6_OUT_DIR;
 type Qc = { checks: { id: string; passed: boolean }[]; requiresHuman?: boolean };
 
-async function run(slug: string, good: boolean) {
-  const { accounts } = await seedBase({ productCount: 100, settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+async function run(slug: string, good: boolean, aiTextFallback: 'review' | 'template' = 'review') {
+  const { accounts } = await seedBase({ productCount: 100, settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false, aiTextFallback } }) });
   const product = await prisma.product.findUniqueOrThrow({ where: { slug } });
   setAiProviderOverride(new Studio(good));
   const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'v6-test', productId: product.id, format: 'IMAGE_STORY', direction: { renderMode: 'ai_full' } });
@@ -52,8 +52,8 @@ describe('V6 production pipeline — custom printed mug & roll-up banner', () =>
     });
   }
 
-  it('drawn Arabic text that never verifies is NOT shipped: re-rendered with system-typeset text (STEP 07)', async () => {
-    const { ad, o, png } = await run('ceramic-mugs', false);
+  it('drawn Arabic text that never verifies is NOT shipped: with «template» chosen, re-rendered with system-typeset text (STEP 07)', async () => {
+    const { ad, o, png } = await run('ceramic-mugs', false, 'template');
     expect(o.verifiedTextFallback).toBe(true);
     expect(ad.templateKey).not.toBe('ai-poster');
     const manifest = ad.layerManifest as { layers: { id: string; text?: string }[] };

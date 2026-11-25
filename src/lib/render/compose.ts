@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import type { MediaFormat } from '@prisma/client';
 import { renderText, type RenderedText } from './text';
-import { FORMAT_SIZE, px, templateFor } from './templates';
+import { FORMAT_SIZE, productZone, px, templateFor } from './templates';
 import { AI_POSTER_KEY, POSTER_KEY, buildAiPosterBackground, buildPosterBackground, composeAiPoster, composePoster } from './poster';
 import type { Lang } from './fonts';
 
@@ -161,8 +161,11 @@ export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, tem
   const t = templateFor(templateKey, H);
   const scale = W / 1080;
   const th = THEMES[themeKey];
-  // ── Layer 1: scene, cover-fit to canvas (centre crop) ──
-  const scene = await sharp(sceneBuf).resize(W, H, { fit: 'cover', position: 'attention' }).removeAlpha().png().toBuffer();
+  // ── Layer 1: scene, cover-fit to canvas ──
+  // when the scene was generated for this template's product zone, crop exactly centred so the product stays where
+  // the zone put it (an «attention» crop moves it up to 20 % toward the text); otherwise keep the attention crop
+  const position = productZone(templateKey, W, H) ? 'centre' : 'attention';
+  const scene = await sharp(sceneBuf).resize(W, H, { fit: 'cover', position }).removeAlpha().png().toBuffer();
 
   // ── Static background decorations (shades, bottom panel, frame) ──
   const panelY = Math.round(t.panel.y * H);
