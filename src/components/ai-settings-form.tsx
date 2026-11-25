@@ -5,7 +5,7 @@ import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 import { ReferenceUpload } from './reference-upload';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; imageQualityGate?: boolean; styleRefImage?: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; bannedPhrases?: string[]; aiFullTextRetries?: number; styleReferenceKey?: string | null; styleReferenceBrief?: string; styleRefsByFormat?: Partial<Record<'vertical' | 'feed' | 'square' | 'carousel', { key: string | null; brief: string }>>; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; imageQualityGate?: boolean; styleRefImage?: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; bannedPhrases?: string[]; aiFullTextRetries?: number; aiTextFallback?: 'review' | 'template'; styleReferenceKey?: string | null; styleReferenceBrief?: string; styleRefsByFormat?: Partial<Record<'vertical' | 'feed' | 'square' | 'carousel', { key: string | null; brief: string }>>; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -84,6 +84,12 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
                 <option value={0}>بدون إعادة (تحذير فقط)</option><option value={1}>إعادة رسم مرة عند الخطأ</option><option value={2}>حتى مرتين (موصى به)</option><option value={3}>حتى 3 مرات</option>
               </select></div>
             <p className="text-xs text-slate-500">يقرأ النظام النص الذي رسمه الذكاء الاصطناعي قبل إنهاء التصميم؛ إذا وجد كلمة خاطئة أو ناقصة يعيد الرسم بتصحيح دقيق. كل إعادة = تكلفة صورة.</p>
+            <div><label className="label">إذا بقي خطأ إملائي بعد إعادة الرسم</label>
+              <select className="input" style={{ width: '22rem' }} value={v.aiTextFallback ?? 'review'} onChange={(e) => setV({ ...v, aiTextFallback: e.target.value as 'review' | 'template' })}>
+                <option value="review">احتفظ بتصميم الذكاء الاصطناعي وأرسله لموافقتي (موصى به)</option>
+                <option value="template">استبدله بقالب ثابت بنص النظام</option>
+              </select></div>
+            <p className="text-xs text-slate-500">«موافقتي»: يبقى التنسيق مصممًا حسب الفكرة والمناسبة، وتظهر لك الكلمات الخاطئة — لا يُنشر تلقائيًا أبدًا. «قالب ثابت»: نص مضمون الإملاء لكن بتصميم قالب.</p>
           </div>
           <button type="button" className="mt-3 rounded-lg bg-navy-800 px-3 py-1.5 text-xs font-bold text-white" onClick={() => setV({ ...v, creativeConcepts: true, bestOf: 2, qualityByFormat: { IMAGE_STORY: 'medium', IMAGE_FEED: 'high', IMAGE_SQUARE: 'high', IMAGE_CAROUSEL: 'high', REEL_VIDEO: 'high' } })}>⭐ تطبيق «الجودة الاحترافية»: عالية للريلز والمنشورات والكاروسيل · متوسطة للستوري · صورتان ويُختار الأفضل</button>
           <p className="mt-1 text-xs text-slate-500">ثم اضغط «حفظ الإعدادات». راجع الحد الشهري للإنفاق أدناه — التكلفة لكل تصميم تزيد تقريبًا 2–4 أضعاف.</p>

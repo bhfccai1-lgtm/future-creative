@@ -28,10 +28,25 @@ describe('self-correcting full-AI poster', () => {
     const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } });
     expect((ad.options as { aiTextCheck: unknown }).aiTextCheck).toMatchObject({ attempts: 3, passed: true, missing: [] });
   });
-  it('stops at the retry limit, reports what was wrong, and ships system-typeset text instead (STEP 07)', async () => {
+  it('stops at the retry limit and keeps the best AI-designed poster (no fixed template), held for the owner with the wrong words', async () => {
     const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
     const p = new Speller(); p.goodFrom = 99; setAiProviderOverride(p);
-    await updateSettings((s) => ({ ...s, ai: { ...s.ai, aiFullTextRetries: 1 } }));
+    await updateSettings((s) => ({ ...s, ai: { ...s.ai, aiFullTextRetries: 1 } })); // default aiTextFallback = 'review'
+    const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_STORY', direction: { renderMode: 'ai_full' } });
+    expect(p.prompts).toHaveLength(2); // poster + 1 correction — no extra scene for a template
+    const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id }, include: { approvals: true } });
+    const check = (ad.options as { aiTextCheck: { passed: boolean; missing: string[] } }).aiTextCheck;
+    expect(check.passed).toBe(false);
+    expect(check.missing.length).toBeGreaterThan(0); // the wrong words are shown to the owner
+    expect((ad.options as { verifiedTextFallback?: boolean }).verifiedTextFallback).toBeUndefined();
+    expect(ad.templateKey).toBe('ai-poster'); // the layout stays designed for the idea
+    expect(ad.state).not.toBe('PUBLISHED');
+    expect(ad.approvals).toHaveLength(1); // never auto-published
+  });
+  it('with «template» chosen in the settings: ships system-typeset text in a layered template instead (STEP 07)', async () => {
+    const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+    const p = new Speller(); p.goodFrom = 99; setAiProviderOverride(p);
+    await updateSettings((s) => ({ ...s, ai: { ...s.ai, aiFullTextRetries: 1, aiTextFallback: 'template' } }));
     const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_STORY', direction: { renderMode: 'ai_full' } });
     expect(p.prompts).toHaveLength(3); // poster + 1 correction + the clean scene for verified typeset text
     const ad = await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id }, include: { approvals: true } });

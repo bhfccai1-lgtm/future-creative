@@ -19,6 +19,7 @@ export function briefSystemPrompt() {
     '- If "ownerFeedback" is given, it is the business owner\'s own taste and the reasons they rejected earlier designs: follow it strictly (it overrides style defaults, never the hard rules above).',
     '- Occasions must be handled respectfully and culturally appropriately for Bahrain and the Gulf.',
     '- If the direction market is Saudi Arabia, write for Saudi customers: never mention Bahrain, Bahraini places or Bahrain-only occasions in the design, caption or hashtags.',
+    "- Otherwise the audience is in Bahrain: never build a post around ANOTHER country's national day, flag, ruler or landmarks (e.g. the UAE's union day, Burj Khalifa, other GCC flags) unless the direction names that occasion explicitly. Bahraini occasions use Bahraini symbols (the red-and-white flag, Bahraini landmarks); shared Gulf/Islamic occasions (Ramadan, Eid, Gergaoon) use no national flag.",
     '',
     'CAPTION — write it for fast organic reach on Instagram/TikTok/Facebook, matched to the design:',
     '- Line 1 is a scroll-stopping HOOK (max ~8 words, under 125 characters so it shows before "more"): a relatable moment, a question or a bold benefit. It must echo the headline/visual of the design.',
@@ -75,7 +76,13 @@ export function ideasSystemPrompt() {
   ].join('\n');
 }
 
-export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string }) {
+/**
+ * Realism rules shared by every generated photo: the defects that make an image look AI-made (warped hands and faces,
+ * melted or duplicated objects, plastic skin, over-processed HDR, floating products) are named and forbidden.
+ */
+export const REALISM_RULES = 'Photographic realism: physically correct light — one consistent key-light direction, a soft contact shadow where the product touches the surface, natural reflections that match the environment; real material texture (paper grain, ceramic glaze, fabric weave, acrylic edges). If people or hands appear: natural anatomy, five fingers, relaxed realistic hands and faces, real skin texture — never waxy or plastic. No AI artefacts: nothing melted, warped, duplicated or floating, no extra limbs, no impossible geometry, no over-saturated colours, no HDR halos, no generic stock-photo look.';
+
+export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string }, zone?: { top: number; bottom: number } | null) {
   return [
     sceneDescription,
     `Art direction: ${style}`,
@@ -83,8 +90,11 @@ export function scenePrompt(sceneDescription: string, style: string, art?: { lig
     art?.lighting ? `Lighting: ${art.lighting}.` : '',
     art?.lens ? `Camera: ${art.lens}.` : '',
     'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
+    REALISM_RULES,
     'Vertical 9:16 premium advertising product photograph, photorealistic, ultra sharp focus on the product, high dynamic range, rich true-to-life colours, professional retouching.',
-    'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 39% and 64% of the height); the upper 38% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 36% is the table/surface in soft focus.',
+    zone
+      ? `Composition: the WHOLE hero product (top of it to its base) stands between ${Math.round(zone.top * 100)}% and ${Math.round(zone.bottom * 100)}% of the image height, horizontally centred, as large as fits there; text will be laid over the rest of the image, so above ${Math.round(zone.top * 100)}% and below ${Math.round(zone.bottom * 100)}% keep only a calm, softly blurred background or surface — no part of the product, no important detail.`
+      : 'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 39% and 64% of the height); the upper 38% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 36% is the table/surface in soft focus.',
     'The printed surface of the product shows a vivid, high-quality printed illustration or pattern that suits the occasion — artwork only.',
     'ABSOLUTELY NO text, letters, numbers, words, logos, brand marks, signatures or watermarks anywhere in the image, including on the product.',
   ].filter(Boolean).join('\n');
@@ -110,6 +120,7 @@ export function fullPosterPrompt(p: {
     p.layout ? `Layout: ${p.layout}.` : '',
     p.concept ? `Creative concept for the product scene (striking, scroll-stopping, product stays the accurate hero): ${p.concept}.` : '',
     `Hero product photo: ${p.sceneDescription}`,
+    REALISM_RULES,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
     `Typography — render EXACTLY these words, perfectly spelled ${S} text${p.lang === 'ar' ? ' (correct right-to-left Arabic letter joining, bold modern Arabic display font)' : ''}, nothing else:`,
     `  • kicker line near the top: "${p.headline}"`,
