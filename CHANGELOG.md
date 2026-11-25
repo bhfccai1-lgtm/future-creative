@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **🧪 اختبارات ثابتة (steadier CI tests)** — two integration tests that sometimes failed on GitHub Actions (publish spacing, print-studio picture variants) now give the same result on every run. Only the tests' fake image generator changed; the app itself is unchanged.
 - **⏰ أفضل وقت من Metricool (best time from Metricool)** — peak-hour scheduling now uses each account's **live Metricool best-time heatmap**:
   - It shows when that account's audience is most active, per day of the week and hour, refreshed daily at 05:25 with one read-only call per account. It replaces a fixed built-in ranking.
   - The account's own measured results still win once it has enough posts (12+).

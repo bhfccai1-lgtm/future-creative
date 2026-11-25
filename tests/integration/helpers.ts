@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import { redis } from '@/lib/queue/connection';
 import { DEFAULT_ROLES } from '@/lib/auth/rbac';
@@ -13,11 +14,15 @@ import { DryRunProvider } from '@/lib/ai/dry-run-provider';
 import { AiProviderError, type AiProvider, type BriefRequest } from '@/lib/ai/types';
 import type { PublishingAdapter, PublishRequest, RemoteStatus, SubmitOutcome } from '@/lib/publishing/types';
 
+/** position of FakeAiProvider's picture within the current test (reset by resetDb) — see fakeScene */
+let fakeSceneSeq = 0;
+
 export async function resetDb() {
   const tables = await prisma.$queryRaw<{ tablename: string }[]>`SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '_prisma_migrations'`;
   await prisma.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`);
   await redis().flushdb();
   setAiProviderOverride(null); setPublishingAdapterOverride(null);
+  fakeSceneSeq = 0;
 }
 
 export const captured = { generate: [] as { data: unknown; id: string }[], publish: [] as { id: string; delay: number }[] };
@@ -75,8 +80,40 @@ export class FakeAiProvider implements AiProvider {
   async generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string; references?: Buffer[]; background?: 'transparent' | 'opaque' }) {
     this.sceneCalls++; this.lastScenePrompt = prompt; this.lastReferences = opts.references;
     const f = this.failScene.shift(); if (f) throw f;
-    return { ...(await this.inner.generateScene(prompt, opts)), model: 'fake-image' };
+    // seeded by the call's position in the test, not by `seedHint` (which carries random ids and the clock)
+    return { png: await fakeScene(opts.size, `fake-scene-${++fakeSceneSeq}`, opts.background), model: 'fake-image' };
   }
+}
+
+/**
+ * The fake provider's picture: varied per seed (so duplicate detection still tells ads apart) but CLEAN BY CONSTRUCTION,
+ * whatever the seed. Seeds carry random ids and `Date.now()`, so a picture whose quality depended on the seed made tests
+ * flaky: the dry-run preview's soft, semi-transparent shapes now and then scored «soft» (sharpness < 0.2 → an extra
+ * image call from the quality gate), and its light cream / gold panels could land under the light headline text
+ * (contrast < 3:1 → QC blocker → not publishable). Here:
+ *  - every shape is opaque with crisp edges (sharp), and every colour is dark (light text always reads ≥ 3:1);
+ *  - the top and bottom bands, where the logo and the phone numbers sit, stay one flat colour;
+ *  - `background: 'transparent'` returns a cut-out with a clear margin, as a real image model does;
+ *  - FakeAiProvider seeds it with the call's position in the test, so every run of a test sees the same pictures.
+ * Tests that need a faulty picture script it explicitly (readText answers, failScene, their own generateScene).
+ */
+export async function fakeScene(size: string, seedHint: string, background?: 'transparent' | 'opaque') {
+  const [w, h] = size.split('x').map(Number);
+  const hash = (s: string) => parseInt(createHash('sha256').update(s).digest('hex').slice(0, 8), 16);
+  const n = hash(seedHint), hue = n % 360;
+  const cut = background === 'transparent';
+  // shapes live in the middle band (opaque) or inside a centred margin (cut-out)
+  const x0 = cut ? w * 0.18 : 0, x1 = cut ? w * 0.82 : w, y0 = cut ? h * 0.18 : h * 0.3, y1 = cut ? h * 0.82 : h * 0.72;
+  const shapes = Array.from({ length: 9 }, (_, i) => {
+    const k = hash(`${seedHint}:${i}`);
+    const sw = (x1 - x0) * (0.12 + ((k >> 3) % 30) / 100), sh = (y1 - y0) * (0.12 + ((k >> 9) % 30) / 100);
+    const x = x0 + ((k >> 15) % 1000) / 1000 * (x1 - x0 - sw), y = y0 + ((k >> 5) % 1000) / 1000 * (y1 - y0 - sh);
+    const fill = `hsl(${(hue + i * 37) % 360},60%,${14 + (i % 4) * 5}%)`; // lightness 14–29 %: always dark
+    return i % 2 ? `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${sw.toFixed(1)}" height="${sh.toFixed(1)}" fill="${fill}"/>`
+      : `<ellipse cx="${(x + sw / 2).toFixed(1)}" cy="${(y + sh / 2).toFixed(1)}" rx="${(sw / 2).toFixed(1)}" ry="${(sh / 2).toFixed(1)}" fill="${fill}"/>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${cut ? '' : `<rect width="100%" height="100%" fill="#0b1730"/>`}${shapes}</svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 /** Publishing double. Test results from this adapter are NOT evidence of a real social-media post. */
