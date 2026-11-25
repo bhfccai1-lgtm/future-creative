@@ -116,6 +116,10 @@ export const SettingsSchema = z.object({
     aiFullTextRetries: z.number().int().min(0).max(3).default(2),
     /** art director: generate N candidate images and keep the best (vision-scored). 1 = off. Each extra candidate costs one image. */
     bestOf: z.number().int().min(1).max(3).default(1),
+    /** product-aware photography (camera, light set-up, set, material) instead of a blind lens rotation — free */
+    shotRecipes: z.boolean().default(true),
+    /** measured studio retouch after generation (clarity, product colour grade, soft vignette) — free, no AI call */
+    photoFinish: z.boolean().default(true),
     /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */
     conceptTournament: z.boolean().default(true),
     /** FreeLLMAPI (self-hosted, free provider tiers) — used ONLY for idea suggestions; copy, poster and text checks stay on OpenAI */

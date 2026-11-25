@@ -82,13 +82,14 @@ export function ideasSystemPrompt() {
  */
 export const REALISM_RULES = 'Photographic realism: physically correct light — one consistent key-light direction, a soft contact shadow where the product touches the surface, natural reflections that match the environment; real material texture (paper grain, ceramic glaze, fabric weave, acrylic edges). If people or hands appear: natural anatomy, five fingers, relaxed realistic hands and faces, real skin texture — never waxy or plastic. No AI artefacts: nothing melted, warped, duplicated or floating, no extra limbs, no impossible geometry, no over-saturated colours, no HDR halos, no generic stock-photo look.';
 
-export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string }, zone?: { top: number; bottom: number } | null) {
+export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string; recipe?: string }, zone?: { top: number; bottom: number } | null) {
   return [
     sceneDescription,
     `Art direction: ${style}`,
     art?.concept ? `Creative concept (the big visual idea — make it striking but keep the product the clear, accurate hero): ${art.concept}.` : '',
     art?.lighting ? `Lighting: ${art.lighting}.` : '',
     art?.lens ? `Camera: ${art.lens}.` : '',
+    art?.recipe ?? '',
     'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
     REALISM_RULES,
     'Vertical 9:16 premium advertising product photograph, photorealistic, ultra sharp focus on the product, high dynamic range, rich true-to-life colours, professional retouching.',
@@ -110,7 +111,7 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam', hi: 'Hindi (
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml' | 'hi'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
+  layout?: string; decor?: string; lighting?: string; lens?: string; recipe?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
 }) {
   const S = SCRIPT_NAME[p.lang];
   const square = p.aspect === 'square';
@@ -122,6 +123,7 @@ export function fullPosterPrompt(p: {
     `Hero product photo: ${p.sceneDescription}`,
     REALISM_RULES,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
+    p.recipe ?? '',
     `Typography — render EXACTLY these words, perfectly spelled ${S} text${p.lang === 'ar' ? ' (correct right-to-left Arabic letter joining, bold modern Arabic display font)' : ''}, nothing else:`,
     `  • kicker line near the top: "${p.headline}"`,
     p.badge ? `  • big hero keyword inside a glossy 3D gold pill badge with small sparkle rays: "${p.badge}"` : '',
