@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../db';
 import { getSecret } from '../settings';
 import { signedMediaUrl } from '../storage';
@@ -27,22 +27,43 @@ export async function queueGoogleArchive(adId: string, publicUrl: string | null)
   } catch (e) { log.warn('google_archive.queue_failed', { adId, error: (e as Error).message }); return null; }
 }
 
-/** v2: returns the Drive id + size of every saved file (needed before a local copy may be removed) and stores DB backups. */
-export const SCRIPT_VERSION = 3;
+/**
+ * v2: Drive id + size of every saved file; v3: smart Drive; v4: an auth key on every request, the SHA-256 of every
+ * saved file, «verify.files» (size + SHA-256 of Drive files right before a local copy may be removed) and a test that
+ * really opens the archive folder and sheet.
+ */
+export const SCRIPT_VERSION = 4;
+
+export const sha256Hex = (b: Buffer | Uint8Array) => createHash('sha256').update(b).digest('hex');
+
+/** The shared key the script checks on every request (created once, stored encrypted). */
+export async function archiveKey(): Promise<string> {
+  const { setSecret } = await import('../settings');
+  const k = await getSecret('GOOGLE_ARCHIVE_KEY');
+  if (k) return k;
+  const fresh = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+  await setSecret('GOOGLE_ARCHIVE_KEY', fresh, 'system');
+  return fresh;
+}
+/** every request to the script carries the key */
+export const withKey = async <T extends object>(body: T) => ({ ...body, key: await archiveKey() });
 
 /** The Apps Script the owner deploys as a web app. Folder/sheet ids and the system host are filled in. */
-export function appsScriptSource(o: { folderId: string; sheetId: string; host: string; keepBackups?: number }) {
+export function appsScriptSource(o: { folderId: string; sheetId: string; host: string; keepBackups?: number; key: string }) {
   return `// Future Creative — archive of published posts (Google Drive + Sheets). Deploy: Deploy → New deployment → Web app → Execute as: Me, Who has access: Anyone.
 const FOLDER_ID = '${o.folderId}';
 const SHEET_ID = '${o.sheetId}';
 const ALLOWED_HOST = '${o.host}'; // files are only downloaded from your system
 const VERSION = ${SCRIPT_VERSION};
 const KEEP_BACKUPS = ${o.keepBackups ?? 30};
+const AUTH_KEY = '${o.key}'; // only your system knows this key — requests without it are refused
 
 function doPost(e) {
   try {
     const p = JSON.parse(e.postData.contents);
-    if (p.event === 'test.ping') return out({ ok: true, test: true, version: VERSION });
+    if (!p || p.key !== AUTH_KEY) return out({ ok: false, error: 'unauthorized' });
+    if (p.event === 'test.ping') return out({ ok: true, test: true, version: VERSION, folderId: FOLDER_ID, sheetId: SHEET_ID, folder: DriveApp.getFolderById(FOLDER_ID).getName(), sheet: SpreadsheetApp.openById(SHEET_ID).getName() });
+    if (p.event === 'verify.files') return verifyFiles(p.data || {});
     if (p.event === 'backup.part') return backupPart(p.data || {});
     if (p.event === 'metrics.update') return metricsUpdate(p.data || {});
     if (p.event === 'best.copy') return bestCopy(p.data || {});
@@ -63,7 +84,7 @@ function doPost(e) {
       const blob = UrlFetchApp.fetch(f.url, { muteHttpExceptions: false }).getBlob().setName(f.name);
       const file = folder.createFile(blob);
       links.push(file.getUrl());
-      saved.push({ mediaId: f.mediaId || null, name: f.name, id: file.getId(), size: file.getSize(), url: file.getUrl() });
+      saved.push({ mediaId: f.mediaId || null, name: f.name, id: file.getId(), size: file.getSize(), url: file.getUrl(), sha256: sha(file.getBlob().getBytes()) });
     });
     if (d.caption) folder.createFile(String(d.adId) + '-caption.txt', d.caption, MimeType.PLAIN_TEXT);
     sheet.appendRow([d.publishedAt, d.account, d.format, d.headline, d.publicUrl || '', links[0] || '', d.adId, d.product || '', links.length]);
@@ -80,16 +101,26 @@ function backupPart(d) {
   const fi = backups.getFoldersByName(d.backup);
   const folder = fi.hasNext() ? fi.next() : backups.createFolder(d.backup);
   const existing = folder.getFilesByName(d.name);
-  if (existing.hasNext()) { const f = existing.next(); return out({ ok: true, duplicate: true, id: f.getId(), size: f.getSize() }); }
+  if (existing.hasNext()) { const f = existing.next(); return out({ ok: true, duplicate: true, id: f.getId(), size: f.getSize(), sha256: sha(f.getBlob().getBytes()) }); }
   const bytes = Utilities.base64Decode(d.base64);
   const file = folder.createFile(Utilities.newBlob(bytes, 'application/octet-stream', d.name));
+  const digest = sha(bytes);
   if (d.last) {
     const all = []; const it = backups.getFolders(); while (it.hasNext()) all.push(it.next());
     all.sort(function (a, b) { return b.getName() < a.getName() ? -1 : 1; });
     all.slice(KEEP_BACKUPS).forEach(function (f) { f.setTrashed(true); });
   }
-  return out({ ok: true, id: file.getId(), size: file.getSize() });
+  return out({ ok: true, id: file.getId(), size: file.getSize(), sha256: digest });
 }
+// v4 — integrity check right before the system removes its own copy: size + SHA-256 of each Drive file
+function verifyFiles(d) {
+  const files = (d.ids || []).map(function (id) {
+    try { const f = DriveApp.getFileById(id); if (f.isTrashed()) return { id: id, missing: true }; return { id: id, size: f.getSize(), sha256: sha(f.getBlob().getBytes()) }; }
+    catch (err) { return { id: id, missing: true }; }
+  });
+  return out({ ok: true, files: files });
+}
+function sha(bytes) { return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join(''); }
 // v3 — live performance columns in the «published» sheet (matched by design id, column G)
 var METRIC_HEADERS = ['المشاهدات', 'الوصول', 'الحفظ', 'المشاركات', 'التعليقات', 'الإكمال٪', 'التخطي٪', 'درجة الأداء', 'آخر تحديث'];
 function metricsUpdate(d) {
@@ -154,7 +185,7 @@ export function googleIdFrom(input: string, kind: 'folder' | 'sheet'): string | 
 }
 
 
-type Saved = { mediaId?: string | null; name: string; id: string; size: number; url: string };
+type Saved = { mediaId?: string | null; name: string; id: string; size: number; url: string; sha256?: string };
 /** the script's answer for one archived design: the Drive id + size of each file is stored on its media row */
 export async function recordArchiveResult(json: unknown) {
   const files = ((json as { files?: unknown })?.files ?? []) as Saved[];
@@ -164,39 +195,67 @@ export async function recordArchiveResult(json: unknown) {
     if (!f?.mediaId || !f.id) continue;
     const m = await prisma.mediaAsset.findUnique({ where: { id: f.mediaId } });
     if (!m) continue;
-    await prisma.mediaAsset.update({ where: { id: m.id }, data: { meta: { ...((m.meta as Record<string, unknown> | null) ?? {}), drive: { id: f.id, size: f.size, url: f.url, at: new Date().toISOString() } } as Prisma.InputJsonValue } });
+    await prisma.mediaAsset.update({ where: { id: m.id }, data: { meta: { ...((m.meta as Record<string, unknown> | null) ?? {}), drive: { id: f.id, size: f.size, url: f.url, at: new Date().toISOString(), ...(f.sha256 ? { sha256: f.sha256 } : {}) } } as Prisma.InputJsonValue } });
     n++;
   }
   return n;
 }
 
-export type DriveMeta = { drive?: { id: string; size: number; url: string; at: string }; offloadedAt?: string };
-/** a local file may be removed only when Drive holds a copy of exactly the same size */
+export type DriveMeta = { drive?: { id: string; size: number; url: string; at: string; sha256?: string }; offloadedAt?: string };
+/** first filter (no network): Drive reported a copy of exactly the same size when it archived the file */
 export const driveConfirmed = (m: { bytes: number; meta: unknown }) => { const d = (m.meta as DriveMeta | null)?.drive; return !!d?.id && d.size === m.bytes; };
 
+export type DriveCheck = { id: string; size?: number; sha256?: string; missing?: boolean };
+/** asks the script (v4) for the size + SHA-256 of Drive files RIGHT NOW (batches of 20) */
+export async function verifyOnDrive(ids: string[], fetchImpl: typeof fetch = fetch): Promise<DriveCheck[]> {
+  const target = await archiveTarget();
+  const out: DriveCheck[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const r = await fetchImpl(target, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(await withKey({ event: 'verify.files', data: { ids: ids.slice(i, i + 20) } })), signal: AbortSignal.timeout(300_000) });
+    const j = (await r.json().catch(() => null)) as { ok?: boolean; error?: string; files?: DriveCheck[] } | null;
+    if (!j?.ok || !Array.isArray(j.files)) throw new Error(`verify.files: ${j?.error ?? 'no JSON answer'} — the script must be version ${SCRIPT_VERSION}`);
+    out.push(...j.files);
+  }
+  return out;
+}
+
 /**
- * FREE SERVER SPACE: files of designs that were PUBLISHED more than `afterDays` days ago and whose Drive copy is
- * confirmed (same size) are removed from the server; they are then served from Google Drive. Thumbnails stay local.
- * Nothing else is touched (drafts, print and education files, unconfirmed copies).
+ * FREE SERVER SPACE: files of designs PUBLISHED more than `afterDays` days ago are removed from the server ONLY when
+ *  1) Drive holds the file right now (checked through the script at this moment, not from an old answer),
+ *  2) the Drive copy has exactly the same size AND the same SHA-256 as the file's recorded fingerprint, and
+ *  3) the server's own file still matches that fingerprint (so the record is trustworthy).
+ * Any doubt → the file stays. Thumbnails, drafts, print and education files are never touched.
  */
-export async function offloadArchivedMedia(opts: { afterDays: number; now?: Date; limit?: number }) {
+export async function offloadArchivedMedia(opts: { afterDays: number; now?: Date; limit?: number; verify?: (ids: string[]) => Promise<DriveCheck[]> }) {
   const { storage } = await import('../storage');
   const cutoff = new Date((opts.now ?? new Date()).getTime() - opts.afterDays * 86400_000);
   const rows = await prisma.mediaAsset.findMany({
     where: { role: { in: ['FINAL', 'VIDEO', 'SLIDE'] }, advertisement: { state: 'PUBLISHED', jobs: { some: { primary: true, result: { verifiedAt: { lt: cutoff } } } } } },
     take: opts.limit ?? 500, orderBy: { createdAt: 'asc' },
   });
+  const candidates = rows.filter((m) => !((m.meta as DriveMeta | null) ?? {}).offloadedAt);
   let removed = 0, freed = 0, skipped = 0;
-  for (const m of rows) {
-    const meta = (m.meta as DriveMeta | null) ?? {};
-    if (meta.offloadedAt) continue;
-    if (!driveConfirmed(m)) { skipped++; continue; }
+  const ready = candidates.filter((m) => driveConfirmed(m) && !!m.sha256);
+  skipped += candidates.length - ready.length;
+  if (!ready.length) return { removed, freedBytes: freed, skipped, mismatched: 0 };
+  let checks: DriveCheck[];
+  try { checks = await (opts.verify ?? verifyOnDrive)(ready.map((m) => (m.meta as DriveMeta).drive!.id)); }
+  catch (e) { log.warn('drive_offload.verify_unavailable', { error: (e as Error).message }); return { removed, freedBytes: freed, skipped: skipped + ready.length, mismatched: 0, blocked: (e as Error).message }; }
+  const byId = new Map(checks.map((c) => [c.id, c]));
+  let mismatched = 0;
+  for (const m of ready) {
+    const meta = (m.meta as DriveMeta) ?? {};
+    const c = byId.get(meta.drive!.id);
+    if (!c || c.missing || c.size !== m.bytes || !c.sha256 || c.sha256 !== m.sha256) { mismatched++; skipped++; continue; }
+    let local: Buffer;
+    try { local = await storage().get(m.storageKey); } catch { skipped++; continue; }
+    if (sha256Hex(local) !== m.sha256) { mismatched++; skipped++; continue; } // the server file is not what was recorded
     try { await storage().remove(m.storageKey); } catch { skipped++; continue; }
-    await prisma.mediaAsset.update({ where: { id: m.id }, data: { meta: { ...meta, offloadedAt: new Date().toISOString() } as Prisma.InputJsonValue } });
+    await prisma.mediaAsset.update({ where: { id: m.id }, data: { meta: { ...meta, drive: { ...meta.drive!, sha256: c.sha256 }, offloadedAt: new Date().toISOString(), verifiedSha256At: new Date().toISOString() } as Prisma.InputJsonValue } });
     removed++; freed += m.bytes;
   }
-  if (removed) log.info('drive_offload.done', { removed, freedMb: Math.round(freed / 1e6), skipped });
-  return { removed, freedBytes: freed, skipped };
+  if (removed || mismatched) log.info('drive_offload.done', { removed, freedMb: Math.round(freed / 1e6), skipped, mismatched });
+  return { removed, freedBytes: freed, skipped, mismatched };
 }
 
 /** archive published designs that were never archived (or archived by the v1 script without Drive ids) */
@@ -219,15 +278,17 @@ export async function backfillArchive(limit = 200) {
 const PART = 20 * 1024 * 1024;
 /** one part of a backup file → Drive (3 attempts), its size verified */
 export async function uploadBackupPart(target: string, p: { backup: string; name: string; chunk: Buffer; last: boolean }, fetchImpl: typeof fetch = fetch) {
-  const body = JSON.stringify({ event: 'backup.part', data: { backup: p.backup, name: p.name, base64: p.chunk.toString('base64'), last: p.last } });
-  let j: { ok?: boolean; id?: string; size?: number; error?: string } | null = null;
+  const body = JSON.stringify(await withKey({ event: 'backup.part', data: { backup: p.backup, name: p.name, base64: p.chunk.toString('base64'), last: p.last } }));
+  let j: { ok?: boolean; id?: string; size?: number; sha256?: string; error?: string } | null = null;
   for (let attempt = 1; attempt <= 3 && !j?.ok; attempt++) {
     try { const r = await fetchImpl(target, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(300_000) }); j = await r.json().catch(() => null); }
     catch (e) { j = { ok: false, error: (e as Error).message }; }
   }
   if (!j?.ok || !j.id) throw new Error(`Drive upload failed for ${p.name}: ${j?.error ?? 'no answer'} — is the script updated to version ${SCRIPT_VERSION}?`);
   if (j.size !== p.chunk.length) throw new Error(`Drive size mismatch for ${p.name}: ${j.size} ≠ ${p.chunk.length}`);
-  return { name: p.name, id: j.id, size: j.size };
+  // v4: the Drive copy's SHA-256 must equal the bytes we sent
+  if (j.sha256 && j.sha256 !== sha256Hex(p.chunk)) throw new Error(`Drive SHA-256 mismatch for ${p.name}`);
+  return { name: p.name, id: j.id, size: j.size, sha256: j.sha256 ?? null };
 }
 async function archiveTarget() {
   const target = await getSecret('GOOGLE_ARCHIVE_URL');

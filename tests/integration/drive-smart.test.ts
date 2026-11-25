@@ -58,9 +58,14 @@ describe('smart Google Drive (script v3)', () => {
     expect(await prisma.notification.count({ where: { code: 'DRIVE_MONTHLY_REPORT' } })).toBeGreaterThanOrEqual(1);
   });
 
-  it('the v3 script has the three new events', () => {
-    const src = appsScriptSource({ folderId: 'F', sheetId: 'S', host: 'h' });
-    expect(src).toContain('const VERSION = 3;');
+  it('the v4 script keeps the smart events and adds the auth key, SHA-256 and the live verification', () => {
+    const src = appsScriptSource({ folderId: 'F', sheetId: 'S', host: 'h', key: 'K' });
+    expect(src).toContain('const VERSION = 4;');
     for (const fn of ['function metricsUpdate', 'function bestCopy', 'function reportDoc', '⭐ أفضل التصاميم', 'DocumentApp.create']) expect(src).toContain(fn);
+    expect(src).toContain("const AUTH_KEY = 'K';");
+    expect(src).toContain("if (!p || p.key !== AUTH_KEY) return out({ ok: false, error: 'unauthorized' });"); // checked before any event
+    expect(src).toContain('function verifyFiles');
+    expect(src).toContain('Utilities.DigestAlgorithm.SHA_256');
+    expect(src).toMatch(/test\.ping.*getFolderById\(FOLDER_ID\)\.getName\(\).*openById\(SHEET_ID\)\.getName\(\)/); // the test really opens both
   });
 });

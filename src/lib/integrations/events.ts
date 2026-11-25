@@ -55,7 +55,8 @@ export async function deliverPending(fetchImpl: typeof fetch = fetch, now = new 
     // claim (another worker may be running)
     const claim = await prisma.webhookDelivery.updateMany({ where: { id: d.id, status: 'PENDING', attempts: d.attempts }, data: { attempts: { increment: 1 } } });
     if (!claim.count) continue;
-    const body = JSON.stringify(d.payload);
+    // the Google archive script checks its key on every request — added at send time, never stored in the outbox row
+    const body = d.event === 'archive.google' ? JSON.stringify(await (await import('./google-archive')).withKey(d.payload as object)) : JSON.stringify(d.payload);
     const ts = String(Math.floor(now.getTime() / 1000));
     const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-FC-Event': d.event, 'X-FC-Delivery': d.id, 'X-FC-Timestamp': ts, 'User-Agent': 'FutureCreative-Webhooks/1.0' };
     if (secret) headers['X-FC-Signature'] = sign(secret, ts, body);

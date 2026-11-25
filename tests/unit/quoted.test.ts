@@ -35,7 +35,7 @@ describe('Google archive script generator', () => {
     expect(googleIdFrom('https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUv?usp=sharing', 'folder')).toBe('1AbCdEfGhIjKlMnOpQrStUv');
     expect(googleIdFrom('https://docs.google.com/spreadsheets/d/1ZyXwVuTsRqPoNmLkJiHgF/edit#gid=0', 'sheet')).toBe('1ZyXwVuTsRqPoNmLkJiHgF');
     expect(googleIdFrom('not a link', 'folder')).toBeNull();
-    const src = appsScriptSource({ folderId: 'F1234567890abcdef', sheetId: 'S1234567890abcdef', host: 'example.sslip.io' });
+    const src = appsScriptSource({ folderId: 'F1234567890abcdef', sheetId: 'S1234567890abcdef', host: 'example.sslip.io', key: 'K' });
     expect(src).toContain("FOLDER_ID = 'F1234567890abcdef'");
     expect(src).toContain("insertSheet('published')");
   });
