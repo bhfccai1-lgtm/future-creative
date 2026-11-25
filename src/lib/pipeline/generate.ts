@@ -576,6 +576,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           music: track ? { buf: track.buf, ext: track.ext, startSec: track.startSec } : undefined,
           voice, sfx: s.ai.audio.sfx, musicVolume: s.ai.audio.musicVolume,
           ...(voice && displayScript && s.ai.audio.captions ? { captions: { text: displayScript, lang } } : {}),
+          // final contact screen: brand + product name beside the finished product, both branches with WhatsApp
+          endCard: { brand: lang === 'en' ? business.nameEn : business.nameAr, brandLang: lang === 'en' ? 'en' : 'ar', product: (lang === 'en' ? product.titleEn : lang === 'ml' ? (product.titleMl ?? product.titleEn) : product.titleAr) ?? undefined, lang },
         });
       } catch (e) { videoError = (e as Error).message; }
     }
