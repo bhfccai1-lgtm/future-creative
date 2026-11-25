@@ -12,10 +12,12 @@ describe('«إصلاح الآن» — diagnostics fixes the safe problems itself
   it('maps findings to fixes; «fix all» takes only the safe ones; human decisions have no automatic fix', () => {
     expect(fixFor('stuck')?.id).toBe('stuck_jobs');
     expect(fixFor('connections_broken')?.id).toBe('metricool_verify');
-    expect(fixFor('disk_low')).toMatchObject({ id: 'retention', safe: false });
-    expect(fixFor('disk_low')?.confirm).toMatch(/سجلات النشر والتدقيق تبقى/);
+    // low disk is NOT offered the retention clean-up: it deletes old rows, not the backups/images that fill the disk
+    expect(fixFor('disk_low')).toBeNull();
     for (const human of ['unknown_jobs', 'approval_backlog', 'kill_switch', 'dry_run', 'worker_down']) expect(fixFor(human), human).toBeNull();
-    expect(safeFixesFor(['stuck', 'metricool_check', 'connections_broken', 'disk_low', 'unknown_jobs'])).toEqual(['stuck_jobs', 'metricool_verify']);
+    expect(fixFor('n8n_dead_retry')).toMatchObject({ id: 'n8n_retry', safe: false }); // resend → confirmation
+    expect(fixFor('drive_archive_retry')).toMatchObject({ id: 'drive_retry', safe: true }); // the archive answers «duplicate»
+    expect(safeFixesFor(['stuck', 'metricool_check', 'connections_broken', 'disk_low', 'unknown_jobs', 'n8n_dead_retry', 'shop_board'])).toEqual(['stuck_jobs', 'metricool_verify', 'print_reminder']);
   });
 
   it('stuck publishing jobs are released to «UNKNOWN» for reconciliation (never resent), audited', async () => {

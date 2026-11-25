@@ -97,7 +97,7 @@ const FIXES: FixDef[] = [
 const FOR: Record<string, string> = {
   metricool_check: 'metricool_verify', connections_broken: 'metricool_verify', metricool: 'metricool_verify',
   metrics_missing: 'metrics_import', mc_metrics: 'metrics_import', mc_check: 'metricool_verify', n8n_dead_retry: 'n8n_retry', n8n_dead: 'n8n_retry', n8n: 'n8n_retry',
-  drive_archive_retry: 'drive_retry', shop_board: 'print_reminder', stuck: 'stuck_jobs', queue_failed: 'queue_clean', disk_low: 'retention', disk: 'retention',
+  drive_archive_retry: 'drive_retry', shop_board: 'print_reminder', stuck: 'stuck_jobs', queue_failed: 'queue_clean',
 };
 
 export const fixById = (id: string) => FIXES.find((f) => f.id === id) ?? null;

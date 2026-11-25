@@ -9,6 +9,9 @@ import { CopyReportButton } from '@/components/copy-report-button';
 import { FixButton } from '@/components/fix-button';
 import { fixFor, safeFixesFor } from '@/lib/ops/fixes';
 import { can } from '@/lib/auth/rbac';
+import { runSocialAudit, type PlatformCard, type CheckStatus } from '@/lib/ops/social-audit';
+import { runBusinessAudit } from '@/lib/ops/business-audit';
+import { rankOpportunities, EFFORT_AR } from '@/lib/ops/opportunities';
 export const dynamic = 'force-dynamic';
 
 const TONE = { OK: 'green', WARN: 'amber', FAIL: 'red' } as const;
@@ -21,6 +24,23 @@ const VERDICT: Record<Verdict, { t: string; tone: 'green' | 'red' | 'slate' | 'b
   improved: { t: '↑ تحسّن حقيقي', tone: 'green' }, worsened: { t: '↓ تراجع حقيقي', tone: 'red' }, stable: { t: '= ضمن التذبذب', tone: 'slate' }, insufficient: { t: 'عينة غير كافية', tone: 'blue' },
 };
 const SEV_RANK: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
+const CHECK_ICON: Record<CheckStatus, string> = { good: '✅', warn: '🟡', bad: '🔴', na: '·' };
+const scoreColor = (s: number | null) => (s === null ? '#94a3b8' : s >= 80 ? '#059669' : s >= 60 ? '#d97706' : '#dc2626');
+
+/** one expert scorecard (a platform, a tool or the shop): score, then each check with its value and the benchmark */
+function ExpertCard({ c }: { c: PlatformCard }) {
+  return (
+    <details className="rounded-xl border bg-white p-3" open={c.score !== null && c.score < 60}>
+      <summary className="flex cursor-pointer list-none items-center gap-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-sm font-extrabold text-white" style={{ background: scoreColor(c.score) }}>{c.score ?? '—'}</span>
+        <span className="flex-1"><span className="block font-extrabold text-navy-900">{c.title}</span><span className="text-xs text-slate-500">{c.checks.filter((x) => x.status === 'bad').length} مشكلة · {c.checks.filter((x) => x.status === 'warn').length} تنبيه</span></span>
+      </summary>
+      <ul className="mt-2 space-y-1.5 text-sm">{c.checks.map((x) => (
+        <li key={x.id} className="flex gap-2"><span aria-hidden>{CHECK_ICON[x.status]}</span><span className="flex-1"><b>{x.label}:</b> {x.value}<span className="block text-xs text-slate-500">المعيار: {x.benchmark}</span></span></li>
+      ))}</ul>
+    </details>
+  );
+}
 
 function Gauge({ score, grade }: { score: number; grade: keyof typeof GRADE_COLOR }) {
   const r = 52, c = 2 * Math.PI * r, color = GRADE_COLOR[grade];
@@ -73,11 +93,16 @@ function AdviceCard({ a, canFix }: { a: Advice; canFix: boolean }) {
 export default async function DiagnosticsPage() {
   const user = await requirePageUser();
   const canFix = can(user.perms, 'settings:integrations');
-  const [d, adv, hist, an] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), runAnalysis()]);
+  const [d, adv, hist, an, social, biz] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), runAnalysis(), runSocialAudit(), runBusinessAudit()]);
   const k = adv.kpis;
   // the analysis adds its own findings (trends, service levels, runtime, migrations) to the advisor's, by priority
-  const allAdvice = [...an.advice, ...adv.advice].sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity]);
-  const report = supportReport(an, { version: process.env.APP_VERSION ?? 'dev', overall: d.overall, score: adv.score, failedChecks: d.checks.filter((c) => c.status !== 'OK').map((c) => `${c.label}: ${c.detail}`) });
+  const seenIds = new Set<string>();
+  const allAdvice = [...an.advice, ...biz.advice, ...social.advice, ...adv.advice].filter((a) => (seenIds.has(a.id) ? false : (seenIds.add(a.id), true))).sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity]);
+  const ops = rankOpportunities(allAdvice, (id) => (canFix ? fixFor(id) : null));
+  const expertCards = [...social.cards, ...biz.cards];
+  const report = supportReport(an, { version: process.env.APP_VERSION ?? 'dev', overall: d.overall, score: adv.score, failedChecks: d.checks.filter((c) => c.status !== 'OK').map((c) => `${c.label}: ${c.detail}`) })
+    + `\n\n— بطاقات الخبراء:\n${expertCards.map((c) => `  ${c.title}: ${c.score ?? '—'}/100${c.checks.filter((x) => x.status === 'bad').map((x) => ` | ✗ ${x.label}: ${x.value}`).join('')}`).join('\n')}`
+    + `\n\n— أولويات (أعلى 8):\n${ops.slice(0, 8).map((o) => `  ${o.rank}. ${o.advice.title} (${EFFORT_AR[o.effort]})`).join('\n')}`;
   const autoFixes = canFix ? safeFixesFor([...allAdvice.map((a) => a.id), ...d.checks.filter((c) => c.status !== 'OK').map((c) => c.id)]) : [];
   const byCat = new Map<Category, Advice[]>();
   for (const a of allAdvice) byCat.set(a.category, [...(byCat.get(a.category) ?? []), a]);
@@ -111,6 +136,30 @@ export default async function DiagnosticsPage() {
         </div>
       </div>
 
+      <Card title="فرص التطوير والإصلاح — ابدأ من هنا" className="mb-6">
+        {!ops.length ? <p className="text-sm text-emerald-700">لا توجد فرص مفتوحة — كل شيء في حالة ممتازة ✅</p> : (
+          <>
+            <p className="mb-3 text-xs text-slate-500">مرتبة كما يرتبها مستشار: الأثر × سهولة التنفيذ × قوة الدليل. «⚡ مكسب سريع» = أثر حقيقي بزر أو دقائق. الحرج يتصدر دائمًا.</p>
+            <ol className="space-y-2">{ops.slice(0, 8).map((o) => (
+              <li key={o.advice.id} className="flex flex-wrap items-start gap-3 rounded-xl border p-3">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-navy-800 text-sm font-extrabold text-white">{o.rank}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2"><span className="font-bold text-navy-900">{o.advice.title}</span><Badge tone={SEV_TONE[o.advice.severity]}>{SEVERITY_AR[o.advice.severity]}</Badge>{o.quickWin && <Badge tone="green">⚡ مكسب سريع</Badge>}<span className="text-xs text-slate-500">الجهد: {EFFORT_AR[o.effort]}</span></div>
+                  <p className="mt-1 text-xs text-slate-600">{o.advice.evidence}</p>
+                  <p className="mt-1 text-xs"><b>الخطوة الأولى:</b> {o.advice.steps[0]}</p>
+                </div>
+                <div className="shrink-0">{o.fixId ? <FixButton ids={[o.fixId]} label="🛠 إصلاح الآن" confirmText={o.fixConfirm} /> : o.advice.link ? <Link href={o.advice.link} className="inline-block rounded-lg bg-navy-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-700">افتح ←</Link> : null}</div>
+              </li>
+            ))}</ol>
+            {ops.length > 8 && <p className="mt-2 text-xs text-slate-500">و{ops.length - 8} فرصة أخرى في «توصيات المحترف» أدناه.</p>}
+          </>
+        )}
+      </Card>
+
+      <Card collapsible title="بطاقات الخبراء — المنصات والأدوات والمطبعة (آخر 30 يومًا)" className="mb-6">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{expertCards.map((c) => <ExpertCard key={c.key} c={c} />)}</div>
+      </Card>
+
       <Card collapsible title={`توصيات المحترف (${allAdvice.length}) — مرتبة حسب الأولوية`} className="mb-6"
         actions={autoFixes.length ? <FixButton ids={autoFixes} label={`🛠 إصلاح كل ما يمكن آليًا (${autoFixes.length})`} /> : undefined}>
         {!allAdvice.length ? <p className="text-sm text-emerald-700">لا توجد توصيات — النظام في حالة ممتازة ✅</p> : (
@@ -128,7 +177,7 @@ export default async function DiagnosticsPage() {
       <Card collapsible title="التحليل المتقدم — هذا الأسبوع مقابل السابق" className="mb-6" actions={<CopyReportButton text={report} />}>
         <p className="mb-3 text-xs text-slate-500">«تحسّن/تراجع حقيقي» فقط عندما تثبته اختبارات الدلالة الإحصائية بثقة 95٪ (z ≥ 1.96)؛ الفروق الصغيرة تُعدّ تذبذبًا طبيعيًا، والعينات الصغيرة لا يُحكم عليها.</p>
         <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm"><thead><tr><th className="th">المؤشر</th><th className="th">الأسبوع السابق</th><th className="th">هذا الأسبوع</th><th className="th">العينة</th><th className="th">الحكم</th></tr></thead>
-          <tbody>{an.trends.map((t) => { const u = t.unit === '%' ? '%' : t.unit === '$' ? ' $' : ''; return <tr key={t.id} className="border-t"><td className="td font-bold">{t.label}</td><td className="td">{val(t.previous, u)}</td><td className="td font-bold">{val(t.current, u)}</td><td className="td text-xs text-slate-500">{t.n[0]} / {t.n[1]}{t.z !== null && <span className="ltr"> · z={t.z.toFixed(2)}</span>}</td><td className="td"><Badge tone={VERDICT[t.verdict].tone}>{VERDICT[t.verdict].t}</Badge></td></tr>; })}</tbody>
+          <tbody>{an.trends.map((t) => { const u = t.unit === '%' ? '%' : t.unit === '$' ? ' $' : ''; return <tr key={t.id} className="border-t"><td className="td font-bold">{t.label}</td><td className="td">{val(t.previous, u)}</td><td className="td font-bold">{val(t.current, u)}</td><td className="td text-xs text-slate-500">{t.n[0]} مقابل {t.n[1]}{t.z !== null && <span dir="ltr" className="block text-left">z = {t.z.toFixed(2)}</span>}</td><td className="td"><Badge tone={VERDICT[t.verdict].tone}>{VERDICT[t.verdict].t}</Badge></td></tr>; })}</tbody>
         </table></div>
 
         <h3 className="mb-2 mt-5 text-sm font-extrabold text-navy-800">مستويات الخدمة (SLO) — آخر 7 أيام</h3>
