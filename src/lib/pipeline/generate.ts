@@ -11,7 +11,7 @@ import { aiTextCheck } from '../qc';
 import { prisma } from '../db';
 import { getSecret, getSettings, updateSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
-import { fakeSpeech, openaiSpeak, openaiTranscribe, estimateSttCost, sanitizeScript, voiceScript, estimateTtsCost } from '../audio/tts';
+import { fakeSpeech, openaiSpeak, openaiTranscribe, estimateSttCost, sanitizeScript, voiceScript, estimateTtsCost, voiceMood } from '../audio/tts';
 import { missedWords, prepareSpoken, speakVerified } from '../audio/pronounce';
 import { recordMissed, vocaliseFix } from '../audio/pron-learn';
 
@@ -542,10 +542,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
               // what the voice reads: the pronunciation lexicon (built-in + owner's), then numbers as words
               displayScript = script; // captions show the script as written (the lexicon only changes what the voice reads)
               const spoken = prepareSpoken(script, s.ai.audio.lexicon, vlang.id);
+              // the feeling of the read (occasion → category) and the word to stress (the product, when the script says it)
+              const mood = voiceMood({ category, occasion: p.direction?.occasion ?? null });
+              const title = lang === 'en' ? product.titleEn : lang === 'ml' ? product.titleMl : product.titleAr;
+              const emphasisWord = title && spoken.includes(title) ? title : undefined;
               const r = await speakVerified(spoken, {
                 pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
                 speak: async (text, pace, note) => {
-                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note });
+                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note, mood, emphasis: emphasisWord });
                   await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
                   return v.audio;
                 },

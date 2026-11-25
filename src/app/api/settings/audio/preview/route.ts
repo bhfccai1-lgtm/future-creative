@@ -4,7 +4,7 @@ import { getSecret, getSettings } from '@/lib/settings';
 import { AppError } from '@/lib/errors';
 import { getAiProvider } from '@/lib/ai';
 import { recordUsage, estimateTextCost } from '@/lib/ai/cost';
-import { openaiSpeak, openaiTranscribe, sanitizeScript, estimateTtsCost, estimateSttCost } from '@/lib/audio/tts';
+import { openaiSpeak, openaiTranscribe, sanitizeScript, estimateTtsCost, estimateSttCost, voiceMood } from '@/lib/audio/tts';
 import { missedWords, prepareSpoken, speakVerified } from '@/lib/audio/pronounce';
 import { recordMissed, vocaliseFix } from '@/lib/audio/pron-learn';
 import { PERSONAS, VOICE_LANGS, personaOf, voiceLangOf, wordsFor } from '@/lib/audio/voices';
@@ -38,7 +38,7 @@ export const POST = api('settings:ai', async (req) => {
   const pace = b.pace ?? s.ai.audio.pace;
   const r = await speakVerified(spoken, {
     pace: pace === 'slow' ? 'slow' : 'normal',
-    speak: async (text, p, note) => { const v = await openaiSpeak(key, text, { persona, lang, pace: p === 'slow' ? 'slow' : pace, note }); await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) }); return v.audio; },
+    speak: async (text, p, note) => { const v = await openaiSpeak(key, text, { persona, lang, pace: p === 'slow' ? 'slow' : pace, note, mood: voiceMood({ category: 'هدايا' }) }); await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) }); return v.audio; },
     transcribe: async (a) => { const t = await openaiTranscribe(key, a, lang.id.startsWith('ar') ? 'ar' : /^[a-z]{2}/.exec(lang.id)?.[0]); await recordUsage({ provider: 'openai', model: 'gpt-4o-mini-transcribe', kind: 'audio', costUsd: estimateSttCost(8) }); return t; },
     fix: vocaliseFix(provider, s),
   });
