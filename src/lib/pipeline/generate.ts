@@ -17,7 +17,7 @@ import { recordMissed, vocaliseFix } from '../audio/pron-learn';
 
 /** speech-to-text language code for a voice-over dialect id (ar_bh → ar, ml → ml) */
 const sttLang = (id: string) => (id.startsWith('ar') ? 'ar' : /^[a-z]{2}/.exec(id)?.[0]);
-import { autoPersona, autoVoiceLang, personaOf, voiceLangOf, wordsFor } from '../audio/voices';
+import { autoPersona, autoVoiceLang, personaOf, voiceLangFor, wordsFor } from '../audio/voices';
 import { audit, notify } from '../audit';
 import { AppError } from '../errors';
 import { getBusiness, contactLines, ctaFor, locationsOf } from '../business';
@@ -523,7 +523,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
             .map((r) => ((r.options ?? {}) as { audioUsed?: { persona?: string } }).audioUsed?.persona).filter((x): x is string => !!x);
           const category = (await prisma.productCategory.findUnique({ where: { id: product.categoryId }, select: { nameAr: true } }))?.nameAr ?? '';
           const persona = personaOf(s.ai.audio.persona) ?? personaOf(autoPersona(category, recentPersonas))!;
-          const vlang = voiceLangOf(s.ai.audio.voiceLang) ?? voiceLangOf(autoVoiceLang({ market: d.market ?? (marketOf(account) === 'KSA' ? 'gcc_saudi' : null), contentLang: lang }))!;
+          // a fixed voice language applies only to accounts in that language (the Malayalam account stays Malayalam)
+          const vlang = voiceLangFor(s.ai.audio.voiceLang, autoVoiceLang({ market: d.market ?? (marketOf(account) === 'KSA' ? 'gcc_saudi' : null), contentLang: lang }));
           const seconds = Math.max(3, (veo ? veo.durationSec + 3 : reelDuration) - 3.5);
           const maxWords = wordsFor(seconds, persona);
           let script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });
