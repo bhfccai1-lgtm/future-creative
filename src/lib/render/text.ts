@@ -7,6 +7,8 @@ export interface TextSpec {
   text: string; lang: Lang; weight: Weight; color: string;
   maxSize: number; minSize: number; boxW: number; boxH: number;
   align?: 'centre' | 'left' | 'right'; maxLines?: number; ltr?: boolean;
+  /** Colour one word (0-based, space-separated) differently — the spoken word in reel captions. Same glyphs, same box. */
+  highlight?: { word: number; color: string };
 }
 
 export interface RenderedText {
@@ -32,7 +34,10 @@ export async function renderText(spec: TextSpec): Promise<RenderedText> {
   const missing = missingGlyphs(spec.text, spec.lang, spec.weight);
   // LRI…PDI isolate so phone digits never reorder inside RTL context.
   const body = spec.ltr ? `⁦${spec.text}⁩` : spec.text;
-  const markup = `<span foreground="${spec.color}">${escapeMarkup(body)}</span>`;
+  const inner = spec.highlight
+    ? body.split(' ').map((w, i) => (i === spec.highlight!.word ? `<span foreground="${spec.highlight!.color}">${escapeMarkup(w)}</span>` : escapeMarkup(w))).join(' ')
+    : escapeMarkup(body);
+  const markup = `<span foreground="${spec.color}">${inner}</span>`;
   // libvips crops text output to ink bounds, so measure: (a) this exact text unwrapped = one line,
   // (b) the per-line advance from a two-line probe.
   const probe = spec.lang === 'ml' ? 'ക' : spec.lang === 'hi' ? 'क' : spec.lang === 'ar' ? 'ا' : 'H';
