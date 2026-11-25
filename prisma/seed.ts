@@ -1,11 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { newPrismaClient } from '../src/lib/db';
 import { CATEGORIES, PRODUCTS } from '../src/lib/catalog/seed-data';
 import { DEFAULT_ROLES } from '../src/lib/auth/rbac';
 import { DEFAULT_LOCATIONS } from '../src/lib/business';
 import { TEMPLATES } from '../src/lib/render/templates';
 import { SettingsSchema } from '../src/lib/settings';
 
-const prisma = new PrismaClient();
+const prisma = newPrismaClient();
 
 /** Idempotent seed: safe to run repeatedly; never overwrites admin-edited values except catalog text on first insert. */
 async function main() {
