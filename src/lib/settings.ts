@@ -254,6 +254,12 @@ export const SettingsSchema = z.object({
     driveSmart: z.boolean().default(false),
     lastOffload: z.object({ at: z.string(), removed: z.number(), freedMb: z.number() }).nullable().default(null),
   }).prefault({}),
+  /** Google archive (Apps Script): the archive folder + sheet the script was made for, and what its last test said */
+  googleArchive: z.object({
+    folderId: z.string().max(120).default(''),
+    sheetId: z.string().max(120).default(''),
+    lastTest: z.object({ at: z.string(), ok: z.boolean(), message: z.string().max(400), version: z.number().nullable(), folderName: z.string().max(200).nullable(), sheetName: z.string().max(200).nullable() }).nullable().default(null),
+  }).prefault({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
@@ -285,7 +291,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'GOOGLE_ARCHIVE_KEY' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

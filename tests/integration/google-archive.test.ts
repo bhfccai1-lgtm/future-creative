@@ -25,7 +25,7 @@ describe('direct Google Drive archive (Apps Script)', () => {
     expect(seen).toBe(`${url} ${r.advertisement.id}`);
   });
   it('the generated script only downloads from the system host and skips duplicates', () => {
-    const src = appsScriptSource({ folderId: 'F1', sheetId: 'S1', host: 'example.test' });
+    const src = appsScriptSource({ folderId: 'F1', sheetId: 'S1', host: 'example.test', key: 'K' });
     expect(src).toContain("const ALLOWED_HOST = 'example.test'");
     expect(src).toMatch(/duplicate: true/);
     expect(src).toMatch(/getSheetByName\('published'\)/);
