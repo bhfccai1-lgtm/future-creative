@@ -59,6 +59,12 @@ describe('voice personas and dialects', () => {
     expect(v.autoVoiceLang({ market: 'indian_community', contentLang: 'ml' })).toBe('ml');
     expect(v.autoVoiceLang({ market: 'english_expats', contentLang: 'en' })).toBe('en_gb');
     expect(v.autoVoiceLang({ market: 'gcc_saudi', contentLang: 'ar' })).toBe('ar_sa');
+    // a fixed voice language applies only to accounts in that language: the Malayalam account stays Malayalam
+    expect(v.voiceLangFor('ar_bh', 'ml').id).toBe('ml');
+    expect(v.voiceLangFor('ar_eg', 'ar_bh').id).toBe('ar_eg'); // same language → the owner's dialect wins
+    expect(v.voiceLangFor('auto', 'ml').id).toBe('ml');
+    expect(v.voiceLangFor('en_au', 'en_gb').id).toBe('en_au');
+    expect(v.voiceLangFor('ar_bh', 'en_in').id).toBe('en_in');
     expect(v.autoPersona('الفرق والبطولات الرياضية', [])).toBe('s_commentator');
     expect(v.autoPersona('الأطفال والمدارس', ['k_girl'])).toBe('k_boy');
     expect(v.autoPersona('هدايا الموظفين والعملاء', [])).toBe('ad_male');
