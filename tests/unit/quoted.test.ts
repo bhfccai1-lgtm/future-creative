@@ -40,3 +40,18 @@ describe('Google archive script generator', () => {
     expect(src).toContain("insertSheet('published')");
   });
 });
+
+describe('image realism rules', () => {
+  it('every generated photo forbids the typical AI defects and asks for physically correct light', async () => {
+    const { scenePrompt, fullPosterPrompt, REALISM_RULES } = await import('@/lib/ai/prompts');
+    expect(REALISM_RULES).toMatch(/contact shadow/);
+    expect(REALISM_RULES).toMatch(/five fingers/);
+    expect(REALISM_RULES).toMatch(/melted, warped, duplicated or floating/);
+    const scene = scenePrompt('a printed mug on a marble table', 'luxury');
+    expect(scene).toContain(REALISM_RULES);
+    expect(scene).toMatch(/ABSOLUTELY NO text/); // the existing rules stay
+    const poster = fullPosterPrompt({ lang: 'ar', headline: 'هدية من القلب', badge: 'أكواب', features: [], sceneDescription: 'a printed mug', style: 'luxury' });
+    expect(poster).toContain(REALISM_RULES);
+    expect(scene.length).toBeLessThan(4000); // well inside the image model's prompt limit
+  });
+});
