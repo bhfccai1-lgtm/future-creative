@@ -231,7 +231,11 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920): Pr
     art = await sharp(await soft(W, artH, 34, 0.7)).composite([{ input: main, left: Math.round((W - side) / 2), top: Math.round((artH - side) / 2) }]).png().toBuffer();
   }
   // logo band: the whole design's colours, heavily blurred and deepened (no ghost of drawn text) — one continuous image
-  const edge = await soft(W, g.topBand + 60, 48, 0.55);
+  // built from the TOP strip of the design (not the whole design squashed), so it continues the art above it and the
+  // bright product never shows through as a blurred ghost — visible once the logo sits in a corner
+  const pm = await sharp(poster).metadata();
+  const strip = await sharp(poster).extract({ left: 0, top: 0, width: pm.width!, height: Math.max(8, Math.round(pm.height! * 0.14)) }).png().toBuffer();
+  const edge = await sharp(strip).resize(W, g.topBand + 60, { fit: 'fill' }).blur(48).modulate({ brightness: 0.55 }).removeAlpha().png().toBuffer();
   const feather = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${artH}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${(90 / artH).toFixed(4)}" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="${W}" height="${artH}" fill="url(#f)"/></svg>`);
   const artFeathered = await sharp(art).ensureAlpha().composite([{ input: feather, blend: 'dest-in' }]).png().toBuffer();
   const base = await sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
@@ -263,11 +267,27 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const background = await buildAiPosterBackground(input.scene, H);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
-  // the original logo, large, in the empty top zone
-  const lb = { x: Math.round((W - g.logo.w) / 2), y: g.logo.y, w: g.logo.w, h: g.logo.h };
+  // the ORIGINAL logo (the supplied file, only scaled) in the empty top zone, where the design needs it:
+  // centred (default), in a corner (smaller, leaves the stage to the design), or centred with the centre's name under it
+  const pos = input.logoPosition ?? 'auto';
+  const corner = pos === 'top-right' || pos === 'top-left';
+  const withName = pos === 'top-center-name' && !!input.brandName?.trim();
+  const lw = corner ? Math.round(g.logo.w * 0.72) : g.logo.w;
+  const lh = corner ? Math.round(g.logo.h * 0.72) : withName ? Math.round(g.logo.h * 0.66) : g.logo.h;
+  const lx = pos === 'top-right' ? W - g.padX - lw : pos === 'top-left' ? g.padX : Math.round((W - lw) / 2);
+  const lb = { x: lx, y: g.logo.y, w: lw, h: lh };
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
-  layers.push(place('logo', logoPng, lb.x + (lb.w - lm.width!) / 2, lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
+  const logoX = pos === 'top-right' ? lb.x + lb.w - lm.width! : pos === 'top-left' ? lb.x : lb.x + (lb.w - lm.width!) / 2;
+  layers.push(place('logo', logoPng, logoX, corner ? lb.y : lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
+  if (withName) {
+    // the centre's name typed by the system under the logo (exact spelling), like a printed flyer header
+    const name = input.brandName!.trim();
+    const nameLang: Lang = /[\u0600-\u06FF]/.test(name) ? 'ar' : 'en';
+    const nb = { x: Math.round(W * 0.12), y: lb.y + lh + 4, w: Math.round(W * 0.76), h: Math.max(28, g.logo.h - lh - 4) };
+    const nt = await renderText({ text: name, lang: nameLang, weight: 'extrabold', color: '#ffffff', maxSize: Math.round(nb.h * 0.92), minSize: 20, boxW: nb.w, boxH: nb.h, maxLines: 1 });
+    layers.push(place('brand' as PlacedLayer['id'], nt.png, nb.x + (nb.w - nt.width) / 2, nb.y, nt.width, nt.height, nb, nt, name, '#ffffff'));
+  }
 
   // feature row — typeset by the system (verified spelling) in its own row above the order button, never drawn by the AI
   const feats = ((input as ComposeInput & { features?: string[] }).features ?? []).slice(0, 4);
