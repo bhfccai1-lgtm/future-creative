@@ -11,15 +11,36 @@ import { run } from '../video/probe';
 import { findClaims } from '../qc/checks';
 import type { Persona, VoiceLang } from './voices';
 
-/** Acting + accent + articulation instructions for the TTS model. */
-export function ttsInstructions(persona: Persona, lang: VoiceLang, o: { pace?: 'slow' | 'normal' | 'fast'; note?: string } = {}) {
+/**
+ * The feeling of the read, from the occasion first (it is the strongest emotional cue), then the product category.
+ * Real feeling, matched to why people buy: a gift is affection, a wedding is joy, a company order is trust.
+ */
+export function voiceMood(o: { category?: string | null; occasion?: string | null }): string {
+  const oc = o.occasion ?? '', c = o.category ?? '';
+  if (/national_day/.test(oc)) return 'proud, uplifting and warm, a festive national spirit';
+  if (/ramadan|gergaoon|eid/.test(oc)) return 'warm festive joy and family spirit, generous and heartfelt';
+  if (/mothers_day|women_day/.test(oc)) return 'tender, loving and grateful, from the heart';
+  if (/wedding/.test(oc) || /أعراس|حفلات|زفاف/.test(c)) return 'joyful and elegant, a sparkle of celebration';
+  if (/graduation|teachers_day|back_to_school/.test(oc) || /أطفال|مدارس|مدرس|تعليم/.test(c)) return 'cheerful, proud and caring, bright and encouraging';
+  if (/diwali|onam|new_year/.test(oc)) return 'bright, festive and welcoming';
+  if (/هدايا|تذكار|هدية/.test(c)) return 'heartfelt warmth and affection, like recommending a gift to a dear friend';
+  if (/شركات|موظف|مكتب|عقار|معارض|مؤتمر/.test(c)) return 'confident, trustworthy and professional, with friendly warmth';
+  return 'friendly, upbeat and warm, genuinely excited to share something nice';
+}
+
+/** Acting + accent + articulation + emotional arc instructions for the TTS model. */
+export function ttsInstructions(persona: Persona, lang: VoiceLang, o: { pace?: 'slow' | 'normal' | 'fast'; note?: string; mood?: string; emphasis?: string } = {}) {
   const pace = o.pace === 'slow' ? 'Pace: a little slower than usual, every syllable clear.' : o.pace === 'fast' ? 'Pace: lively and quick, yet every word still clear.' : 'Pace: natural commercial pace.';
   return [
     `Voice: ${persona.acting}.`,
     `Language and accent: ${lang.prompt}. Sound like a native speaker of exactly this variety.`,
-    'Articulation: pronounce every word completely and correctly. For Arabic, give each letter its true sound — ع، ح، خ، غ، ق، ض، ظ، ص، ط — never anglicise or swallow them; follow the diacritics (tashkeel) where written; read English trade words written in Arabic letters as written.',
+    'Articulation: pronounce every word completely and correctly. For Arabic, give each letter its true sound — ع، ح، خ، غ، ق، ض، ظ، ص، ط — never anglicise or swallow them; follow the diacritics (tashkeel) where written; read English trade words written in Arabic letters as written. Finish the last syllable of every word, especially at the end of a phrase.',
     pace,
-    'Delivery: natural commercial read, brief pauses at commas, smile in the voice where it fits. Read the text exactly as written — do not add, drop or change words.',
+    `Emotion: ${o.mood ?? 'friendly, upbeat and warm'} — real feeling the listener can hear, never over-acted or theatrical.`,
+    'Emotional arc: the FIRST line grabs attention with genuine curiosity or delight (a question rises naturally at the end, then a tiny pause); the middle is warm and sincere, smiling; slow down slightly on the final call to action and say it with a confident, inviting smile.',
+    'Rhythm: natural micro-pauses between phrases (at «،» «…» and line breaks), breathe like a person, vary the intonation — never flat, robotic or rushed.',
+    o.emphasis ? `Emphasis: give gentle, warm stress to «${o.emphasis}» the first time it is said.` : '',
+    'Read the text exactly as written — do not add, drop or change words.',
     o.note ?? '',
   ].filter(Boolean).join(' ');
 }
@@ -39,14 +60,14 @@ export function voiceScript(p: { headline: string; badge?: string | null; suppor
   return [...new Set(parts)].join('… ');
 }
 
-export async function openaiSpeak(apiKey: string, text: string, o: { persona: Persona; lang: VoiceLang; model?: string; pace?: 'slow' | 'normal' | 'fast'; note?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
+export async function openaiSpeak(apiKey: string, text: string, o: { persona: Persona; lang: VoiceLang; model?: string; pace?: 'slow' | 'normal' | 'fast'; note?: string; mood?: string; emphasis?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
   const model = o.model ?? 'gpt-4o-mini-tts';
   let r: Response;
   try {
     r = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, voice: o.persona.voice, input: text.slice(0, 1500), instructions: ttsInstructions(o.persona, o.lang, { pace: o.pace, note: o.note }), response_format: 'wav' }),
+      body: JSON.stringify({ model, voice: o.persona.voice, input: text.slice(0, 1500), instructions: ttsInstructions(o.persona, o.lang, { pace: o.pace, note: o.note, mood: o.mood, emphasis: o.emphasis }), response_format: 'wav' }),
     });
   } catch (e) { throw new AiProviderError('NETWORK', `TTS: ${(e as Error).message}`, true); }
   if (!r.ok) {

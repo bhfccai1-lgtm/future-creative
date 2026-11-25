@@ -78,6 +78,24 @@ describe('voice personas and dialects', () => {
     const ins = ttsInstructions(v.personaOf('e_grandpa')!, v.voiceLangOf('ar_bh')!);
     expect(ins).toMatch(/grandfather/); expect(ins).toMatch(/Bahraini/);
   });
+  it('the read carries a feeling matched to the occasion/product and a hook → warm → confident-CTA arc', async () => {
+    const { ttsInstructions, voiceMood } = await import('@/lib/audio/tts');
+    const v = await import('@/lib/audio/voices');
+    expect(voiceMood({ category: 'الهدايا الترويجية والشخصية' })).toMatch(/affection/);
+    expect(voiceMood({ category: 'الهدايا', occasion: 'mothers_day' })).toMatch(/tender/); // the occasion wins
+    expect(voiceMood({ occasion: 'bahrain_national_day' })).toMatch(/proud/);
+    expect(voiceMood({ category: 'المناسبات والأعراس' })).toMatch(/joyful/);
+    expect(voiceMood({ category: 'مطبوعات الشركات' })).toMatch(/trustworthy/);
+    expect(voiceMood({})).toMatch(/warm/);
+    const ins = ttsInstructions(v.personaOf('ad_female')!, v.voiceLangOf('ar_bh')!, { mood: voiceMood({ category: 'هدايا' }), emphasis: 'أكواب مطبوعة' });
+    expect(ins).toMatch(/Emotion: heartfelt warmth/);
+    expect(ins).toMatch(/FIRST line grabs attention/);
+    expect(ins).toMatch(/call to action .* confident, inviting smile/);
+    expect(ins).toMatch(/never flat, robotic or rushed/);
+    expect(ins).toContain('«أكواب مطبوعة»');
+    expect(ins).toMatch(/Finish the last syllable/);
+    expect(ttsInstructions(v.personaOf('ad_female')!, v.voiceLangOf('ar_bh')!)).not.toMatch(/Emphasis:/); // no word to stress → no line
+  });
   it('elderly voices are slowed and children are pitched up (rubberband)', async () => {
     const { shapeVoice, fakeSpeech } = await import('@/lib/audio/tts');
     const v = await import('@/lib/audio/voices');
