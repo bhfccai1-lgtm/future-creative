@@ -6,6 +6,9 @@ import { runAdvisor, healthHistory, CATEGORY_AR, SEVERITY_AR, type Advice, type 
 import { fmtLocal } from '@/lib/time';
 import { runAnalysis, supportReport, type Verdict } from '@/lib/ops/analysis';
 import { CopyReportButton } from '@/components/copy-report-button';
+import { FixButton } from '@/components/fix-button';
+import { fixFor, safeFixesFor } from '@/lib/ops/fixes';
+import { can } from '@/lib/auth/rbac';
 export const dynamic = 'force-dynamic';
 
 const TONE = { OK: 'green', WARN: 'amber', FAIL: 'red' } as const;
@@ -45,7 +48,8 @@ function Trend({ points }: { points: { date: string; score: number }[] }) {
   );
 }
 
-function AdviceCard({ a }: { a: Advice }) {
+function AdviceCard({ a, canFix }: { a: Advice; canFix: boolean }) {
+  const fix = canFix ? fixFor(a.id) : null;
   return (
     <details className="rounded-xl border bg-white p-3 open:shadow-sm" open={a.severity === 'critical' || a.severity === 'high'}>
       <summary className="flex cursor-pointer list-none items-start gap-2">
@@ -59,6 +63,7 @@ function AdviceCard({ a }: { a: Advice }) {
         <div><span className="font-bold text-slate-600">خطوات الإصلاح:</span>
           <ol className="mt-1 list-decimal space-y-0.5 pr-5">{a.steps.map((s, i) => <li key={i}>{/^(docker|df|free|ls)\b/.test(s) ? <code dir="ltr" className="rounded bg-slate-100 px-1 text-xs">{s}</code> : s}</li>)}</ol>
         </div>
+        {fix && <FixButton ids={[fix.id]} label={`🛠 إصلاح الآن: ${fix.label}`} confirmText={fix.confirm} />}
         {a.link && <Link href={a.link} className="inline-block rounded-lg bg-navy-800 px-3 py-1 text-xs font-bold text-white hover:bg-navy-700">الانتقال للإصلاح ←</Link>}
       </div>
     </details>
@@ -66,12 +71,14 @@ function AdviceCard({ a }: { a: Advice }) {
 }
 
 export default async function DiagnosticsPage() {
-  await requirePageUser();
+  const user = await requirePageUser();
+  const canFix = can(user.perms, 'settings:integrations');
   const [d, adv, hist, an] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), runAnalysis()]);
   const k = adv.kpis;
   // the analysis adds its own findings (trends, service levels, runtime, migrations) to the advisor's, by priority
   const allAdvice = [...an.advice, ...adv.advice].sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity]);
   const report = supportReport(an, { version: process.env.APP_VERSION ?? 'dev', overall: d.overall, score: adv.score, failedChecks: d.checks.filter((c) => c.status !== 'OK').map((c) => `${c.label}: ${c.detail}`) });
+  const autoFixes = canFix ? safeFixesFor([...allAdvice.map((a) => a.id), ...d.checks.filter((c) => c.status !== 'OK').map((c) => c.id)]) : [];
   const byCat = new Map<Category, Advice[]>();
   for (const a of allAdvice) byCat.set(a.category, [...(byCat.get(a.category) ?? []), a]);
   return (
@@ -104,13 +111,14 @@ export default async function DiagnosticsPage() {
         </div>
       </div>
 
-      <Card collapsible title={`توصيات المحترف (${allAdvice.length}) — مرتبة حسب الأولوية`} className="mb-6">
+      <Card collapsible title={`توصيات المحترف (${allAdvice.length}) — مرتبة حسب الأولوية`} className="mb-6"
+        actions={autoFixes.length ? <FixButton ids={autoFixes} label={`🛠 إصلاح كل ما يمكن آليًا (${autoFixes.length})`} /> : undefined}>
         {!allAdvice.length ? <p className="text-sm text-emerald-700">لا توجد توصيات — النظام في حالة ممتازة ✅</p> : (
           <div className="grid gap-5 lg:grid-cols-2">
             {[...byCat.entries()].map(([cat, list]) => (
               <section key={cat}>
                 <h3 className="mb-2 text-sm font-extrabold text-navy-800">{CATEGORY_AR[cat]} <span className="font-normal text-slate-500">({list.length})</span></h3>
-                <div className="space-y-2">{list.map((a) => <AdviceCard key={a.id} a={a} />)}</div>
+                <div className="space-y-2">{list.map((a) => <AdviceCard key={a.id} a={a} canFix={canFix} />)}</div>
               </section>
             ))}
           </div>
@@ -155,7 +163,7 @@ export default async function DiagnosticsPage() {
 
       <Card collapsible title="الفحوصات الفنية المباشرة" className="overflow-x-auto">
         <table className="w-full min-w-[720px]"><thead><tr><th className="th">الفحص</th><th className="th">الحالة</th><th className="th">التفاصيل</th><th className="th">الإجراء المطلوب</th></tr></thead>
-          <tbody>{d.checks.map((c) => <tr key={c.id} className="border-t"><td className="td font-bold">{c.label}</td><td className="td"><Badge tone={TONE[c.status]}>{AR[c.status]}</Badge></td><td className="td text-xs">{c.detail}</td><td className="td text-xs text-navy-700">{c.action ?? '—'}{c.command && <code dir="ltr" className="mt-1 block rounded bg-slate-100 px-2 py-1 text-left text-[11px]">{c.command}</code>}</td></tr>)}</tbody>
+          <tbody>{d.checks.map((c) => <tr key={c.id} className="border-t"><td className="td font-bold">{c.label}</td><td className="td"><Badge tone={TONE[c.status]}>{AR[c.status]}</Badge></td><td className="td text-xs">{c.detail}</td><td className="td text-xs text-navy-700">{c.action ?? '—'}{c.command && <code dir="ltr" className="mt-1 block rounded bg-slate-100 px-2 py-1 text-left text-[11px]">{c.command}</code>}{canFix && c.status !== 'OK' && (() => { const f = fixFor(c.id); return f ? <div className="mt-1"><FixButton ids={[f.id]} label={`🛠 ${f.label}`} confirmText={f.confirm} /></div> : null; })()}</td></tr>)}</tbody>
         </table>
       </Card>
     </>
