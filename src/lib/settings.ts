@@ -128,6 +128,13 @@ export const SettingsSchema = z.object({
      *  'template' → re-render it in a fixed layered template with system-typeset (verified) text
      */
     aiTextFallback: z.enum(['review', 'template']).default('review'),
+    /**
+     * The brand features (custom designs, print quality…) on full-AI posters:
+     *  'ai'     (default) → the AI weaves them into the design where they suit the idea (spell-checked with the headline)
+     *  'system' → a fixed row of gold icons typeset by the system above the order button
+     *  'off'    → not shown — more room for the design
+     */
+    featuresRow: z.enum(['ai', 'system', 'off']).default('ai'),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),

@@ -127,7 +127,7 @@ export function fullPosterPrompt(p: {
     p.badge ? `  • big hero keyword inside a glossy 3D gold pill badge with small sparkle rays: "${p.badge}"` : '',
     p.support ? `  • tagline under the badge: "${p.support}"` : '',
     ...(p.productText ?? []).map((t) => `  • printed ON the product itself as its design (exact words, same spelling and punctuation): "${t}"`),
-    p.features.length ? `  • a row of ${p.features.length} elegant gold line icons in circles with these labels under them: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
+    p.features.length ? `  • these ${p.features.length} short benefits, woven into the design where they suit THIS idea (e.g. a small checklist with gold ticks beside the product, elegant icon badges, or a ribbon) — never a generic row above the bottom, never covering the product: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',

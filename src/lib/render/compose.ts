@@ -158,7 +158,7 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
  * Exported so pro reels can build extra scenes with exactly the same layout.
  */
 export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, templateKey: string | null | undefined, contactsCount: number, themeKey: ThemeKey = 'navy_gold', featureCount = 4): Promise<Buffer> {
-  if (templateKey === AI_POSTER_KEY) return buildAiPosterBackground(sceneBuf, FORMAT_SIZE[format].h);
+  if (templateKey === AI_POSTER_KEY) return buildAiPosterBackground(sceneBuf, FORMAT_SIZE[format].h, featureCount > 0);
   if (templateKey === POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildPosterBackground(sceneBuf, featureCount);
   const { w: W, h: H } = FORMAT_SIZE[format];
   const t = templateFor(templateKey, H);

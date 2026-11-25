@@ -197,7 +197,12 @@ export const AI_POSTER_KEY = 'ai-poster';
  * keeps all drawn text inside the safe central width). The model leaves the top zone empty for the ORIGINAL logo and
  * the bottom zone as plain background, where the system overlays the gold order button and the glass phone panel.
  */
-export function aiPosterGeometry(h: number) {
+export function aiPosterGeometry(h: number, featureRow = true) {
+  const g = aiPosterGeometryBase(h);
+  // no system feature row → nothing reserved for it: the design gets that space (feed: bottom zone 40 % → 26 %)
+  return featureRow || !g.features ? g : { ...g, features: null, bottomPct: h === 1350 ? 26 : g.bottomPct };
+}
+function aiPosterGeometryBase(h: number) {
   // topBand: the logo's own zone (a soft extension of the art) — the AI design starts BELOW it, so the logo can never cover drawn text
   // Stories / Reels: everything Instagram must not cover sits inside IG_SAFE_1920 (logo below the account bar, order
   // button + phones above the caption/reply area, panel clear of the Reels side icons, all inside the 3:4 grid crop).
@@ -218,8 +223,8 @@ const ribbons = (H: number) => {
 };
 
 /** Background for the full-AI poster: the AI design full-bleed + soft legibility gradient + glass phone panel + ribbons. */
-export async function buildAiPosterBackground(poster: Buffer, height = 1920): Promise<Buffer> {
-  const g = aiPosterGeometry(height), H = g.H, artH = H - g.topBand;
+export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true): Promise<Buffer> {
+  const g = aiPosterGeometry(height, featureRow), H = g.H, artH = H - g.topBand;
   // never crop the design when the aspect differs a lot (square output from a 1:1 image): fit it whole on a blurred fill
   const crop = Math.abs(W / artH - 1) > 0.1 && Math.abs(W / artH - 2 / 3) > 0.05;
   const soft = (w: number, h: number, blur: number, b: number) => sharp(poster).resize(w, h, { fit: 'fill' }).blur(blur).modulate({ brightness: b }).removeAlpha().png().toBuffer();
@@ -263,8 +268,9 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920): Pr
  */
 export async function composeAiPoster(input: ComposeInput): Promise<ComposeResult> {
   const lang = input.lang;
-  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h), H = g.H;
-  const background = await buildAiPosterBackground(input.scene, H);
+  const hasRow = ((input as ComposeInput & { features?: string[] }).features ?? []).length > 0; // the glass row is drawn only when it holds features
+  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h, hasRow), H = g.H;
+  const background = await buildAiPosterBackground(input.scene, H, hasRow);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
   // the ORIGINAL logo (the supplied file, only scaled) in the empty top zone, where the design needs it:
