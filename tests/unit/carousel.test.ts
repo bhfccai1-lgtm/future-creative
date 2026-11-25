@@ -5,7 +5,7 @@ import { renderCarousel, normaliseSlides, FALLBACK_SLIDES } from '@/lib/render/c
 import { DryRunProvider } from '@/lib/ai/dry-run-provider';
 import type { Lang } from '@/lib/render/fonts';
 
-const contacts = { ar: ['فرع سار', 'فرع سلماباد'], en: ['Saar branch', 'Salmabad branch'], ml: ['സാർ ബ്രാഞ്ച്', 'സൽമാബാദ് ബ്രാഞ്ച്'] };
+const contacts = { ar: ['فرع سار', 'فرع سلماباد'], en: ['Saar branch', 'Salmabad branch'], ml: ['സാർ ബ്രാഞ്ച്', 'സൽമാബാദ് ബ്രാഞ്ച്'], hi: ['सार ब्रांच', 'सलमाबाद ब्रांच'] };
 
 describe('Instagram carousel renderer', () => {
   it.each(['ar', 'en', 'ml'] as Lang[])('renders readable 1080×1350 JPEG slides with both branch numbers (%s)', async (lang) => {

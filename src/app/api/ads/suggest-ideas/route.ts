@@ -17,7 +17,7 @@ import { AiProviderError } from '@/lib/ai/types';
 import { DryRunProvider } from '@/lib/ai/dry-run-provider';
 import type { Lang } from '@/lib/render/fonts';
 
-const Body = z.object({ accountId: z.string(), productId: z.string().optional(), language: z.enum(['ar', 'en', 'ml']).optional(), direction: DirectionSchema });
+const Body = z.object({ accountId: z.string(), productId: z.string().optional(), language: z.enum(['ar', 'en', 'ml', 'hi']).optional(), direction: DirectionSchema });
 
 /** "اقترح أفكارًا مميزة": 3 distinct idea suggestions for the chosen product + direction. Costs one small text call (free in dry-run). */
 export const POST = api('ads:create', async (req, { user }) => {

@@ -5,7 +5,7 @@ import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 import { ReferenceUpload } from './reference-upload';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; imageQualityGate?: boolean; styleRefImage?: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; bannedPhrases?: string[]; aiFullTextRetries?: number; styleReferenceKey?: string | null; styleReferenceBrief?: string; styleRefsByFormat?: Partial<Record<'vertical' | 'feed' | 'square' | 'carousel', { key: string | null; brief: string }>>; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; imageQualityGate?: boolean; styleRefImage?: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; bannedPhrases?: string[]; aiFullTextRetries?: number; aiTextFallback?: 'review' | 'template'; featuresRow?: 'ai' | 'system' | 'off'; captionMentions?: string[]; styleReferenceKey?: string | null; styleReferenceBrief?: string; styleRefsByFormat?: Partial<Record<'vertical' | 'feed' | 'square' | 'carousel', { key: string | null; brief: string }>>; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -84,6 +84,25 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
                 <option value={0}>بدون إعادة (تحذير فقط)</option><option value={1}>إعادة رسم مرة عند الخطأ</option><option value={2}>حتى مرتين (موصى به)</option><option value={3}>حتى 3 مرات</option>
               </select></div>
             <p className="text-xs text-slate-500">يقرأ النظام النص الذي رسمه الذكاء الاصطناعي قبل إنهاء التصميم؛ إذا وجد كلمة خاطئة أو ناقصة يعيد الرسم بتصحيح دقيق. كل إعادة = تكلفة صورة.</p>
+            <div><label className="label">إذا بقي خطأ إملائي بعد إعادة الرسم</label>
+              <select className="input" style={{ width: '22rem' }} value={v.aiTextFallback ?? 'review'} onChange={(e) => setV({ ...v, aiTextFallback: e.target.value as 'review' | 'template' })}>
+                <option value="review">احتفظ بتصميم الذكاء الاصطناعي وأرسله لموافقتي (موصى به)</option>
+                <option value="template">استبدله بقالب ثابت بنص النظام</option>
+              </select></div>
+            <p className="text-xs text-slate-500">«موافقتي»: يبقى التنسيق مصممًا حسب الفكرة والمناسبة، وتظهر لك الكلمات الخاطئة — لا يُنشر تلقائيًا أبدًا. «قالب ثابت»: نص مضمون الإملاء لكن بتصميم قالب.</p>
+            <div><label className="label">مزايا المطبعة (تصاميم مخصصة، جودة طباعة…) في التصميم الكامل</label>
+              <select className="input" style={{ width: '22rem' }} value={v.featuresRow ?? 'ai'} onChange={(e) => setV({ ...v, featuresRow: e.target.value as 'ai' | 'system' | 'off' })}>
+                <option value="ai">مدمجة في التصميم حسب الفكرة (موصى به)</option>
+                <option value="system">شريط أيقونات ثابت فوق زر الطلب</option>
+                <option value="off">بدون — مساحة أكبر للتصميم</option>
+              </select></div>
+            <p className="text-xs text-slate-500">«مدمجة»: يرسمها الذكاء الاصطناعي في مكان يناسب الفكرة (قائمة بعلامات ذهبية، شارات…) ويُدقق إملاؤها مع العنوان. الشريط الثابت كان يغطي أسفل التصميم.</p>
+          </div>
+          <div className="mt-3">
+            <label className="label">حسابات إنستغرام تُذكر في نص كل منشور</label>
+            <input className="input ltr" style={{ maxWidth: '30rem' }} dir="ltr" placeholder="@bhfcps @bhfcpss" value={(v.captionMentions ?? []).join(' ')}
+              onChange={(e) => setV({ ...v, captionMentions: e.target.value.split(/[\s,،]+/).filter(Boolean).map((h) => (h.startsWith('@') ? h : `@${h}`)).slice(0, 5) })} />
+            <p className="mt-1 text-xs text-slate-500">تُضاف في آخر النص: «تابعونا: @bhfcps @bhfcpss» — ولا يُذكر الحساب في منشوره هو. حتى 5 حسابات، افصل بينها بمسافة.</p>
           </div>
           <button type="button" className="mt-3 rounded-lg bg-navy-800 px-3 py-1.5 text-xs font-bold text-white" onClick={() => setV({ ...v, creativeConcepts: true, bestOf: 2, qualityByFormat: { IMAGE_STORY: 'medium', IMAGE_FEED: 'high', IMAGE_SQUARE: 'high', IMAGE_CAROUSEL: 'high', REEL_VIDEO: 'high' } })}>⭐ تطبيق «الجودة الاحترافية»: عالية للريلز والمنشورات والكاروسيل · متوسطة للستوري · صورتان ويُختار الأفضل</button>
           <p className="mt-1 text-xs text-slate-500">ثم اضغط «حفظ الإعدادات». راجع الحد الشهري للإنفاق أدناه — التكلفة لكل تصميم تزيد تقريبًا 2–4 أضعاف.</p>
@@ -110,7 +129,7 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div><label className="label">تنبيه عند نسبة (%)</label><input type="number" min={1} max={100} className="input" value={v.alertThresholdPct} onChange={num('alertThresholdPct')} /></div>
         <div><label className="label">الحد الأقصى اليومي للإعلانات</label><input type="number" min={0} className="input" value={v.maxDailyAds} onChange={num('maxDailyAds')} /></div>
         <div><label className="label">أقصى إعادة محاولة لكل طلب</label><input type="number" min={0} max={5} className="input" value={v.maxRetries} onChange={num('maxRetries')} /></div>
-        <div className="md:col-span-2"><label className="label">اللغات المفعّلة</label><div className="flex gap-4 pt-2 text-sm">{[['ar', 'العربية'], ['en', 'English'], ['ml', 'Malayalam']].map(([k, l]) => <label key={k} className="flex items-center gap-1"><input type="checkbox" checked={v.languages.includes(k)} onChange={(e) => setV({ ...v, languages: e.target.checked ? [...v.languages, k] : v.languages.filter((x) => x !== k) })} />{l}</label>)}</div></div>
+        <div className="md:col-span-2"><label className="label">اللغات المفعّلة</label><div className="flex gap-4 pt-2 text-sm">{[['ar', 'العربية'], ['en', 'English'], ['ml', 'Malayalam'], ['hi', 'हिन्दी Hindi']].map(([k, l]) => <label key={k} className="flex items-center gap-1"><input type="checkbox" checked={v.languages.includes(k)} onChange={(e) => setV({ ...v, languages: e.target.checked ? [...v.languages, k] : v.languages.filter((x) => x !== k) })} />{l}</label>)}</div></div>
         <div className="md:col-span-3"><label className="label">الأسلوب الإبداعي</label><textarea rows={3} className="input ltr" value={v.creativeStyle} onChange={(e) => setV({ ...v, creativeStyle: e.target.value })} /></div>
         <fieldset className="grid gap-2 rounded-lg border p-3 md:col-span-3 md:grid-cols-5">
           <legend className="px-1 text-xs font-bold text-slate-500">أسعار تقديرية للتتبع (USD) — حدّثها وفق تسعير OpenAI الحالي</legend>

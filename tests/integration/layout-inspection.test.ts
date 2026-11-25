@@ -8,6 +8,8 @@ import { captureQueues, FakeAiProvider, resetDb, seedBase } from './helpers';
 beforeEach(async () => { await resetDb(); captureQueues(); });
 
 /** the first drawn poster has icons in the reserved bottom zone; the re-draw is clean */
+/** the benefit labels a full-AI prompt asks the model to draw (a real model draws them; the fake reader reports them) */
+const askedBenefits = (prompt: string) => { const m = /short benefits[^\n]*?: (.*)$/m.exec(prompt); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : []; };
 class Inspector extends FakeAiProvider {
   copy = ''; prompts: string[] = []; inspections = 0;
   async generateBrief(req: BriefRequest) { const r = await super.generateBrief(req); this.copy = [r.brief.headline, r.brief.badge, r.brief.supportingCopy ?? ''].filter(Boolean).join('\n'); return r; }
@@ -15,7 +17,7 @@ class Inspector extends FakeAiProvider {
   async inspectPoster() {
     this.inspections++;
     const clean = this.prompts.length >= 2;
-    return { text: this.copy, layout: { productVisible: true, bottomClear: clean, issues: clean ? [] : ['feature icons drawn in the bottom zone'] }, usage: { inputTokens: 900, outputTokens: 120 }, model: 'fake-vision' };
+    return { text: [this.copy, ...askedBenefits(this.prompts[this.prompts.length - 1] ?? '')].join('\n'), layout: { productVisible: true, bottomClear: clean, issues: clean ? [] : ['feature icons drawn in the bottom zone'] }, usage: { inputTokens: 900, outputTokens: 120 }, model: 'fake-vision' };
   }
 }
 

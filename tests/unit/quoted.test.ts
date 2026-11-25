@@ -35,8 +35,36 @@ describe('Google archive script generator', () => {
     expect(googleIdFrom('https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUv?usp=sharing', 'folder')).toBe('1AbCdEfGhIjKlMnOpQrStUv');
     expect(googleIdFrom('https://docs.google.com/spreadsheets/d/1ZyXwVuTsRqPoNmLkJiHgF/edit#gid=0', 'sheet')).toBe('1ZyXwVuTsRqPoNmLkJiHgF');
     expect(googleIdFrom('not a link', 'folder')).toBeNull();
-    const src = appsScriptSource({ folderId: 'F1234567890abcdef', sheetId: 'S1234567890abcdef', host: 'example.sslip.io' });
+    const src = appsScriptSource({ folderId: 'F1234567890abcdef', sheetId: 'S1234567890abcdef', host: 'example.sslip.io', key: 'K' });
     expect(src).toContain("FOLDER_ID = 'F1234567890abcdef'");
     expect(src).toContain("insertSheet('published')");
+  });
+});
+
+describe('image realism rules', () => {
+  it('every generated photo forbids the typical AI defects and asks for physically correct light', async () => {
+    const { scenePrompt, fullPosterPrompt, REALISM_RULES } = await import('@/lib/ai/prompts');
+    expect(REALISM_RULES).toMatch(/contact shadow/);
+    expect(REALISM_RULES).toMatch(/five fingers/);
+    expect(REALISM_RULES).toMatch(/melted, warped, duplicated or floating/);
+    const scene = scenePrompt('a printed mug on a marble table', 'luxury');
+    expect(scene).toContain(REALISM_RULES);
+    expect(scene).toMatch(/ABSOLUTELY NO text/); // the existing rules stay
+    const poster = fullPosterPrompt({ lang: 'ar', headline: 'هدية من القلب', badge: 'أكواب', features: [], sceneDescription: 'a printed mug', style: 'luxury' });
+    expect(poster).toContain(REALISM_RULES);
+    expect(scene.length).toBeLessThan(4000); // well inside the image model's prompt limit
+  });
+});
+
+describe('caption mentions the owner’s Instagram accounts', () => {
+  it('ends every caption with «تابعونا: @bhfcps @bhfcpss», never mentions an account in its own post, hashtags stay last', async () => {
+    const { buildCaption } = await import('@/lib/pipeline/generate');
+    const b = { caption: 'هدية تفرح القلب 🎁', hashtags: ['#البحرين', 'هدايا'] } as Parameters<typeof buildCaption>[0];
+    const c = buildCaption(b, { mentions: ['@bhfcps', '@bhfcpss'], ownHandle: null, lang: 'ar' });
+    expect(c).toBe('هدية تفرح القلب 🎁\n\nتابعونا: @bhfcps @bhfcpss\n\n#البحرين #هدايا');
+    expect(buildCaption(b, { mentions: ['@bhfcps', '@bhfcpss'], ownHandle: 'BHFCPS', lang: 'ar' })).toContain('تابعونا: @bhfcpss\n'); // not itself
+    expect(buildCaption(b, { mentions: ['@bhfcps'], ownHandle: '@bhfcps', lang: 'ar' })).not.toMatch(/تابعونا/); // nothing left to mention
+    expect(buildCaption(b, { mentions: ['@bhfcps'], lang: 'en' })).toContain('Follow us: @bhfcps');
+    expect(buildCaption(b)).toBe('هدية تفرح القلب 🎁\n\n#البحرين #هدايا'); // no mentions configured → unchanged
   });
 });

@@ -11,16 +11,19 @@ import { captureQueues, FakeAiProvider, resetDb, seedBase } from './helpers';
 beforeEach(async () => { await resetDb(); captureQueues(); });
 
 /** image model double whose drawn text the reader sees as correct (`good`) or misspelled (`bad`) */
+/** the benefit labels a full-AI prompt asks the model to draw (a real model draws them; the fake reader reports them) */
+const askedBenefits = (prompt: string) => { const m = /short benefits[^\n]*?: (.*)$/m.exec(prompt); return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : []; };
 class Studio extends FakeAiProvider {
-  copy: string[] = []; constructor(private good: boolean) { super(); }
+  copy: string[] = []; lastPrompt = ''; constructor(private good: boolean) { super(); }
   async generateBrief(req: BriefRequest) { const r = await super.generateBrief(req); this.copy = [r.brief.headline, r.brief.badge, r.brief.supportingCopy ?? ''].filter(Boolean); return r; }
-  async readText() { return { text: this.good ? this.copy.join('\n') : 'طباعه جمیع انواع [?]', usage: { inputTokens: 300, outputTokens: 40 }, model: 'fake-vision' }; }
+  async generateScene(prompt: string, opts: Parameters<FakeAiProvider['generateScene']>[1]) { this.lastPrompt = prompt; return super.generateScene(prompt, opts); }
+  async readText() { return { text: this.good ? [...this.copy, ...askedBenefits(this.lastPrompt)].join('\n') : 'طباعه جمیع انواع [?]', usage: { inputTokens: 300, outputTokens: 40 }, model: 'fake-vision' }; }
 }
 const OUT = process.env.V6_OUT_DIR;
 type Qc = { checks: { id: string; passed: boolean }[]; requiresHuman?: boolean };
 
-async function run(slug: string, good: boolean) {
-  const { accounts } = await seedBase({ productCount: 100, settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false } }) });
+async function run(slug: string, good: boolean, aiTextFallback: 'review' | 'template' = 'review') {
+  const { accounts } = await seedBase({ productCount: 100, settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false, aiTextFallback } }) });
   const product = await prisma.product.findUniqueOrThrow({ where: { slug } });
   setAiProviderOverride(new Studio(good));
   const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'v6-test', productId: product.id, format: 'IMAGE_STORY', direction: { renderMode: 'ai_full' } });
@@ -52,8 +55,8 @@ describe('V6 production pipeline — custom printed mug & roll-up banner', () =>
     });
   }
 
-  it('drawn Arabic text that never verifies is NOT shipped: re-rendered with system-typeset text (STEP 07)', async () => {
-    const { ad, o, png } = await run('ceramic-mugs', false);
+  it('drawn Arabic text that never verifies is NOT shipped: with «template» chosen, re-rendered with system-typeset text (STEP 07)', async () => {
+    const { ad, o, png } = await run('ceramic-mugs', false, 'template');
     expect(o.verifiedTextFallback).toBe(true);
     expect(ad.templateKey).not.toBe('ai-poster');
     const manifest = ad.layerManifest as { layers: { id: string; text?: string }[] };

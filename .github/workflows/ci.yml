@@ -76,7 +76,7 @@ jobs:
           DATABASE_URL: postgresql://fc:fc@localhost:5432/fcap_test
         run: |
           npx prisma migrate deploy
-          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code \
+          npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code \
             || { echo "::error title=Migration missing::prisma/schema.prisma differs from prisma/migrations — run «npx prisma migrate dev --name <change>» and commit the migration"; exit 1; }
       - name: Integration tests (PostgreSQL + Redis) — shard ${{ matrix.shard }}/3
         run: npm run test:integration -- --shard=${{ matrix.shard }}/3 --reporter=default --reporter=github-actions
@@ -86,7 +86,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build the production image (not pushed)
         uses: docker/build-push-action@v7
         with:

@@ -40,19 +40,52 @@ describe('Google Drive as cold storage', () => {
     expect((final.meta as { drive?: { id: string; size: number } }).drive).toMatchObject({ size: final.bytes });
   });
 
-  it('offload removes the server file ONLY when Drive confirmed the same size and the design is old; the dashboard then opens Drive', async () => {
+  it('offload removes the server file ONLY when Drive confirms the same size AND SHA-256 at that moment; the dashboard then opens Drive', async () => {
     const ad = await publishedAd(60);
     await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
     await queueGoogleArchive(ad.id, null); await deliverPending(scriptAnswer());
     const final = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: ad.id, role: 'FINAL' } });
-    expect(await offloadArchivedMedia({ afterDays: 90 })).toMatchObject({ removed: 0 }); // not old enough
-    const r = await offloadArchivedMedia({ afterDays: 45 });
+    const driveId = (final.meta as { drive: { id: string } }).drive.id;
+    const intact = async (ids: string[]) => ids.map((id) => ({ id, size: final.bytes, sha256: final.sha256 }));
+    expect(await offloadArchivedMedia({ afterDays: 90, verify: intact })).toMatchObject({ removed: 0 }); // not old enough
+    // any doubt keeps the file: a different fingerprint, a file missing on Drive, a script that cannot verify
+    expect(await offloadArchivedMedia({ afterDays: 45, verify: async (ids) => ids.map((id) => ({ id, size: final.bytes, sha256: 'f'.repeat(64) })) })).toMatchObject({ removed: 0, mismatched: 1 });
+    expect(await offloadArchivedMedia({ afterDays: 45, verify: async (ids) => ids.map((id) => ({ id, missing: true })) })).toMatchObject({ removed: 0, mismatched: 1 });
+    expect(await offloadArchivedMedia({ afterDays: 45, verify: async () => { throw new Error('unknown event'); } })).toMatchObject({ removed: 0, blocked: 'unknown event' });
+    expect(await storage().exists(final.storageKey)).toBe(true);
+    const r = await offloadArchivedMedia({ afterDays: 45, verify: async (ids) => { expect(ids).toEqual([driveId]); return intact(ids); } });
     expect(r.removed).toBe(1); expect(r.freedBytes).toBe(final.bytes);
     expect(await storage().exists(final.storageKey)).toBe(false);
     expect(await driveFallback(final.storageKey)).toMatch(/^https:\/\/drive\.google\.com\/file\/d\/drive-0-/);
     const thumb = await prisma.mediaAsset.findFirst({ where: { advertisementId: ad.id, role: { notIn: ['FINAL', 'VIDEO', 'SLIDE'] } } });
     if (thumb) expect(await storage().exists(thumb.storageKey)).toBe(true); // layers / thumbnails stay
-    expect((await offloadArchivedMedia({ afterDays: 45 })).removed).toBe(0); // idempotent
+    expect((await offloadArchivedMedia({ afterDays: 45, verify: intact })).removed).toBe(0); // idempotent
+    const after = await prisma.mediaAsset.findUniqueOrThrow({ where: { id: final.id } });
+    expect((after.meta as { verifiedSha256At?: string }).verifiedSha256At).toBeTruthy();
+  });
+
+  it('a server file that no longer matches its own recorded fingerprint is never removed', async () => {
+    const ad = await publishedAd(60);
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    await queueGoogleArchive(ad.id, null); await deliverPending(scriptAnswer());
+    const final = await prisma.mediaAsset.findFirstOrThrow({ where: { advertisementId: ad.id, role: 'FINAL' } });
+    await storage().put(final.storageKey, Buffer.alloc(final.bytes, 7), final.mimeType); // same size, different content
+    const r = await offloadArchivedMedia({ afterDays: 45, verify: async (ids) => ids.map((id) => ({ id, size: final.bytes, sha256: final.sha256 })) });
+    expect(r).toMatchObject({ removed: 0, mismatched: 1 });
+    expect(await storage().exists(final.storageKey)).toBe(true);
+  });
+
+  it('every request to the script carries the auth key (added at send time, never stored in the outbox)', async () => {
+    const ad = await publishedAd(10);
+    await setSecret('GOOGLE_ARCHIVE_URL', URL_, 't');
+    await queueGoogleArchive(ad.id, null);
+    const row = await prisma.webhookDelivery.findFirstOrThrow();
+    expect(JSON.stringify(row.payload)).not.toMatch(/"key"/);
+    let sentKey = '';
+    await deliverPending((async (_u: string, init: { body: string }) => { sentKey = JSON.parse(init.body).key; return scriptAnswer()(_u, init as never); }) as unknown as typeof fetch);
+    expect(sentKey).toMatch(/^[a-f0-9]{64}$/);
+    const { archiveKey } = await import('@/lib/integrations/google-archive');
+    expect(await archiveKey()).toBe(sentKey); // one stable key, stored encrypted
   });
 
   it('a size mismatch keeps the server file', async () => {
@@ -110,7 +143,7 @@ describe('Google Drive as cold storage', () => {
   });
 
   it('the v2 script returns Drive ids and stores database backups', () => {
-    const src = appsScriptSource({ folderId: 'F1', sheetId: 'S1', host: 'example.test', keepBackups: 12 });
+    const src = appsScriptSource({ folderId: 'F1', sheetId: 'S1', host: 'example.test', keepBackups: 12, key: 'K' });
     expect(src).toMatch(/const VERSION = [2-9];/); expect(src).toContain('const KEEP_BACKUPS = 12;');
     expect(src).toMatch(/file\.getId\(\)/); expect(src).toMatch(/function backupPart/);
   });

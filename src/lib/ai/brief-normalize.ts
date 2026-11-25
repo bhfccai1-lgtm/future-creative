@@ -5,7 +5,7 @@
  * - Lists are capped (hashtags, slides).
  * Content rules (claims, phones, spelling…) are still enforced later by QC — this only fixes length/shape.
  */
-export const BRIEF_LIMITS = { idea: 400, ideaKey: 120, audience: 200, occasion: 120, sceneDescription: 1500, headline: 60, badge: 24, supportingCopy: 110, cta: 30, caption: 1800, styleNotes: 400, hashtag: 40, hashtags: 12, slideTitle: 60, slideBody: 220, slides: 5, shot: 600, shots: 4 } as const;
+export const BRIEF_LIMITS = { idea: 400, ideaKey: 120, audience: 200, occasion: 120, sceneDescription: 1500, headline: 60, badge: 24, supportingCopy: 110, cta: 30, caption: 1800, styleNotes: 400, hashtag: 40, hashtags: 5, slideTitle: 60, slideBody: 220, slides: 5, shot: 600, shots: 4 } as const;
 
 export function fitText(s: unknown, max: number): string {
   const t = String(s ?? '').replace(/\s+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();

@@ -161,7 +161,7 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
     const lt = await renderText({ text: c.label, lang, weight: 'bold', color: WHITE, maxSize: 44, minSize: 28, boxW: Math.round(colW2 - 60), boxH: 52, maxLines: 1 });
     layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, L.label, lt.width, lt.height, { x: Math.round(cx - colW2 / 2 + 20), y: L.label, w: Math.round(colW2 - 40), h: 52 }, lt, c.label, WHITE));
 
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 60, minSize: 38, boxW: Math.round(colW2 - 160), boxH: 66, maxLines: 1, ltr: true });
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' || lang === 'hi' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: 60, minSize: 38, boxW: Math.round(colW2 - 160), boxH: 66, maxLines: 1, ltr: true });
     const pw = Math.round(Math.min(colW2 - 30, nt.width + 140)), ph = 86, iconD = 58;
     const iconX = lang === 'ar' ? 22 : pw - iconD - 22;
     const pill = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><defs>${goldGrad('g')}</defs><rect x="3" y="3" width="${pw - 6}" height="${ph - 6}" rx="${(ph - 6) / 2}" fill="#081226" fill-opacity="0.92" stroke="url(#g)" stroke-width="5"/><g transform="translate(${iconX} ${(ph - iconD) / 2}) scale(${iconD / 100})" fill="url(#g)" stroke="url(#g)">${WA}</g></svg>`);
@@ -197,7 +197,18 @@ export const AI_POSTER_KEY = 'ai-poster';
  * keeps all drawn text inside the safe central width). The model leaves the top zone empty for the ORIGINAL logo and
  * the bottom zone as plain background, where the system overlays the gold order button and the glass phone panel.
  */
-export function aiPosterGeometry(h: number) {
+export function aiPosterGeometry(h: number, featureRow = true, logoBottom = false) {
+  const b = aiPosterGeometryBase(h);
+  // no system feature row → nothing reserved for it: the design gets that space (feed: bottom zone 40 % → 26 %)
+  const g = featureRow || !b.features ? b : { ...b, features: null, bottomPct: h === 1350 ? 26 : b.bottomPct };
+  if (!logoBottom) return g;
+  // logo in the footer, between the two branches (owner's sketch): the design fills the top; the logo box sits centred,
+  // rising a little above the glass panel
+  // as tall as fits between the order button and the panel's bottom edge (never touching the button)
+  const lh = Math.min(Math.round(g.panel.h * 1.3), g.panel.y + g.panel.h - (g.cta.y + g.cta.h) - 10), lw = Math.round(lh * 1.25);
+  return { ...g, topBand: 0, topPct: h === 1350 ? 10 : g.topPct, logo: { w: lw, h: lh, y: g.panel.y + g.panel.h - lh } };
+}
+function aiPosterGeometryBase(h: number) {
   // topBand: the logo's own zone (a soft extension of the art) — the AI design starts BELOW it, so the logo can never cover drawn text
   // Stories / Reels: everything Instagram must not cover sits inside IG_SAFE_1920 (logo below the account bar, order
   // button + phones above the caption/reply area, panel clear of the Reels side icons, all inside the 3:4 grid crop).
@@ -207,7 +218,8 @@ export function aiPosterGeometry(h: number) {
   return { H: h, topBand: 118, topPct: 4, bottomPct: 36, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 92, padX: 70, logo: { w: 230, h: 100, y: 16 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
 }
 /** The image size to request from the model for a full-AI poster of this format height. */
-export const aiPosterImageSize = (h: number): '1024x1536' | '1024x1024' => (h === 1920 ? '1024x1536' : '1024x1024');
+export const aiPosterImageSize = (h: number, logoBottom = false): '1024x1536' | '1024x1024' =>
+  (h === 1920 || (h === 1350 && logoBottom) ? '1024x1536' : '1024x1024'); // feed with the logo in the footer: no top band → a portrait design fills it
 
 /** Gold ribbon swooshes rising from both bottom corners (behind the panel), like the reference posters. */
 const ribbons = (H: number) => {
@@ -218,10 +230,18 @@ const ribbons = (H: number) => {
 };
 
 /** Background for the full-AI poster: the AI design full-bleed + soft legibility gradient + glass phone panel + ribbons. */
-export async function buildAiPosterBackground(poster: Buffer, height = 1920): Promise<Buffer> {
-  const g = aiPosterGeometry(height), H = g.H, artH = H - g.topBand;
+export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true, logoBottom = false): Promise<Buffer> {
+  const g = aiPosterGeometry(height, featureRow, logoBottom), H = g.H, artH = H - g.topBand;
   // never crop the design when the aspect differs a lot (square output from a 1:1 image): fit it whole on a blurred fill
-  const crop = Math.abs(W / artH - 1) > 0.1 && Math.abs(W / artH - 2 / 3) > 0.05;
+  // (a full-height 9:16 story — logo in the footer — is a normal cover crop of the 2:3 design: ~8 % per side)
+  // fit the design whole on a blurred fill only when its own shape is far from the art area (e.g. a square design in a
+  // tall frame); otherwise a cover crop — a blurred band at the top was the visible result of the old fixed-ratio rule
+  //  • square design: cover only in a near-square/slightly tall area (feed); a wider area (square post) keeps the blurred
+  //    sides so the top text is never cut
+  //  • portrait 2:3 design: cover in any tall area from 9:16 to 4:5 (stories, and the feed with the logo in the footer)
+  const im = await sharp(poster).metadata();
+  const ia = im.width! / im.height!, r = W / artH;
+  const crop = ia >= 0.95 ? r > 1.05 || r < 0.85 : r < 0.5 || r > 0.85;
   const soft = (w: number, h: number, blur: number, b: number) => sharp(poster).resize(w, h, { fit: 'fill' }).blur(blur).modulate({ brightness: b }).removeAlpha().png().toBuffer();
   let art: Buffer;
   if (!crop) art = await sharp(poster).resize(W, artH, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
@@ -231,24 +251,34 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920): Pr
     art = await sharp(await soft(W, artH, 34, 0.7)).composite([{ input: main, left: Math.round((W - side) / 2), top: Math.round((artH - side) / 2) }]).png().toBuffer();
   }
   // logo band: the whole design's colours, heavily blurred and deepened (no ghost of drawn text) — one continuous image
-  const edge = await soft(W, g.topBand + 60, 48, 0.55);
+  // built from the TOP strip of the design (not the whole design squashed), so it continues the art above it and the
+  // bright product never shows through as a blurred ghost — visible once the logo sits in a corner
+  const pm = await sharp(poster).metadata();
+  const strip = await sharp(poster).extract({ left: 0, top: 0, width: pm.width!, height: Math.max(8, Math.round(pm.height! * 0.14)) }).png().toBuffer();
+  const edge = await sharp(strip).resize(W, g.topBand + 60, { fit: 'fill' }).blur(48).modulate({ brightness: 0.55 }).removeAlpha().png().toBuffer();
   const feather = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${artH}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${(90 / artH).toFixed(4)}" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="${W}" height="${artH}" fill="url(#f)"/></svg>`);
   const artFeathered = await sharp(art).ensureAlpha().composite([{ input: feather, blend: 'dest-in' }]).png().toBuffer();
   const base = await sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
-    .composite([{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
+    // no logo band (logo in the footer): the design itself starts at the top edge — no blend, no dark seam
+    .composite(g.topBand === 0 ? [{ input: art, left: 0, top: 0 }] : [{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
   const zone = (g.features?.y ?? g.cta.y) - 70, px = g.padX, pw = W - 2 * px;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
+      <linearGradient id="unfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.92"/><stop offset="0.35" stop-color="${NAVY}" stop-opacity="0.25"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.15"/></linearGradient>
       <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}" stop-opacity="0.94"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.96"/></linearGradient>
       <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset="0.5" stop-color="#e6c25a"/><stop offset="1" stop-color="#9c6f1c"/></linearGradient>
       <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.35"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></radialGradient></defs>
     <ellipse cx="${W / 2}" cy="${g.logo.y + g.logo.h / 2}" rx="${g.logo.w * 0.75}" ry="${g.logo.h * 0.8}" fill="url(#lg)"/>
-    <rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>
+    ${H === 1920
+      // Reels / Stories: the shade sits only behind the order button and the phones, then fades out — below them (where
+      // Instagram draws its own caption and buttons) the design itself continues instead of an empty dark block
+      ? `<rect x="0" y="${zone}" width="${W}" height="${g.panel.y + g.panel.h + 70 - zone}" fill="url(#fade)"/><rect x="0" y="${g.panel.y + g.panel.h + 70}" width="${W}" height="${H - (g.panel.y + g.panel.h + 70)}" fill="url(#unfade)"/>`
+      : `<rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>`}
     ${ribbons(H)}
     ${g.features ? `<rect x="40" y="${g.features.y - 14}" width="${W - 80}" height="${Math.round(g.features.icon + g.features.label * 1.6 + 26)}" rx="28" fill="${NAVY}" fill-opacity="0.72" stroke="url(#gg)" stroke-opacity="0.55" stroke-width="2"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
     <rect x="${px + 24}" y="${g.panel.y + 6}" width="${pw - 48}" height="2" fill="#ffffff" opacity="0.18"/>
-    <rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>
+    ${logoBottom ? '' : `<rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>`}
   </svg>`;
   return sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
 }
@@ -259,15 +289,33 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920): Pr
  */
 export async function composeAiPoster(input: ComposeInput): Promise<ComposeResult> {
   const lang = input.lang;
-  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h), H = g.H;
-  const background = await buildAiPosterBackground(input.scene, H);
+  const hasRow = ((input as ComposeInput & { features?: string[] }).features ?? []).length > 0; // the glass row is drawn only when it holds features
+  const logoBottom = input.logoPosition === 'bottom-center';
+  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h, hasRow, logoBottom), H = g.H;
+  const background = await buildAiPosterBackground(input.scene, H, hasRow, logoBottom);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
-  // the original logo, large, in the empty top zone
-  const lb = { x: Math.round((W - g.logo.w) / 2), y: g.logo.y, w: g.logo.w, h: g.logo.h };
+  // the ORIGINAL logo (the supplied file, only scaled) in the empty top zone, where the design needs it:
+  // centred (default), in a corner (smaller, leaves the stage to the design), or centred with the centre's name under it
+  const pos = input.logoPosition ?? 'auto';
+  const corner = pos === 'top-right' || pos === 'top-left';
+  const withName = pos === 'top-center-name' && !!input.brandName?.trim();
+  const lw = corner ? Math.round(g.logo.w * 0.72) : g.logo.w;
+  const lh = corner ? Math.round(g.logo.h * 0.72) : withName ? Math.round(g.logo.h * 0.66) : g.logo.h;
+  const lx = pos === 'top-right' ? W - g.padX - lw : pos === 'top-left' ? g.padX : Math.round((W - lw) / 2); // centred also for bottom-center
+  const lb = { x: lx, y: g.logo.y, w: lw, h: lh };
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
-  layers.push(place('logo', logoPng, lb.x + (lb.w - lm.width!) / 2, lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
+  const logoX = pos === 'top-right' ? lb.x + lb.w - lm.width! : pos === 'top-left' ? lb.x : lb.x + (lb.w - lm.width!) / 2;
+  layers.push(place('logo', logoPng, logoX, corner ? lb.y : lb.y + (lb.h - lm.height!) / 2, lm.width!, lm.height!, lb, null));
+  if (withName) {
+    // the centre's name typed by the system under the logo (exact spelling), like a printed flyer header
+    const name = input.brandName!.trim();
+    const nameLang: Lang = /[\u0600-\u06FF]/.test(name) ? 'ar' : 'en';
+    const nb = { x: Math.round(W * 0.12), y: lb.y + lh + 4, w: Math.round(W * 0.76), h: Math.max(28, g.logo.h - lh - 4) };
+    const nt = await renderText({ text: name, lang: nameLang, weight: 'extrabold', color: '#ffffff', maxSize: Math.round(nb.h * 0.92), minSize: 20, boxW: nb.w, boxH: nb.h, maxLines: 1 });
+    layers.push(place('brand' as PlacedLayer['id'], nt.png, nb.x + (nb.w - nt.width) / 2, nb.y, nt.width, nt.height, nb, nt, name, '#ffffff'));
+  }
 
   // feature row — typeset by the system (verified spelling) in its own row above the order button, never drawn by the AI
   const feats = ((input as ComposeInput & { features?: string[] }).features ?? []).slice(0, 4);
@@ -303,14 +351,15 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
 
   // branches inside the glass panel: gold branch name, then the number in a gold pill
   const order = lang === 'ar' ? [...input.contacts].reverse() : input.contacts;
-  const inner = W - 2 * g.padX, col = inner / Math.max(1, order.length);
+  const gap = logoBottom ? g.logo.w + 24 : 0; // the logo stands between the two branches
+  const inner = W - 2 * g.padX - gap, col = inner / Math.max(1, order.length);
   const labelH = Math.round(g.panel.h * 0.3), pillH = Math.round(g.panel.h * 0.44);
   const labelY = g.panel.y + Math.round(g.panel.h * 0.08), pillY = g.panel.y + g.panel.h - pillH - Math.round(g.panel.h * 0.1);
   for (let i = 0; i < order.length; i++) {
-    const c = order[i]; const cx = g.padX + col * i + col / 2;
+    const c = order[i]; const cx = g.padX + col * i + col / 2 + (logoBottom && i >= order.length / 2 ? gap : 0);
     const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: '#f6d77a', maxSize: Math.round(labelH * 0.78), minSize: 24, boxW: Math.round(col - 60), boxH: labelH, maxLines: 1 });
     layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, labelY + (labelH - lt.height) / 2, lt.width, lt.height, { x: Math.round(cx - col / 2 + 30), y: labelY, w: Math.round(col - 60), h: labelH }, lt, c.label, '#f6d77a'));
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 150), boxH: pillH - 8, maxLines: 1, ltr: true });
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' || lang === 'hi' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 150), boxH: pillH - 8, maxLines: 1, ltr: true });
     const iconD = Math.round(pillH * 0.62), pw = Math.min(Math.round(col - 30), nt.width + iconD + 70);
     const psvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${pillH}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${pillH - 4}" rx="${(pillH - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="3"/>
       <rect x="12" y="6" width="${pw - 24}" height="${pillH * 0.34}" rx="${pillH * 0.17}" fill="#fff" opacity="0.28"/>

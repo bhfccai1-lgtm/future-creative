@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import type { MediaFormat } from '@prisma/client';
 import { renderText, type RenderedText } from './text';
-import { FORMAT_SIZE, px, templateFor } from './templates';
+import { FORMAT_SIZE, productZone, px, templateFor } from './templates';
 import { AI_POSTER_KEY, POSTER_KEY, buildAiPosterBackground, buildPosterBackground, composeAiPoster, composePoster } from './poster';
 import type { Lang } from './fonts';
 
@@ -30,6 +30,9 @@ export interface ComposeInput {
   features?: string[];
   /** Gold-poster layout only: footer ribbon (shop name · country) */
   footer?: string | null;
+  /** Full-AI poster: where the original logo goes; brandName is typed under it for 'top-center-name' */
+  logoPosition?: string | null;
+  brandName?: string | null;
 }
 
 export interface PlacedLayer {
@@ -129,7 +132,7 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
     const phoneBox = { x, y: cy + Math.round(ch * 0.36), w: cardW, h: Math.round(ch * 0.64) };
     const label = await renderText({ text: c.label, lang: input.lang, weight: 'bold', color: th.label, maxSize: Math.round(36 * scale), minSize: Math.round(24 * scale), boxW: labelBox.w, boxH: labelBox.h, maxLines: 1 });
     // Phone digits are always Latin digits rendered with the Cairo font, isolated as LTR
-    const phone = await renderText({ text: c.phone, lang: input.lang === 'ml' ? 'en' : input.lang, weight: 'extrabold', color: th.phone, maxSize: Math.round(60 * scale), minSize: Math.round(34 * scale), boxW: phoneBox.w, boxH: phoneBox.h, maxLines: 1, ltr: true });
+    const phone = await renderText({ text: c.phone, lang: input.lang === 'ml' || input.lang === 'hi' ? 'en' : input.lang, weight: 'extrabold', color: th.phone, maxSize: Math.round(60 * scale), minSize: Math.round(34 * scale), boxW: phoneBox.w, boxH: phoneBox.h, maxLines: 1, ltr: true });
     // Stack label + gap + number, vertically centred in the card
     const gapPx = Math.round(14 * scale);
     const stackH = Math.min(label.height, labelBox.h) + gapPx + Math.min(phone.height, phoneBox.h);
@@ -155,14 +158,17 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
  * Exported so pro reels can build extra scenes with exactly the same layout.
  */
 export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, templateKey: string | null | undefined, contactsCount: number, themeKey: ThemeKey = 'navy_gold', featureCount = 4): Promise<Buffer> {
-  if (templateKey === AI_POSTER_KEY) return buildAiPosterBackground(sceneBuf, FORMAT_SIZE[format].h);
+  if (templateKey === AI_POSTER_KEY) return buildAiPosterBackground(sceneBuf, FORMAT_SIZE[format].h, featureCount > 0);
   if (templateKey === POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildPosterBackground(sceneBuf, featureCount);
   const { w: W, h: H } = FORMAT_SIZE[format];
   const t = templateFor(templateKey, H);
   const scale = W / 1080;
   const th = THEMES[themeKey];
-  // ── Layer 1: scene, cover-fit to canvas (centre crop) ──
-  const scene = await sharp(sceneBuf).resize(W, H, { fit: 'cover', position: 'attention' }).removeAlpha().png().toBuffer();
+  // ── Layer 1: scene, cover-fit to canvas ──
+  // when the scene was generated for this template's product zone, crop exactly centred so the product stays where
+  // the zone put it (an «attention» crop moves it up to 20 % toward the text); otherwise keep the attention crop
+  const position = productZone(templateKey, W, H) ? 'centre' : 'attention';
+  const scene = await sharp(sceneBuf).resize(W, H, { fit: 'cover', position }).removeAlpha().png().toBuffer();
 
   // ── Static background decorations (shades, bottom panel, frame) ──
   const panelY = Math.round(t.panel.y * H);

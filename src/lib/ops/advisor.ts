@@ -8,6 +8,8 @@ import { monthToDateSpend } from '../ai/cost';
 import { startOfMonthInTz } from '../time';
 import { analyse, loadSamples, labelOf } from '../analytics/insights';
 import { HEARTBEAT_KEY } from './diagnostics';
+import { financeReport } from './finance';
+import { formatInTimeZone } from 'date-fns-tz';
 
 /**
  * Professional advisor: deterministic rules over REAL system data (no AI call, no cost). Every advice carries the
@@ -62,6 +64,9 @@ export async function existingDir(p: string) {
 }
 
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
+
+/** more posts than this on one account in one day is flagged (posting_overload) */
+export const OVERLOAD_PER_DAY = 3;
 
 export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
   const s = await getSettings();
@@ -162,6 +167,24 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
   // ───────── growth ─────────
   const fixedStory = accounts.filter((a) => a.formatStrategy !== 'GROWTH_MIX' && a.publishFormat === 'IMAGE_STORY' && a.autoPublishEnabled);
   if (fixedStory.length) add({ id: 'story_only', category: 'growth', severity: 'medium', title: 'حسابات تنشر ستوري فقط', evidence: `${fixedStory.length} حساب: ${fixedStory.slice(0, 5).map((a) => a.name).join('، ')}`, why: 'بيانات حساباتك: الريلز وصلت 4–6 أضعاف المتابعين، والستوري لا تجلب متابعين جددًا.', steps: ['في إعدادات كل حساب: «استراتيجية المحتوى» = مزيج النمو (50% ريلز · 25% كاروسيل)'], link: '/accounts' });
+  // posting overload: many posts on one account in one day split the audience's attention — reach per post drops
+  // (real data: an account with 10 posts in a day stayed at ~17 reach per reel while focused accounts reached 30–60)
+  const dayJobs = await prisma.publicationJob.findMany({
+    where: { primary: true, state: { in: ['QUEUED', 'PUBLISHING', 'SCHEDULED', 'PUBLISHED', 'UNKNOWN'] }, scheduledFor: { gte: ago(7), lte: new Date(now.getTime() + 2 * 86400_000) } },
+    select: { accountId: true, scheduledFor: true }, take: 5000,
+  });
+  const overloaded = accounts.map((a) => {
+    const perDay = dayJobs.filter((j) => j.accountId === a.id).reduce<Record<string, number>>((m, j) => { const d = formatInTimeZone(j.scheduledFor, a.timezone, 'yyyy-MM-dd'); m[d] = (m[d] ?? 0) + 1; return m; }, {});
+    const [day, n] = Object.entries(perDay).sort((x, y) => y[1] - x[1])[0] ?? ['', 0];
+    return { a, day, n };
+  }).filter((x) => x.n > OVERLOAD_PER_DAY).sort((x, y) => y.n - x.n);
+  if (overloaded.length) add({
+    id: 'posting_overload', category: 'growth', severity: 'medium', title: 'نشر مكثف في يوم واحد على نفس الحساب',
+    evidence: overloaded.slice(0, 5).map((x) => `${x.a.name}: ${x.n} منشورات يوم ${x.day}`).join(' · '),
+    why: 'أكثر من 3 منشورات يوميًا على الحساب نفسه توزّع اهتمام الجمهور فيقل وصول كل منشور، والخوارزمية تكافئ الانتظام لا الكثافة.',
+    steps: ['في إعدادات كل حساب: «أقصى عدد إعلانات يوميًا» = 3 (ريلز في 10:00 و18:00 وواحد بينهما)', ...(s.publishing.minGapMinutes < 120 ? [`في إعدادات النشر: الحد الأدنى بين منشورين ${s.publishing.minGapMinutes} دقيقة — اجعله 180`] : [])],
+    link: `/accounts/${overloaded[0].a.id}`,
+  });
   // niche-named accounts (stickers, gifts, mugs…) without categories publish ANY product — off-niche posts confuse followers
   const offNiche = (await planRecommended().catch(() => [] as Awaited<ReturnType<typeof planRecommended>>)).filter((r) => r.niche && r.categories.length);
   if (offNiche.length) add({ id: 'niche_without_categories', category: 'content', severity: 'medium', title: 'حسابات متخصصة تنشر منتجات خارج تخصصها', evidence: `${offNiche.length} حساب بلا فئات: ${offNiche.slice(0, 6).map((r) => `${r.name} (${r.niche})`).join('، ')}`, why: 'حساب الملصقات أو الهدايا الذي ينشر كروتًا أو لوحات يربك المتابعين ويضعف ظهوره لجمهوره المتخصص.', steps: ['الجدول الزمني ← «الإعداد الموصى به» ← تطبيق (يضبط الفئات للحسابات المتخصصة فقط ولا يغيّر ما اخترته)', 'أو في إعدادات كل حساب: اختر الفئات المسموحة يدويًا'], link: '/schedule' });
@@ -186,6 +209,15 @@ export async function runAdvisor(now = new Date()): Promise<AdvisorReport> {
   // ───────── cost ─────────
   if (s.ai.monthlyBudgetUsd > 0 && kpis.projectedMonthSpend > s.ai.monthlyBudgetUsd) add({ id: 'budget_projection', category: 'cost', severity: kpis.monthSpend >= s.ai.monthlyBudgetUsd ? 'high' : 'medium', title: 'الإنفاق المتوقع يتجاوز الميزانية الشهرية', evidence: `أُنفق $${kpis.monthSpend} حتى اليوم ${dayOfMonth} · المتوقع $${kpis.projectedMonthSpend} من $${s.ai.monthlyBudgetUsd}`, why: 'عند بلوغ الحد يتوقف التوليد تلقائيًا حتى الشهر التالي.', steps: ['خفّض جودة الصور إلى medium', 'قلّل الريلز الاحترافية متعددة المشاهد وفيديوهات Veo', 'ركّز التوليد على الحسابات الأساسية', 'أو ارفع الميزانية إن كان العائد مبررًا'], link: '/settings/ai' });
   if (kpis.costPerVerifiedPost !== null && kpis.costPerVerifiedPost > 2) add({ id: 'cost_per_post', category: 'cost', severity: 'low', title: 'تكلفة المنشور المؤكد مرتفعة', evidence: `$${kpis.costPerVerifiedPost} لكل منشور مؤكد (7 أيام)`, why: 'تصاميم كثيرة تُولَّد ولا تُنشر (رفض/فشل/تكرار).', steps: ['ارفع نسبة الاعتماد (راجع توصيات المحتوى)', 'عالج أسباب فشل النشر'], link: '/analytics' });
+  // financial intelligence: accounts that keep costing designs but bring no recorded customer or revenue (30 days)
+  const fin = await financeReport(now).catch(() => null);
+  if (fin?.noReturn.length) add({
+    id: 'account_no_return', category: 'cost', severity: 'low', title: 'حسابات تستهلك تصاميم بلا عملاء مسجلين',
+    evidence: fin.noReturn.slice(0, 5).map((a) => `${a.name}: ${a.designs} تصميم · تكلفة تقديرية ${a.estCostBhd.toFixed(3)} د.ب · 0 عملاء`).join(' · '),
+    why: 'التكلفة تقديرية (موزعة على عدد التصاميم). قبل الحكم: تأكد أن عملاء هذا الحساب يُسجَّلون في «العملاء» مع الحساب المصدر — بدون التسجيل لا يظهر العائد.',
+    steps: ['سجّل كل عميل جاء من الحساب في صفحة العملاء واختر الحساب المصدر', 'إن بقي بلا عملاء بعد أسبوعين من التسجيل: خفّض «أقصى عدد يوميًا» لهذا الحساب ووجّه الميزانية لحساب يجلب عملاء'],
+    link: '/leads',
+  });
 
   // ───────── integrations ─────────
   const gemini = await secretStatus('GEMINI_API_KEY');

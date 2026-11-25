@@ -7,8 +7,8 @@ export interface Slide { title: string; body: string }
 export interface CarouselResult { slides: Buffer[]; problems: string[] }
 
 const W = 1080, H = 1350;
-const SWIPE: Record<Lang, string> = { ar: 'اسحب للمزيد', en: 'Swipe for more', ml: 'കൂടുതൽ കാണാൻ സ്വൈപ്പ് ചെയ്യൂ' };
-const SAVE: Record<Lang, string> = { ar: 'احفظ المنشور وأرسله لمن يحتاجه', en: 'Save this post & send it to a friend', ml: 'ഈ പോസ്റ്റ് സേവ് ചെയ്ത് സുഹൃത്തിന് അയയ്ക്കൂ' };
+const SWIPE: Record<Lang, string> = { ar: 'اسحب للمزيد', en: 'Swipe for more', ml: 'കൂടുതൽ കാണാൻ സ്വൈപ്പ് ചെയ്യൂ', hi: 'और देखने के लिए स्वाइप करें' };
+const SAVE: Record<Lang, string> = { ar: 'احفظ المنشور وأرسله لمن يحتاجه', en: 'Save this post & send it to a friend', ml: 'ഈ പോസ്റ്റ് സേവ് ചെയ്ത് സുഹൃത്തിന് അയയ്ക്കൂ', hi: 'यह पोस्ट सेव करें और किसी दोस्त को भेजें' };
 
 /** Truthful, generic fill-in slides (no prices, times or promises) used when the brief returned fewer than 3. */
 export const FALLBACK_SLIDES: Record<Lang, Slide[]> = {
@@ -26,6 +26,11 @@ export const FALLBACK_SLIDES: Record<Lang, Slide[]> = {
     { title: 'ഉൽപ്പന്നം തിരഞ്ഞെടുക്കൂ', body: 'മഗ്ഗുകൾ, സ്റ്റിക്കറുകൾ, പ്രിന്റുകൾ, കസ്റ്റം ഗിഫ്റ്റുകൾ — നിങ്ങളുടെ ആവശ്യത്തിന്.' },
     { title: 'നിങ്ങളുടെ ആശയം അയയ്ക്കൂ', body: 'ഫോട്ടോ, പേര്, വാചകം അല്ലെങ്കിൽ ലോഗോ — ഞങ്ങൾ ഡിസൈനാക്കും.' },
     { title: 'അടുത്തുള്ള ബ്രാഞ്ചുമായി ബന്ധപ്പെടൂ', body: 'സാർ, സൽമാബാദ് ബ്രാഞ്ചുകൾ നിങ്ങളുടെ ഓർഡറിനായി തയ്യാർ.' },
+  ],
+  hi: [
+    { title: 'अपना प्रोडक्ट चुनें', body: 'मग, स्टिकर, प्रिंट और कस्टम गिफ्ट — आपकी ज़रूरत के हिसाब से।' },
+    { title: 'अपना आइडिया भेजें', body: 'फोटो, नाम, संदेश या लोगो — डिज़ाइन हम बनाएंगे।' },
+    { title: 'नज़दीकी ब्रांच से संपर्क करें', body: 'सार और सलमाबाद ब्रांच आपके ऑर्डर के लिए तैयार हैं।' },
   ],
 };
 

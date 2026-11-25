@@ -87,7 +87,7 @@ export function AccountForm({ account, products, categories = [], linked = [] }:
         </select></div>
       <div><label className="label">المعرّف (@handle)</label><input className="input ltr" value={a.handle ?? ''} onChange={(e) => set('handle', e.target.value || null)} /></div>
       <div><label className="label">لغة الإعلانات</label>
-        <select className="input" value={a.language} onChange={(e) => set('language', e.target.value)}><option value="ar">العربية</option><option value="en">English</option><option value="ml">മലയാളം Malayalam</option></select></div>
+        <select className="input" value={a.language} onChange={(e) => set('language', e.target.value)}><option value="ar">العربية</option><option value="en">English</option><option value="ml">മലയാളം Malayalam</option><option value="hi">हिन्दी Hindi</option></select></div>
       <div><label className="label">فئة النشاط</label><input className="input" value={a.businessCategory ?? ''} onChange={(e) => set('businessCategory', e.target.value || null)} placeholder="مثال: هدايا، شركات، أعراس" /></div>
       {(a.formatStrategy ?? 'FIXED') === 'FIXED' && <div><label className="label">صيغة النشر</label>
         <select className="input" value={a.publishFormat} onChange={(e) => set('publishFormat', e.target.value)}>

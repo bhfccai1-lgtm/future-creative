@@ -1,8 +1,8 @@
 /** Create or reset an administrator. Usage: ADMIN_EMAIL=.. ADMIN_PASSWORD=.. npm run admin:create */
-import { PrismaClient } from '@prisma/client';
+import { newPrismaClient } from '../src/lib/db';
 import { hashPassword, passwordPolicyError } from '../src/lib/auth/password';
 
-const prisma = new PrismaClient();
+const prisma = newPrismaClient();
 async function main() {
   const email = (process.env.ADMIN_EMAIL ?? process.argv[2] ?? '').trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD ?? process.argv[3] ?? '';

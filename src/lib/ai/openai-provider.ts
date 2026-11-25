@@ -26,7 +26,7 @@ function mapError(e: unknown): AiProviderError {
  * We never send sampling parameters by default; if a model still rejects one of these optional
  * parameters, it is removed and the request is retried — core fields (model, messages, prompt) are never touched.
  */
-export const DROPPABLE_PARAMS = ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'seed', 'logprobs', 'top_logprobs', 'quality', 'n', 'max_tokens'] as const;
+export const DROPPABLE_PARAMS = ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'seed', 'logprobs', 'top_logprobs', 'quality', 'n', 'max_tokens', 'input_fidelity'] as const;
 
 /** Returns the optional parameter a 400 error complains about, if any. */
 export function rejectedParam(e: unknown, sent: Record<string, unknown>): string | null {
@@ -36,7 +36,11 @@ export function rejectedParam(e: unknown, sent: Record<string, unknown>): string
   const candidates: string[] = [...DROPPABLE_PARAMS, 'response_format'];
   if (param && candidates.includes(param) && param in sent) return param;
   if (!/unsupported|not supported|does not support|unrecognized|unknown parameter|invalid.*parameter/i.test(msg)) return null;
-  return candidates.find((k) => k in sent && new RegExp(`['"\`]?${k}['"\`]?`).test(msg)) ?? null;
+  // Prefer the exact quoted parameter; a substring match would confuse `n` with any word.
+  const quoted = [...msg.matchAll(/['"\x60]([a-z_][a-z_0-9]*)['"\x60]/gi)].map((m) => m[1]);
+  const exact = quoted.find((k) => candidates.includes(k) && k in sent);
+  if (exact) return exact;
+  return candidates.find((k) => k in sent && new RegExp(`\\b${k}\\b`).test(msg)) ?? null;
 }
 
 /**
@@ -242,7 +246,7 @@ export class OpenAiProvider implements AiProvider {
         model,
         response_format: { type: 'json_object' },
         messages: [{ role: 'user' as const, content: [
-          { type: 'text' as const, text: `You are a senior art director judging ${images.length} candidate advertising photos (in order, index 0..${images.length - 1}) for this brief:\n${brief}\n\nScore each 0-100 on: product accuracy and realistic shape (heaviest weight), professional commercial aesthetics and lighting, striking scroll-stopping composition, fit to the brief, and NO stray text/letters/logos (any visible text = max 40). Return JSON {"scores":[numbers in order],"best":index,"reason":"one short sentence"}.` },
+          { type: 'text' as const, text: `You are a senior art director judging ${images.length} candidate advertising photos (in order, index 0..${images.length - 1}) for this brief:\n${brief}\n\nScore each 0-100 on: product accuracy and realistic shape (heaviest weight), professional commercial aesthetics and lighting, striking scroll-stopping composition, fit to the brief, photographic realism (consistent light, real contact shadows, true material texture), NO stray text/letters/logos (any visible text = max 40), and NO AI artefacts — distorted hands or faces, extra fingers, melted/warped/duplicated objects, floating products, plastic skin or HDR halos (any such defect = max 50). Return JSON {"scores":[numbers in order],"best":index,"reason":"one short sentence"}.` },
           ...images.map((b) => ({ type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${b.toString('base64')}`, detail: 'low' as const } })),
         ] }],
       }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('judge'));
@@ -263,7 +267,12 @@ export class OpenAiProvider implements AiProvider {
       if (opts.references?.length) {
         const image = await Promise.all(opts.references.slice(0, 4).map((b, i) => toFile(b, `reference-${i + 1}.png`, { type: 'image/png' })));
         return callWithParamFallback(
-          { model, prompt, image, size: opts.size, quality: opts.quality, n: 1, input_fidelity: 'high' },
+          {
+            model, prompt, image, size: opts.size, quality: opts.quality, n: 1,
+            // GPT Image 2 uses high input fidelity automatically and rejects this parameter.
+            // Request it explicitly only for the older models known to support the high setting.
+            ...(/^gpt-image-1(?:\.5)?(?:-\d{4}-\d{2}-\d{2})?$/.test(model) ? { input_fidelity: 'high' } : {}),
+          },
           (p) => this.client.images.edit(p as unknown as OpenAI.Images.ImageEditParamsNonStreaming), warnDrop('image-edit'));
       }
       return callWithParamFallback(

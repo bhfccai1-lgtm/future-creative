@@ -66,6 +66,7 @@ export const SettingsSchema = z.object({
     ar: z.array(z.string().max(24)).max(4).default(['تصاميم مخصصة', 'جودة طباعة عالية', 'مناسبات خاصة', 'هدايا الشركات']),
     en: z.array(z.string().max(24)).max(4).default(['Custom designs', 'Premium print', 'Special occasions', 'Corporate gifts']),
     ml: z.array(z.string().max(32)).max(4).default(['കസ്റ്റം ഡിസൈനുകൾ', 'മികച്ച പ്രിന്റ്', 'പ്രത്യേക അവസരങ്ങൾ', 'കോർപ്പറേറ്റ് ഗിഫ്റ്റുകൾ']),
+    hi: z.array(z.string().max(32)).max(4).default(['कस्टम डिज़ाइन', 'बेहतरीन प्रिंट', 'खास मौके', 'कॉर्पोरेट गिफ्ट']),
   }).prefault({}),
   ai: z.object({
     dryRun: z.boolean().default(true),
@@ -85,7 +86,7 @@ export const SettingsSchema = z.object({
     maxDailyAds: z.number().int().min(0).default(48),
     maxRetries: z.number().int().min(0).max(5).default(2),
     creativeStyle: z.string().default('Premium commercial product photography, cinematic lighting, deep navy and elegant gold accents, clean composition with negative space at top and bottom for text.'),
-    languages: z.array(z.enum(['ar', 'en', 'ml'])).default(['ar', 'en', 'ml']),
+    languages: z.array(z.enum(['ar', 'en', 'ml', 'hi'])).default(['ar', 'en', 'ml', 'hi']),
     useAiReview: z.boolean().default(false),
     /** IMAGE QUALITY GATE for ad scenes (layered designs and reel shots): text drawn inside the picture, softness,
      *  exposure — a failed scene is regenerated once with the reason. One small vision call per picture. */
@@ -119,8 +120,24 @@ export const SettingsSchema = z.object({
     conceptTournament: z.boolean().default(true),
     /** FreeLLMAPI (self-hosted, free provider tiers) — used ONLY for idea suggestions; copy, poster and text checks stay on OpenAI */
     freeLlm: z.object({ enabled: z.boolean().default(false), model: z.string().max(120).default('auto') }).prefault({}),
-    /** full-AI text still wrong after the re-draws → re-render the design with system-typeset (verified) Arabic text */
+    /** (legacy, no longer read — replaced by aiTextFallback) */
     verifiedTextFallback: z.boolean().default(true),
+    /**
+     * Full-AI text still wrong after the re-draws:
+     *  'review'   (default) → keep the best AI-designed poster and send it to the owner for approval with the wrong words
+     *               marked — never published automatically; the layout stays designed for the idea, not a fixed template
+     *  'template' → re-render it in a fixed layered template with system-typeset (verified) text
+     */
+    aiTextFallback: z.enum(['review', 'template']).default('review'),
+    /**
+     * The brand features (custom designs, print quality…) on full-AI posters:
+     *  'ai'     (default) → the AI weaves them into the design where they suit the idea (spell-checked with the headline)
+     *  'system' → a fixed row of gold icons typeset by the system above the order button
+     *  'off'    → not shown — more room for the design
+     */
+    featuresRow: z.enum(['ai', 'system', 'off']).default('ai'),
+    /** Instagram accounts every post caption mentions at the end («تابعونا: …»); an account is not mentioned in its own post */
+    captionMentions: z.array(z.string().regex(/^@[A-Za-z0-9._]{1,30}$/)).max(5).default(['@bhfcps', '@bhfcpss']),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),
@@ -254,6 +271,12 @@ export const SettingsSchema = z.object({
     driveSmart: z.boolean().default(false),
     lastOffload: z.object({ at: z.string(), removed: z.number(), freedMb: z.number() }).nullable().default(null),
   }).prefault({}),
+  /** Google archive (Apps Script): the archive folder + sheet the script was made for, and what its last test said */
+  googleArchive: z.object({
+    folderId: z.string().max(120).default(''),
+    sheetId: z.string().max(120).default(''),
+    lastTest: z.object({ at: z.string(), ok: z.boolean(), message: z.string().max(400), version: z.number().nullable(), folderName: z.string().max(200).nullable(), sheetName: z.string().max(200).nullable() }).nullable().default(null),
+  }).prefault({}),
   metricool: z.object({
     userId: z.string().default(''),
     baseUrl: z.string().default('https://app.metricool.com/api'),
@@ -285,7 +308,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'GOOGLE_ARCHIVE_KEY' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;

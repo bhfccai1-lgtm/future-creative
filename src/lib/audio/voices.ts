@@ -123,10 +123,21 @@ export const personaOf = (id?: string) => PERSONAS.find((p) => p.id === id);
 export const voiceLangOf = (id?: string) => VOICE_LANGS.find((l) => l.id === id);
 
 /** «تلقائي»: language from the audience/market and the design language. */
-export function autoVoiceLang(o: { market?: string | null; contentLang: 'ar' | 'en' | 'ml' }): string {
+export function autoVoiceLang(o: { market?: string | null; contentLang: 'ar' | 'en' | 'ml' | 'hi' }): string {
   const m: Record<string, string> = { bahrain_local: 'ar_bh', bahrain_business: 'ar_bh', gcc_saudi: 'ar_sa', indian_community: 'ml', english_expats: 'en_gb' };
+  if (o.contentLang === 'hi') return 'hi'; // Hindi content is voiced in Hindi, whatever the market
   if (o.market && m[o.market]) return o.contentLang === 'en' && o.market === 'indian_community' ? 'en_in' : m[o.market];
   return o.contentLang === 'en' ? 'en_gb' : o.contentLang === 'ml' ? 'ml' : 'ar_bh';
+}
+/**
+ * The voice language for one design: the owner's fixed choice applies only to accounts in the SAME language
+ * (Bahraini for the Arabic accounts must not voice the Malayalam account's reels in Arabic); every other account
+ * keeps its own language automatically. `autoId` is autoVoiceLang(...) for this account.
+ */
+export function voiceLangFor(setting: string | undefined, autoId: string): VoiceLang {
+  const base = (id: string) => id.split('_')[0];
+  const chosen = voiceLangOf(setting);
+  return chosen && base(chosen.id) === base(autoId) ? chosen : (voiceLangOf(autoId) ?? VOICE_LANGS[0]);
 }
 /** «تلقائي»: persona from the product category, rotating between the suitable ones. */
 export function autoPersona(categoryName: string, recent: string[]): string {

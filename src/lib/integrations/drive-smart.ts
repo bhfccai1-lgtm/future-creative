@@ -6,7 +6,7 @@ import { getAiProvider } from '../ai';
 import { assertBudget, estimateTextCost, recordUsage } from '../ai/cost';
 import { accountPlans, metricFields, postScore, type PlanPost } from '../growth/account-plan';
 import { publishableMedia } from '../publishing/media';
-import { SCRIPT_VERSION, type DriveMeta } from './google-archive';
+import { SCRIPT_VERSION, withKey, type DriveMeta } from './google-archive';
 
 /**
  * SMART GOOGLE DRIVE (archive script v3):
@@ -20,7 +20,7 @@ type Fetch = typeof fetch;
 export async function callScript(event: string, data: unknown, fetchImpl: Fetch = fetch) {
   const url = await getSecret('GOOGLE_ARCHIVE_URL');
   if (!url) throw new Error('Google archive is not connected');
-  const r = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, data }), signal: AbortSignal.timeout(120_000) });
+  const r = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(await withKey({ event, data })), signal: AbortSignal.timeout(120_000) });
   const j = (await r.json().catch(() => null)) as ({ ok?: boolean; error?: string } & Record<string, unknown>) | null;
   if (!j?.ok) throw new Error(`script ${event}: ${j?.error ?? (j ? 'failed' : 'no JSON answer')} — update the script to version ${SCRIPT_VERSION}`);
   return j;

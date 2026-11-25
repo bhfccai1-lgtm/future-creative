@@ -34,6 +34,10 @@ export interface ReelOptions {
   captions?: { text: string; lang: Lang };
   /** Seamless loop (default true): the last half-second dissolves back into the opening design, so replays feel continuous. */
   loop?: boolean;
+  /** Final contact screen: brand name + product name beside the finished product (see buildEndCard). */
+  endCard?: { brand: string; brandLang: Lang; product?: string; lang: Lang };
+  /** Length of the final contact screen (default 3 s; 4 s for reels of 14 s and longer). */
+  endSeconds?: number;
 }
 
 export class VideoRenderError extends Error {}
@@ -86,24 +90,96 @@ export function audioSource(kind: ReelAudio, D: number): string {
   return `anullsrc=channel_layout=stereo:sample_rate=${AUDIO_RATE}`;
 }
 
+/**
+ * On-screen text is clean Arabic: the diacritics the voice script carries only to guide pronunciation (e.g. «أمْلاح»)
+ * are removed from captions; the shadda stays (it changes the word: «دزّي»).
+ */
+export const captionClean = (text: string) => text.replace(/[\u064B-\u0650\u0652\u0670]/g, '').replace(/\s+/g, ' ').trim();
+
 /** Splits a spoken script into short caption chunks (≤ 3 words / ≤ 24 characters), keeping punctuation pauses. */
 export function captionChunks(text: string): string[] {
   const out: string[] = [];
   let cur: string[] = [];
-  for (const w of text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)) {
+  for (const w of captionClean(text).split(' ').filter(Boolean)) {
     const next = [...cur, w].join(' ');
     if (cur.length && (cur.length >= 3 || next.length > 24)) { out.push(cur.join(' ')); cur = []; }
     cur.push(w);
-    if (/[،,.!؟?…:]$/.test(w)) { out.push(cur.join(' ')); cur = []; }
+    if (/[،,.!؟?…:।]$/.test(w)) { out.push(cur.join(' ')); cur = []; }
   }
   if (cur.length) out.push(cur.join(' '));
   return out.map((c) => c.replace(/[،,]$/, '')).filter(Boolean);
 }
-/** Chunk timings proportional to their length over [start, start + span]. */
-export function captionTimings(chunks: string[], start: number, span: number) {
-  const total = chunks.reduce((a, c) => a + c.length + 2, 0) || 1;
-  let t = start;
-  return chunks.map((c) => { const d = Math.max(0.45, (span * (c.length + 2)) / total); const r = { text: c, start: t, end: t + d }; t += d; return r; });
+/** Progress through the spoken words (0…1) → seconds. `isStart` puts a word that begins exactly at a pause after the pause. */
+export type CaptionClock = (u: number, isStart: boolean) => number;
+/** Even pacing over [start, start + span] (no voice, or the voice could not be analysed). */
+export const linearClock = (start: number, span: number): CaptionClock => (u) => start + Math.max(0, Math.min(1, u)) * span;
+
+/** Where the voice actually speaks: the complement of FFmpeg `silencedetect` silences within [0, total]. */
+export function speechIntervals(log: string, total: number): [number, number][] {
+  const starts = [...log.matchAll(/silence_start: (-?[\d.]+)/g)].map((m) => Math.max(0, Number(m[1])));
+  const ends = [...log.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const out: [number, number][] = [];
+  let t = 0;
+  starts.forEach((s, i) => { if (s - t > 0.05) out.push([t, Math.min(s, total)]); t = Math.max(t, ends[i] ?? total); });
+  if (total - t > 0.05) out.push([t, total]);
+  return out.length ? out : [[0, total]];
+}
+/** Clock that only advances while the voice speaks: captions hold during pauses instead of drifting ahead of the voice. */
+export function speechClock(intervals: [number, number][]): CaptionClock {
+  const total = intervals.reduce((a, [s, e]) => a + (e - s), 0);
+  return (u, isStart) => {
+    let left = Math.max(0, Math.min(1, u)) * total;
+    for (const [s, e] of intervals) { if (isStart ? left < e - s : left <= e - s) return s + left; left -= e - s; }
+    return intervals[intervals.length - 1][1];
+  };
+}
+
+export interface CaptionCue { text: string; start: number; end: number; words: { start: number; end: number }[] }
+/**
+ * Word-level caption cues: every word gets speaking time in proportion to its letters along the clock; a phrase stays
+ * on screen through the pause after it (until the next phrase starts), its last word still lit.
+ */
+export function captionCues(chunks: string[], at: CaptionClock): CaptionCue[] {
+  const words = chunks.map((c) => c.split(' ').filter(Boolean));
+  const total = words.flat().reduce((a, w) => a + w.length + 1, 0) || 1;
+  let acc = 0;
+  const cues = words.map((ws, i) => {
+    const wt = ws.map((w) => { const start = at(acc / total, true); acc += w.length + 1; return { start, end: at(acc / total, false) }; });
+    return { text: chunks[i], start: wt[0]?.start ?? 0, end: wt[wt.length - 1]?.end ?? 0, words: wt };
+  }).filter((c) => c.words.length);
+  cues.forEach((c, i) => { const next = cues[i + 1]; if (next && next.start > c.end) { c.end = next.start; c.words[c.words.length - 1].end = next.start; } });
+  return cues;
+}
+/** Speaking intervals of a voice file (falls back to "speaks throughout" if FFmpeg cannot analyse it). */
+async function detectSpeech(file: string, total: number): Promise<[number, number][]> {
+  const r = await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-af', 'silencedetect=noise=-38dB:d=0.18', '-f', 'null', '-'], 60_000).catch(() => null);
+  return r && r.code === 0 ? speechIntervals(r.stderr, total) : [[0, total]];
+}
+/** The spoken word in a caption is lit in gold. */
+const CAPTION_LIT = '#ffd23f';
+/** Final contact screen length: 4 s on reels of 14 s and longer, 3 s on short ones (and on AI-video reels, which add 3 s). */
+export const endCardSeconds = (D: number, aiVideo: boolean, override?: number) => override ?? (D >= 14 && !aiVideo ? 4 : 3);
+/** Voice starts 0.35 s in (adelay). */
+export const VOICE_START = 0.35;
+/**
+ * Where the voice-over may run: it continues over the end card (the CTA moment) instead of being cut there — cutting
+ * at the end card chopped the last words mid-word. Only a voice longer than the whole reel is sped up (≤ 15 %, pitch
+ * kept by atempo). `end` = when the voice finishes (captions follow it), `trim` = where the audio is cut.
+ */
+export function voicePlan(voiceSec: number, D: number) {
+  const room = D - 0.45 - VOICE_START;
+  const tempo = voiceSec > room ? Math.min(1.15, voiceSec / room) : 1;
+  const end = Math.min(D - 0.45, VOICE_START + voiceSec / tempo);
+  return { tempo: Math.round(tempo * 1000) / 1000, end, trim: Math.min(D - 0.2, end + 0.2) };
+}
+/**
+ * Caption centre: just above the design's bottom block (CTA / phone numbers) — not over the middle of the frame where
+ * the product is. Falls back to the lower third when the layout has no bottom block.
+ */
+export function captionCenterY(layers: { id: string; top: number }[], ph: number, H = 1920): number {
+  const bottom = layers.filter((l) => (l.id === 'cta' || l.id.startsWith('contact:')) && l.top > H * 0.55).map((l) => l.top);
+  const y = bottom.length ? Math.min(...bottom) - 28 - ph / 2 : H * 0.78;
+  return Math.round(Math.max(H * 0.45, Math.min(H * 0.86, y))); // never pushed down onto the CTA
 }
 async function audioSeconds(file: string): Promise<number> {
   const r = await run(process.env.FFPROBE_PATH ?? 'ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], 30_000);
@@ -125,7 +201,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
   const backgrounds = opts.baseVideo ? [c.background] : [c.background, ...(opts.extraBackgrounds ?? [])];
   const n = backgrounds.length;
   const audio: ReelAudio = opts.audio ?? 'none';
-  const endStart = D - 3;
+  const endStart = D - endCardSeconds(D, !!opts.baseVideo, opts.endSeconds);
   // scene length so that n scenes joined by (n-1) transitions fill [0, endStart + XFADE]
   const S = endStart + XFADE;
   const L = n === 1 ? D : (S + (n - 1) * XFADE) / n;
@@ -206,25 +282,47 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       idx++;
     }
     // burned-in captions timed to the voice (or spread over the reel without a voice) — readable with the sound off
+    // the voice's real length decides its tempo, where it is cut and how the captions are timed
+    let vplan: ReturnType<typeof voicePlan> | null = null, speech: [number, number][] | null = null;
+    if (opts.voice) {
+      const vf0 = path.join(dir, 'voice-probe.audio'); await fs.writeFile(vf0, opts.voice);
+      const sec = await audioSeconds(vf0);
+      if (sec) { vplan = voicePlan(sec, D); speech = await detectSpeech(vf0, sec); }
+    }
+    const capOverlays: string[] = []; // applied AFTER the end card, so the last words stay captioned over it
     if (opts.captions?.text.trim()) {
-      let vStart = 0.35, span = Math.max(1.5, endStart - 0.8);
-      if (opts.voice) { const vf0 = path.join(dir, 'voice-probe.audio'); await fs.writeFile(vf0, opts.voice); const sec = await audioSeconds(vf0); if (sec) span = Math.min(sec, endStart - vStart); }
+      let vStart = VOICE_START, span = Math.max(1.5, endStart - 0.8), capEnd = endStart;
+      if (vplan) { span = vplan.end - VOICE_START; capEnd = vplan.end; }
+      else if (opts.voice) span = Math.min(span, endStart - vStart);
       else vStart = 0.6;
-      for (const cap of captionTimings(captionChunks(opts.captions.text), vStart, span)) {
-        if (cap.start >= endStart) break;
-        const t = await renderText({ text: cap.text, lang: opts.captions.lang, weight: 'extrabold', color: '#ffffff', maxSize: 80, minSize: 44, boxW: 920, boxH: 200, maxLines: 2 });
-        const pw = t.width + 64, ph = t.height + 34;
+      // with a voice: follow its real speech (pauses included), mapped through the start delay and any tempo change
+      const clock: CaptionClock = vplan && speech
+        ? ((sc, tempo): CaptionClock => (u, isStart) => VOICE_START + sc(u, isStart) / tempo)(speechClock(speech), vplan.tempo)
+        : linearClock(vStart, span);
+      const capY = (ph: number) => captionCenterY(c.manifest.layers.map((l) => ({ id: l.id, top: l.rect.top })), ph) - Math.round(ph / 2);
+      for (const cue of captionCues(captionChunks(opts.captions.text), clock)) {
+        if (cue.start >= capEnd) break;
+        const spec = { text: cue.text, lang: opts.captions.lang, weight: 'extrabold' as const, color: '#ffffff', maxSize: 80, minSize: 44, boxW: 860, boxH: 200, maxLines: 2 };
+        const plain = await renderText(spec);
+        const pw = plain.width + 64, ph = plain.height + 34, x = Math.round((1080 - pw) / 2), y = capY(ph), a = cue.start.toFixed(2);
         const pill = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${Math.min(40, ph / 2)}" fill="#0b1730" fill-opacity="0.78" stroke="#e6c25a" stroke-width="3"/></svg>`);
-        const png = await sharp(pill).composite([{ input: t.png, left: 32, top: 17 }]).png().toBuffer();
-        const f = path.join(dir, `cap${idx}.png`); await fs.writeFile(f, png);
-        addStill(f);
-        const a = cap.start.toFixed(2), b = Math.min(cap.end, endStart).toFixed(2);
-        filters.push(`[${idx}:v]${timedStill},fade=t=in:st=${a}:d=0.08:alpha=1[c${idx}]`);
-        filters.push(`[${base}][c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${1060 - Math.round(ph / 2)}:enable='between(t,${a},${b})'[v${idx}]`);
-        base = `v${idx}`; idx++;
+        for (let k = 0; k < cue.words.length; k++) {
+          const ws = k === 0 ? cue.start : cue.words[k].start, we = Math.min(k === cue.words.length - 1 ? cue.end : cue.words[k + 1].start, capEnd);
+          if (we - ws < 0.01) continue;
+          // the same text at the same size with word k lit — identical box, so the pill never jumps between words
+          const lit = await renderText({ ...spec, maxSize: plain.fontSize, minSize: plain.fontSize, highlight: { word: k, color: CAPTION_LIT } });
+          const text = lit.width === plain.width && lit.height === plain.height ? lit.png : plain.png;
+          const f = path.join(dir, `cap${idx}.png`); await fs.writeFile(f, await sharp(pill).composite([{ input: text, left: 32, top: 17 }]).png().toBuffer());
+          addStill(f);
+          filters.push(`[${idx}:v]format=rgba[c${idx}]`);
+          // each phrase rises in softly (cubic ease-out over 0.16 s); the following words swap in place
+          const yy = k === 0 ? `'${y}+18*pow(max(0\\,1-(t-${a})/0.16)\\,3)'` : String(y);
+          capOverlays.push(`[c${idx}]overlay=x=${x}:y=${yy}:enable='between(t,${ws.toFixed(2)},${we.toFixed(2)})'${k === 0 ? ':eval=frame' : ''}`);
+          idx++;
+        }
       }
     }
-    const end = await buildEndCard(c);
+    const end = await buildEndCard(c, opts.endCard);
     await fs.writeFile(path.join(dir, 'end.png'), end);
     addStill(path.join(dir, 'end.png'));
     const endIdx = idx++;
@@ -238,7 +336,10 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       loopIdx = idx++;
       filters.push(`[${loopIdx}:v]${timedStill},fade=t=in:st=${(D - 0.5).toFixed(2)}:d=0.45:alpha=1[loopin]`);
     }
-    filters.push(`[${base}][end]overlay=0:0:enable='gte(t,${endStart})'${loopIdx >= 0 ? '[ended];[ended][loopin]overlay=0:0:enable=\'gte(t,' + (D - 0.5).toFixed(2) + ')\'' : ''},unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
+    // end card, then the captions on top of it (the voice now continues over the end card), then the loop dissolve
+    let ended = `[${base}][end]overlay=0:0:enable='gte(t,${endStart})'`;
+    capOverlays.forEach((o, i) => { ended += `[cap${i}];[cap${i}]${o}`; });
+    filters.push(`${ended}${loopIdx >= 0 ? '[ended];[ended][loopin]overlay=0:0:enable=\'gte(t,' + (D - 0.5).toFixed(2) + ')\'' : ''},unsharp=5:5:0.4:5:5:0,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,gradfun=1.2:16,noise=c0s=2:c0f=t[vout]`);
     // ── Audio: music bed (native Veo / licensed track / synthesised) + voice-over with ducking + sound design, mastered to −14 LUFS ──
     const useNative = !!opts.baseVideo && !!opts.nativeAudio && baseHasAudio;
     const silent = !useNative && (audio === 'none' || audio === 'instagram');
@@ -262,7 +363,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       await fs.writeFile(vf, opts.voice);
       inputs.push('-i', vf);
       const vol = Math.max(0.1, Math.min(1, opts.musicVolume ?? 0.35));
-      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},adelay=350|350,apad,atrim=duration=${Math.max(1, endStart - 0.2)},afade=t=out:st=${Math.max(0, endStart - 0.6)}:d=0.4,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
+      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,equalizer=f=280:t=q:w=1.1:g=-2,deesser=i=0.35,equalizer=f=3200:t=q:w=1.3:g=2.5,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},${vplan && vplan.tempo > 1 ? `atempo=${vplan.tempo},` : ''}adelay=350|350,apad,atrim=duration=${(vplan?.trim ?? endStart - 0.2).toFixed(2)},afade=t=out:st=${Math.max(0, (vplan?.trim ?? endStart - 0.2) - 0.3).toFixed(2)}:d=0.3,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
       filters.push(`[mus]volume=${vol}[mbed]`, `[mbed][vo1]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[mduck]`);
       mix.push('[mduck]', '[vo2]');
       idx++;
@@ -309,21 +410,56 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
   }
 }
 
-async function buildEndCard(c: ComposeResult): Promise<Buffer> {
+/** WhatsApp-style chat glyph (green disc + white handset) drawn as SVG — no third-party image file. */
+const waIcon = (d: number) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${d}" height="${d}" viewBox="0 0 48 48"><circle cx="24" cy="24" r="23" fill="#25D366"/><path d="M14 35l2-6a11 11 0 1 1 4 4z" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/><path d="M20 19c0 5 4 9 9 9l1.6-2.4-3-1.4-1.3 1.2c-1.8-.8-3.1-2.1-3.9-3.9l1.2-1.3-1.4-3z" fill="#fff"/></svg>`);
+
+/**
+ * Final contact screen (Instagram-safe: everything between y≈240 and y≈1430, clear of the top bar and the bottom
+ * caption/buttons area): official logo top-right, the FINISHED PRODUCT (the ad's own scene, framed in gold), the brand
+ * name, the product name, the CTA and both branches with a WhatsApp mark beside each number.
+ */
+async function buildEndCard(c: ComposeResult, info?: ReelOptions['endCard']): Promise<Buffer> {
   const W = c.width, H = c.height;
+  const th = THEMES[c.themeKey ?? 'navy_gold'];
   const logo = c.layers.find((l) => l.id === 'logo');
   const cta = c.layers.find((l) => l.id === 'cta');
   const contacts = c.layers.filter((l) => l.id.startsWith('contact:'));
   const comps: { input: Buffer; left: number; top: number }[] = [];
+  // official logo (the supplied file, scaled only) — top-right, inside the safe margin
   if (logo) {
-    const big = await sharp(logo.png).resize(Math.round(W * 0.6), Math.round(H * 0.18), { fit: 'inside' }).png().toBuffer();
-    const m = await sharp(big).metadata();
-    comps.push({ input: big, left: Math.round((W - m.width!) / 2), top: Math.round(H * 0.24) });
+    const small = await sharp(logo.png).resize(230, 150, { fit: 'inside' }).png().toBuffer();
+    const m = await sharp(small).metadata();
+    comps.push({ input: small, left: W - 60 - m.width!, top: 250 });
   }
-  if (cta) comps.push({ input: cta.png, left: cta.left, top: Math.round(H * 0.52) });
-  const contactTop = Math.min(...contacts.map((l) => l.top));
-  for (const l of contacts) comps.push({ input: l.png, left: l.left, top: Math.round(H * 0.64) + (l.top - contactTop) });
-  const th = THEMES[c.themeKey ?? 'navy_gold'];
-  const bg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><radialGradient id="g" cx="0.5" cy="0.4" r="0.8"><stop offset="0" stop-color="${th.shade}" stop-opacity="0.85"/><stop offset="1" stop-color="${th.panel}"/></radialGradient></defs><rect width="100%" height="100%" fill="${th.panel}"/><rect width="100%" height="100%" fill="url(#g)"/><rect x="${W * 0.2}" y="${H * 0.47}" width="${W * 0.6}" height="4" fill="${th.accent}"/></svg>`;
+  // the finished product: the ad's own scene (same product, same artwork), centre crop in a rounded gold frame
+  const S = 500, cardTop = 420;
+  const bgMeta = await sharp(c.background).metadata();
+  const side = Math.min(bgMeta.width!, bgMeta.height!);
+  const crop = await sharp(c.background).extract({ left: Math.round((bgMeta.width! - side) / 2), top: Math.round((bgMeta.height! - side) / 2), width: side, height: side }).resize(S, S).png().toBuffer();
+  const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}"><rect width="${S}" height="${S}" rx="44" fill="#fff"/></svg>`);
+  const rounded = await sharp(crop).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+  comps.push({ input: rounded, left: Math.round((W - S) / 2), top: cardTop });
+  comps.push({ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${S + 16}" height="${S + 16}"><rect x="4" y="4" width="${S + 8}" height="${S + 8}" rx="48" fill="none" stroke="${th.accent}" stroke-width="6"/></svg>`), left: Math.round((W - S) / 2) - 8, top: cardTop - 8 });
+  let y = cardTop + S + 34;
+  // brand name, then the product name
+  if (info?.brand) {
+    const t = await renderText({ text: info.brand, lang: info.brandLang, weight: 'extrabold', color: th.accent, maxSize: 66, minSize: 40, boxW: 900, boxH: 90, maxLines: 1 });
+    comps.push({ input: t.png, left: Math.round((W - t.width) / 2), top: y }); y += t.height + 14;
+  }
+  if (info?.product) {
+    const t = await renderText({ text: info.product, lang: info.lang, weight: 'bold', color: th.headline, maxSize: 48, minSize: 30, boxW: 860, boxH: 70, maxLines: 1 });
+    comps.push({ input: t.png, left: Math.round((W - t.width) / 2), top: y }); y += t.height + 22;
+  }
+  if (cta) { comps.push({ input: cta.png, left: Math.round((W - cta.width) / 2), top: y }); y += cta.height + 30; }
+  // both branches, each phone with a WhatsApp mark (the layers keep their relative layout from the design)
+  if (contacts.length) {
+    const top0 = Math.min(...contacts.map((l) => l.top));
+    for (const l of contacts) {
+      const top = y + (l.top - top0);
+      comps.push({ input: l.png, left: l.left, top });
+      if (l.id.endsWith(':phone')) comps.push({ input: waIcon(Math.round(l.height * 0.9)), left: Math.max(8, l.left - Math.round(l.height * 0.9) - 12), top: top + Math.round(l.height * 0.05) });
+    }
+  }
+  const bg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><radialGradient id="g" cx="0.5" cy="0.4" r="0.8"><stop offset="0" stop-color="${th.shade}" stop-opacity="0.85"/><stop offset="1" stop-color="${th.panel}"/></radialGradient></defs><rect width="100%" height="100%" fill="${th.panel}"/><rect width="100%" height="100%" fill="url(#g)"/></svg>`;
   return sharp(Buffer.from(bg)).composite(comps).png().toBuffer();
 }

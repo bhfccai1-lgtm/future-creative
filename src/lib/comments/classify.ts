@@ -16,8 +16,9 @@ const RX: [CommentCategory, RegExp][] = [
   ['praise', /(حلو|حلوة|روعة|رائع|جميل|يجنن|يهبل|ماشاءالله|ما\s*شاء\s*الله|تبارك|مبدع|ابداع|إبداع|احسنتم|أحسنتم|عاشت\s*ايدكم|تسلم|يعطيكم|❤|❤️|😍|🔥|👏|💯|🌹|nice|beautiful|amazing|love|great|perfect|wow|awesome|cute|gorgeous)/i],
 ];
 
-export function detectLanguage(t: string): 'ar' | 'en' | 'ml' | 'other' {
+export function detectLanguage(t: string): 'ar' | 'en' | 'ml' | 'hi' | 'other' {
   if (/[ഀ-ൿ]/.test(t)) return 'ml';
+  if (/[\u0900-\u097F]/.test(t)) return 'hi';
   if (/[؀-ۿ]/.test(t)) return 'ar';
   if (/[a-z]/i.test(t)) return 'en';
   return 'other';

@@ -1,6 +1,6 @@
 import type { BriefRequest } from './types';
 
-const LANG_NAME = { ar: 'natural Bahraini / Gulf Arabic as spoken by customers in Bahrain (warm, conversational, correct spelling, no diacritics; MSA only for formal B2B wording)', en: 'English', ml: 'Malayalam (Unicode Malayalam script)' } as const;
+const LANG_NAME = { ar: 'natural Bahraini / Gulf Arabic as spoken by customers in Bahrain (warm, conversational, correct spelling, no diacritics; MSA only for formal B2B wording)', en: 'English', ml: 'Malayalam (Unicode Malayalam script)', hi: 'Hindi (Devanagari script), simple everyday Hindi the Indian community in Bahrain speaks — common English trade words (print, design, mug) may stay as Hindi speakers say them' } as const;
 
 export function briefSystemPrompt() {
   return [
@@ -19,6 +19,7 @@ export function briefSystemPrompt() {
     '- If "ownerFeedback" is given, it is the business owner\'s own taste and the reasons they rejected earlier designs: follow it strictly (it overrides style defaults, never the hard rules above).',
     '- Occasions must be handled respectfully and culturally appropriately for Bahrain and the Gulf.',
     '- If the direction market is Saudi Arabia, write for Saudi customers: never mention Bahrain, Bahraini places or Bahrain-only occasions in the design, caption or hashtags.',
+    "- Otherwise the audience is in Bahrain: never build a post around ANOTHER country's national day, flag, ruler or landmarks (e.g. the UAE's union day, Burj Khalifa, other GCC flags) unless the direction names that occasion explicitly. Bahraini occasions use Bahraini symbols (the red-and-white flag, Bahraini landmarks); shared Gulf/Islamic occasions (Ramadan, Eid, Gergaoon) use no national flag.",
     '',
     'CAPTION — write it for fast organic reach on Instagram/TikTok/Facebook, matched to the design:',
     '- Line 1 is a scroll-stopping HOOK (max ~8 words, under 125 characters so it shows before "more"): a relatable moment, a question or a bold benefit. It must echo the headline/visual of the design.',
@@ -75,7 +76,13 @@ export function ideasSystemPrompt() {
   ].join('\n');
 }
 
-export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string }) {
+/**
+ * Realism rules shared by every generated photo: the defects that make an image look AI-made (warped hands and faces,
+ * melted or duplicated objects, plastic skin, over-processed HDR, floating products) are named and forbidden.
+ */
+export const REALISM_RULES = 'Photographic realism: physically correct light — one consistent key-light direction, a soft contact shadow where the product touches the surface, natural reflections that match the environment; real material texture (paper grain, ceramic glaze, fabric weave, acrylic edges). If people or hands appear: natural anatomy, five fingers, relaxed realistic hands and faces, real skin texture — never waxy or plastic. No AI artefacts: nothing melted, warped, duplicated or floating, no extra limbs, no impossible geometry, no over-saturated colours, no HDR halos, no generic stock-photo look.';
+
+export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string }, zone?: { top: number; bottom: number } | null) {
   return [
     sceneDescription,
     `Art direction: ${style}`,
@@ -83,14 +90,17 @@ export function scenePrompt(sceneDescription: string, style: string, art?: { lig
     art?.lighting ? `Lighting: ${art.lighting}.` : '',
     art?.lens ? `Camera: ${art.lens}.` : '',
     'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
+    REALISM_RULES,
     'Vertical 9:16 premium advertising product photograph, photorealistic, ultra sharp focus on the product, high dynamic range, rich true-to-life colours, professional retouching.',
-    'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 39% and 64% of the height); the upper 38% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 36% is the table/surface in soft focus.',
+    zone
+      ? `Composition: the WHOLE hero product (top of it to its base) stands between ${Math.round(zone.top * 100)}% and ${Math.round(zone.bottom * 100)}% of the image height, horizontally centred, as large as fits there; text will be laid over the rest of the image, so above ${Math.round(zone.top * 100)}% and below ${Math.round(zone.bottom * 100)}% keep only a calm, softly blurred background or surface — no part of the product, no important detail.`
+      : 'Composition: the hero product is LARGE, fully visible and centred in the middle of the frame (roughly between 39% and 64% of the height); the upper 38% is a softly blurred continuation of the background (bokeh, warm lights) and the lower 36% is the table/surface in soft focus.',
     'The printed surface of the product shows a vivid, high-quality printed illustration or pattern that suits the occasion — artwork only.',
     'ABSOLUTELY NO text, letters, numbers, words, logos, brand marks, signatures or watermarks anywhere in the image, including on the product.',
   ].filter(Boolean).join('\n');
 }
 
-const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
+const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam', hi: 'Hindi (Devanagari)' } as const;
 
 /**
  * "Full AI design" (ChatGPT-like): the image model designs the complete poster — typography, gold badge,
@@ -98,7 +108,7 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam' } as const;
  * the ORIGINAL logo (top) and the CTA + verified phone numbers (bottom band, added below the image).
  */
 export function fullPosterPrompt(p: {
-  lang: 'ar' | 'en' | 'ml'; headline: string; badge: string; support?: string | null; features: string[];
+  lang: 'ar' | 'en' | 'ml' | 'hi'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
   layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
 }) {
@@ -110,13 +120,14 @@ export function fullPosterPrompt(p: {
     p.layout ? `Layout: ${p.layout}.` : '',
     p.concept ? `Creative concept for the product scene (striking, scroll-stopping, product stays the accurate hero): ${p.concept}.` : '',
     `Hero product photo: ${p.sceneDescription}`,
+    REALISM_RULES,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
     `Typography — render EXACTLY these words, perfectly spelled ${S} text${p.lang === 'ar' ? ' (correct right-to-left Arabic letter joining, bold modern Arabic display font)' : ''}, nothing else:`,
     `  • kicker line near the top: "${p.headline}"`,
     p.badge ? `  • big hero keyword inside a glossy 3D gold pill badge with small sparkle rays: "${p.badge}"` : '',
     p.support ? `  • tagline under the badge: "${p.support}"` : '',
     ...(p.productText ?? []).map((t) => `  • printed ON the product itself as its design (exact words, same spelling and punctuation): "${t}"`),
-    p.features.length ? `  • a row of ${p.features.length} elegant gold line icons in circles with these labels under them: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
+    p.features.length ? `  • these ${p.features.length} short benefits, woven into the design where they suit THIS idea (e.g. a small checklist with gold ticks beside the product, elegant icon badges, or a ribbon) — never a generic row above the bottom, never covering the product: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',
@@ -139,6 +150,8 @@ export function voiceoverSystemPrompt() {
     'Never say numbers or digits, prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "number one"), phone numbers, branch names, websites or hashtags.',
     'Match the persona (e.g. a child uses simple words, a sports commentator is excited, a storyteller starts like a tale). Keep it tasteful and respectful.',
     'If `storyboard` is given, the script follows those shots in order (one short phrase per shot): the hook line lands on the first shot, the call to action on the last.',
+    'Emotional journey (four beats, in order): 1) OPENING — a question or surprise that makes them stop (curiosity, excitement); 2) CONNECTION — the clear benefit, told warmly like a small true story (who it is for, the moment it makes special); 3) CLIMAX — one short line of delight, the memorable emotional peak (the joy of the moment the product creates); 4) ENDING — a confident, warm call to action to message us. Use words that carry feeling (warmth, pride, joy, care) — sincere, never exaggerated.',
+    'If `brand` is given, say it once, naturally, in the call to action (e.g. «…مع مركز إبداع المستقبل»), exactly as written — never at the start.',
     'Reach: the FIRST words are the hook — a question or a surprising statement spoken immediately (no greeting, no brand name first). Short punchy phrases (2–5 words) that read well as on-screen captions; energy rises toward the call to action.',
     'Pronunciation (the script is read by a voice model): for Arabic, add diacritics (tashkeel) on words whose reading is ambiguous and on names (e.g. «مَطْبَعَة», «تَصْمِيمَك»), keep the dialect spelling otherwise; write English trade words in Arabic letters as they are said (e.g. «رُولْ أَبْ»); avoid tongue-twisters and very long words; never write digits or symbols.',
     'Return JSON: {"script": "..."} with the script only — no stage directions, no quotes, no emojis.',
