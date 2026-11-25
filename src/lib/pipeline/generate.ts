@@ -175,7 +175,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
   const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
   let aiFull = d.renderMode === 'ai_full';
-  const posterSize = aiPosterImageSize(FORMAT_SIZE[format].h);
+  const posterSize = aiPosterImageSize(FORMAT_SIZE[format].h, d.logoPosition === 'bottom-center');
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
   const formal = /business|corporate|b2b|شركات/i.test(`${account.name} ${account.handle ?? ''} ${account.businessCategory ?? ''}`);
@@ -328,7 +328,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       ? ({ png: await sharp(realPhoto).resize(1024, 1536, { fit: 'cover', position: sharp.strategy.attention }).png().toBuffer(), model: 'real-photo' } as Scene)
       : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system': typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system')) })
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system': typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system', d.logoPosition === 'bottom-center')) })
         : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone);
       const prompt = refPrompt ? `${basePrompt}\n${refPrompt}` : basePrompt;
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
@@ -366,7 +366,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       let pool = candidates;
       if (aiFull && provider.readText && !provider.isDryRun) {
         const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted, ...(s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [])].filter((x) => x.trim());
-        const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system').bottomPct;
+        const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system', d.logoPosition === 'bottom-center').bottomPct;
         const spell = async (c: (typeof candidates)[number]) => {
           try {
             await assertBudget(s, estimateTextCost(s, 1500, 260));

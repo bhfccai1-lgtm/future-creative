@@ -206,7 +206,7 @@ export function aiPosterGeometry(h: number, featureRow = true, logoBottom = fals
   // rising a little above the glass panel
   // as tall as fits between the order button and the panel's bottom edge (never touching the button)
   const lh = Math.min(Math.round(g.panel.h * 1.3), g.panel.y + g.panel.h - (g.cta.y + g.cta.h) - 10), lw = Math.round(lh * 1.25);
-  return { ...g, topBand: 0, logo: { w: lw, h: lh, y: g.panel.y + g.panel.h - lh } };
+  return { ...g, topBand: 0, topPct: h === 1350 ? 10 : g.topPct, logo: { w: lw, h: lh, y: g.panel.y + g.panel.h - lh } };
 }
 function aiPosterGeometryBase(h: number) {
   // topBand: the logo's own zone (a soft extension of the art) — the AI design starts BELOW it, so the logo can never cover drawn text
@@ -218,7 +218,8 @@ function aiPosterGeometryBase(h: number) {
   return { H: h, topBand: 118, topPct: 4, bottomPct: 36, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 92, padX: 70, logo: { w: 230, h: 100, y: 16 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
 }
 /** The image size to request from the model for a full-AI poster of this format height. */
-export const aiPosterImageSize = (h: number): '1024x1536' | '1024x1024' => (h === 1920 ? '1024x1536' : '1024x1024');
+export const aiPosterImageSize = (h: number, logoBottom = false): '1024x1536' | '1024x1024' =>
+  (h === 1920 || (h === 1350 && logoBottom) ? '1024x1536' : '1024x1024'); // feed with the logo in the footer: no top band → a portrait design fills it
 
 /** Gold ribbon swooshes rising from both bottom corners (behind the panel), like the reference posters. */
 const ribbons = (H: number) => {
@@ -233,7 +234,14 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
   const g = aiPosterGeometry(height, featureRow, logoBottom), H = g.H, artH = H - g.topBand;
   // never crop the design when the aspect differs a lot (square output from a 1:1 image): fit it whole on a blurred fill
   // (a full-height 9:16 story — logo in the footer — is a normal cover crop of the 2:3 design: ~8 % per side)
-  const crop = Math.abs(W / artH - 1) > 0.1 && Math.abs(W / artH - 2 / 3) > 0.05 && Math.abs(W / artH - 9 / 16) > 0.03;
+  // fit the design whole on a blurred fill only when its own shape is far from the art area (e.g. a square design in a
+  // tall frame); otherwise a cover crop — a blurred band at the top was the visible result of the old fixed-ratio rule
+  //  • square design: cover only in a near-square/slightly tall area (feed); a wider area (square post) keeps the blurred
+  //    sides so the top text is never cut
+  //  • portrait 2:3 design: cover in any tall area from 9:16 to 4:5 (stories, and the feed with the logo in the footer)
+  const im = await sharp(poster).metadata();
+  const ia = im.width! / im.height!, r = W / artH;
+  const crop = ia >= 0.95 ? r > 1.05 || r < 0.85 : r < 0.5 || r > 0.85;
   const soft = (w: number, h: number, blur: number, b: number) => sharp(poster).resize(w, h, { fit: 'fill' }).blur(blur).modulate({ brightness: b }).removeAlpha().png().toBuffer();
   let art: Buffer;
   if (!crop) art = await sharp(poster).resize(W, artH, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
@@ -251,7 +259,8 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
   const feather = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${artH}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${(90 / artH).toFixed(4)}" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="${W}" height="${artH}" fill="url(#f)"/></svg>`);
   const artFeathered = await sharp(art).ensureAlpha().composite([{ input: feather, blend: 'dest-in' }]).png().toBuffer();
   const base = await sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
-    .composite([{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
+    // no logo band (logo in the footer): the design itself starts at the top edge — no blend, no dark seam
+    .composite(g.topBand === 0 ? [{ input: art, left: 0, top: 0 }] : [{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
   const zone = (g.features?.y ?? g.cta.y) - 70, px = g.padX, pw = W - 2 * px;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
