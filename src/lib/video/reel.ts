@@ -304,7 +304,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       await fs.writeFile(vf, opts.voice);
       inputs.push('-i', vf);
       const vol = Math.max(0.1, Math.min(1, opts.musicVolume ?? 0.35));
-      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},${vplan && vplan.tempo > 1 ? `atempo=${vplan.tempo},` : ''}adelay=350|350,apad,atrim=duration=${(vplan?.trim ?? endStart - 0.2).toFixed(2)},afade=t=out:st=${Math.max(0, (vplan?.trim ?? endStart - 0.2) - 0.3).toFixed(2)}:d=0.3,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
+      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,equalizer=f=280:t=q:w=1.1:g=-2,deesser=i=0.35,equalizer=f=3200:t=q:w=1.3:g=2.5,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},${vplan && vplan.tempo > 1 ? `atempo=${vplan.tempo},` : ''}adelay=350|350,apad,atrim=duration=${(vplan?.trim ?? endStart - 0.2).toFixed(2)},afade=t=out:st=${Math.max(0, (vplan?.trim ?? endStart - 0.2) - 0.3).toFixed(2)}:d=0.3,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
       filters.push(`[mus]volume=${vol}[mbed]`, `[mbed][vo1]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[mduck]`);
       mix.push('[mduck]', '[vo2]');
       idx++;

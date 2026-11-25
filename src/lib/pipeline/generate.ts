@@ -536,7 +536,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           let pronunciation: { accuracy: number | null; takes: number; pace: string; missed?: string[] } | null = null;
           try {
             if (provider.writeVoiceover) {
-              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr } }, s.ai.textModel);
+              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr }, brand: lang === 'en' ? business.nameEn : business.nameAr }, s.ai.textModel);
               if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: w.model, kind: 'text', inputTokens: w.usage.inputTokens, outputTokens: w.usage.outputTokens, costUsd: estimateTextCost(s, w.usage.inputTokens, w.usage.outputTokens) });
               script = sanitizeScript(w.script, maxWords) ?? script; // rule-breaking script → verified copy instead
             }
@@ -554,7 +554,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
               const r = await speakVerified(spoken, {
                 pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
                 speak: async (text, pace, note) => {
-                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note, mood, emphasis: emphasisWord });
+                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note, mood, emphasis: emphasisWord, brand: script.includes(business.nameAr) ? business.nameAr : script.includes(business.nameEn) ? business.nameEn : undefined }); // the original script (the lexicon re-spells it for the voice)
                   await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
                   return v.audio;
                 },

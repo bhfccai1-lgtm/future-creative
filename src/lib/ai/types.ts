@@ -78,6 +78,8 @@ export interface VoiceoverRequest {
   language: string; persona: string; seconds: number; maxWords: number;
   copy: { headline: string; badge?: string | null; support?: string | null; cta?: string | null; caption?: string | null };
   product: { titleEn: string; titleAr: string };
+  /** the shop's name as the voice must say it in the call to action (e.g. «مركز إبداع المستقبل») */
+  brand?: string;
   /** the reel's shots in order (beat: scene) — the voice-over follows them */
   storyboard?: string[];
 }
