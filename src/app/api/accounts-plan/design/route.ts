@@ -20,7 +20,7 @@ export const POST = api('ads:create', async (req, { user }) => {
   const claimed = await prisma.idea.updateMany({ where: { id, status: { in: ['NEW', 'APPROVED'] } }, data: { status: 'USED' } });
   if (!claimed.count) throw new AppError('USED', 'هذه الفكرة صُمّمت مسبقًا', 409);
   await enq.generate({
-    accountId: row.accountId, productId: row.productId, createdBy: user.email, language: row.language as 'ar' | 'en' | 'ml',
+    accountId: row.accountId, productId: row.productId, createdBy: user.email, language: row.language as 'ar' | 'en' | 'ml' | 'hi',
     ...(row.format ? { format: row.format as 'REEL_VIDEO' } : {}),
     direction: { idea: [row.title, row.idea, row.hook ? `Hook: ${row.hook}` : ''].filter(Boolean).join(' — ').slice(0, 500), ...(row.occasion && OCCASIONS.some((o) => o.value === row.occasion) ? { occasion: row.occasion as never } : {}) },
   }, `plan-${id}`);

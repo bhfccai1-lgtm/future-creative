@@ -43,7 +43,7 @@ export const CreativeBriefJsonSchema = {
 } as const;
 
 export interface BriefRequest {
-  language: 'ar' | 'en' | 'ml';
+  language: 'ar' | 'en' | 'ml' | 'hi';
   product: { slug: string; name: string; titleAr: string; titleEn: string; titleMl?: string | null; targetAudience: string[]; occasions: string[]; visualGuidelines: string; recommendedMessages: Record<string, string[]> };
   accountName: string; businessCategory?: string | null;
   creativeStyle: string; defaultCta: string;
@@ -78,6 +78,8 @@ export interface VoiceoverRequest {
   language: string; persona: string; seconds: number; maxWords: number;
   copy: { headline: string; badge?: string | null; support?: string | null; cta?: string | null; caption?: string | null };
   product: { titleEn: string; titleAr: string };
+  /** the shop's name as the voice must say it in the call to action (e.g. «مركز إبداع المستقبل») */
+  brand?: string;
   /** the reel's shots in order (beat: scene) — the voice-over follows them */
   storyboard?: string[];
 }

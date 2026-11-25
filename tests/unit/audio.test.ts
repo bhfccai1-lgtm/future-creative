@@ -89,8 +89,11 @@ describe('voice personas and dialects', () => {
     expect(voiceMood({})).toMatch(/warm/);
     const ins = ttsInstructions(v.personaOf('ad_female')!, v.voiceLangOf('ar_bh')!, { mood: voiceMood({ category: 'هدايا' }), emphasis: 'أكواب مطبوعة' });
     expect(ins).toMatch(/Emotion: heartfelt warmth/);
-    expect(ins).toMatch(/FIRST line grabs attention/);
-    expect(ins).toMatch(/call to action .* confident, inviting smile/);
+    // the four-stage emotional journey: opening → warm middle → climax of delight → confident call to action
+    expect(ins).toMatch(/OPENING .*grabs attention.*MIDDLE .*warm.*CLIMAX .*delight.*ENDING .*call to action with confident, persuasive warmth/);
+    expect(ins).toMatch(/Deliver each sentence according to its own meaning/);
+    expect(ttsInstructions(v.personaOf('ad_female')!, v.voiceLangOf('ar_bh')!, { brand: 'مركز إبداع المستقبل' })).toContain('say «مركز إبداع المستقبل» clearly and proudly');
+    expect(ins).not.toMatch(/Brand name:/); // only when the script says the brand
     expect(ins).toMatch(/never flat, robotic or rushed/);
     expect(ins).toContain('«أكواب مطبوعة»');
     expect(ins).toMatch(/Finish the last syllable/);
@@ -192,4 +195,17 @@ describe('brand final screen and clean captions', () => {
     expect(lowest).toBeLessThan(1440); // contact block stays above Instagram's bottom caption/buttons area
     await fs.rm(dir, { recursive: true, force: true });
   }, 300_000);
+});
+
+describe('voice-over script: emotional journey and the brand', () => {
+  it('the writer is asked for opening → connection → climax → ending, and to say the brand once in the call to action', async () => {
+    const { voiceoverSystemPrompt } = await import('@/lib/ai/prompts');
+    const p = voiceoverSystemPrompt();
+    expect(p).toMatch(/OPENING.*CONNECTION.*CLIMAX.*ENDING/s);
+    expect(p).toMatch(/If `brand` is given, say it once, naturally, in the call to action/);
+  });
+  it('studio voice chain: rumble cut, softer sibilants, more presence — the reel still renders', async () => {
+    const src = await (await import('node:fs/promises')).readFile('src/lib/video/reel.ts', 'utf8');
+    expect(src).toMatch(/highpass=f=80,equalizer=f=280[^,]*,deesser=[^,]*,equalizer=f=3200/);
+  });
 });

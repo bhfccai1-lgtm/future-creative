@@ -29,7 +29,7 @@ export function voiceMood(o: { category?: string | null; occasion?: string | nul
 }
 
 /** Acting + accent + articulation + emotional arc instructions for the TTS model. */
-export function ttsInstructions(persona: Persona, lang: VoiceLang, o: { pace?: 'slow' | 'normal' | 'fast'; note?: string; mood?: string; emphasis?: string } = {}) {
+export function ttsInstructions(persona: Persona, lang: VoiceLang, o: { pace?: 'slow' | 'normal' | 'fast'; note?: string; mood?: string; emphasis?: string; brand?: string } = {}) {
   const pace = o.pace === 'slow' ? 'Pace: a little slower than usual, every syllable clear.' : o.pace === 'fast' ? 'Pace: lively and quick, yet every word still clear.' : 'Pace: natural commercial pace.';
   return [
     `Voice: ${persona.acting}.`,
@@ -37,9 +37,10 @@ export function ttsInstructions(persona: Persona, lang: VoiceLang, o: { pace?: '
     'Articulation: pronounce every word completely and correctly. For Arabic, give each letter its true sound — ع، ح، خ، غ، ق، ض، ظ، ص، ط — never anglicise or swallow them; follow the diacritics (tashkeel) where written; read English trade words written in Arabic letters as written. Finish the last syllable of every word, especially at the end of a phrase.',
     pace,
     `Emotion: ${o.mood ?? 'friendly, upbeat and warm'} — real feeling the listener can hear, never over-acted or theatrical.`,
-    'Emotional arc: the FIRST line grabs attention with genuine curiosity or delight (a question rises naturally at the end, then a tiny pause); the middle is warm and sincere, smiling; slow down slightly on the final call to action and say it with a confident, inviting smile.',
+    'Emotional journey: OPENING — the first line grabs attention with genuine curiosity or excitement (a question rises naturally, then a tiny pause); MIDDLE — warm, sincere, like telling a small true story; CLIMAX — one line of real delight, the brightest moment of the read; ENDING — slow down slightly and give the call to action with confident, persuasive warmth and a smile. Deliver each sentence according to its own meaning.',
     'Rhythm: natural micro-pauses between phrases (at «،» «…» and line breaks), breathe like a person, vary the intonation — never flat, robotic or rushed.',
     o.emphasis ? `Emphasis: give gentle, warm stress to «${o.emphasis}» the first time it is said.` : '',
+    o.brand ? `Brand name: say «${o.brand}» clearly and proudly, every word complete, without rushing.` : '',
     'Read the text exactly as written — do not add, drop or change words.',
     o.note ?? '',
   ].filter(Boolean).join(' ');
@@ -60,14 +61,14 @@ export function voiceScript(p: { headline: string; badge?: string | null; suppor
   return [...new Set(parts)].join('… ');
 }
 
-export async function openaiSpeak(apiKey: string, text: string, o: { persona: Persona; lang: VoiceLang; model?: string; pace?: 'slow' | 'normal' | 'fast'; note?: string; mood?: string; emphasis?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
+export async function openaiSpeak(apiKey: string, text: string, o: { persona: Persona; lang: VoiceLang; model?: string; pace?: 'slow' | 'normal' | 'fast'; note?: string; mood?: string; emphasis?: string; brand?: string }): Promise<{ audio: Buffer; model: string; chars: number }> {
   const model = o.model ?? 'gpt-4o-mini-tts';
   let r: Response;
   try {
     r = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, voice: o.persona.voice, input: text.slice(0, 1500), instructions: ttsInstructions(o.persona, o.lang, { pace: o.pace, note: o.note, mood: o.mood, emphasis: o.emphasis }), response_format: 'wav' }),
+      body: JSON.stringify({ model, voice: o.persona.voice, input: text.slice(0, 1500), instructions: ttsInstructions(o.persona, o.lang, { pace: o.pace, note: o.note, mood: o.mood, emphasis: o.emphasis, brand: o.brand }), response_format: 'wav' }),
     });
   } catch (e) { throw new AiProviderError('NETWORK', `TTS: ${(e as Error).message}`, true); }
   if (!r.ok) {

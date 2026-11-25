@@ -35,7 +35,8 @@ export const TEMPLATES: Template[] = [
   },
   {
     key: 'gold-frame-lower', name: 'إطار ذهبي مع عنوان سفلي',
-    shade: [{ from: 0, to: 0.16, dir: 'down' }, { from: 0.42, to: 0.77, dir: 'up' }], frame: true,
+    // the lower shade starts just above the headline — it used to start at 42 % and dimmed the product
+    shade: [{ from: 0, to: 0.16, dir: 'down' }, { from: 0.5, to: 0.77, dir: 'up' }], frame: true,
     logo: { x: 0.34, y: 0.035, w: 0.32, h: 0.08 },
     headline: { x: 0.07, y: 0.565, w: 0.86, h: 0.12, maxSize: 88, minSize: 48, maxLines: 2 },
     support: { x: 0.09, y: 0.69, w: 0.82, h: 0.055, maxSize: 42, minSize: 28, maxLines: 2 },
@@ -46,6 +47,25 @@ export const TEMPLATES: Template[] = [
 ];
 
 export const getTemplate = (key?: string | null) => TEMPLATES.find((t) => t.key === key) ?? TEMPLATES[0];
+
+/**
+ * Where the product may stand so that NO text, logo or panel of the template covers it — as fractions of the 2:3
+ * generated scene (1024×1536), which the composer then fits to the canvas (cover, centred). The scene prompt uses
+ * this, so a template with its headline in the lower half gets the product in the upper half and vice versa.
+ * null = the layout has its own composition rules (gold poster, full-AI poster).
+ */
+export function productZone(key: string | null | undefined, W: number, H: number): { top: number; bottom: number } | null {
+  // vertical formats default to the gold poster (own composition); these two templates squeeze their text into the
+  // middle at 1920 px, so the scene keeps its centred composition there
+  if (!TEMPLATES.some((t) => t.key === key) || H >= 1920) return null;
+  const t = templateFor(key, H);
+  const lowerText = t.headline.y > 0.45;
+  const topFree = (lowerText ? t.logo.y + t.logo.h : t.support.y + t.support.h) + 0.02; // canvas fractions
+  const bottomFree = (lowerText ? Math.min(t.headline.y, ...t.shade.filter((s) => s.dir === 'up').map((s) => s.from)) : t.panel.y) - 0.02;
+  const scale = Math.max(W / 1024, H / 1536), sceneH = 1536 * scale, offY = (sceneH - H) / 2;
+  const toScene = (f: number) => Math.round(((f * H + offY) / sceneH) * 100) / 100;
+  return { top: toScene(topFree), bottom: toScene(bottomFree) };
+}
 
 /**
  * Instagram safe zone for 1080×1920 (Stories and Reels). Instagram draws its own UI over the design:

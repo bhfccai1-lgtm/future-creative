@@ -1,32 +1,9 @@
 'use client';
 import { LAYOUTS } from '@/lib/render/templates';
-import { CONCEPTS, RENDER_MODES, AUDIO_TYPES, CHANNELS, DESIGN_STYLES, DESIGN_TYPES, REEL_DURATIONS, REEL_STYLES, proSceneCount } from '@/lib/creative/options';
+import { CONCEPTS, LOGO_POSITIONS, RENDER_MODES, AUDIO_TYPES, CHANNELS, DESIGN_STYLES, DESIGN_TYPES, REEL_DURATIONS, REEL_STYLES, proSceneCount } from '@/lib/creative/options';
 
-export interface DesignValues {
-  renderMode: string; customPrompt: string; layout: string; designType: string; designStyle: string; channels: string[]; concept?: string;
-  reelStyle: string; reelDuration: string; audio: string; audioQuery: string; videoEngine?: string;
-}
-export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: '', audioQuery: '', videoEngine: '' };
-
-/** Adds the design/channel/reel options of a DesignValues object to a direction payload. */
-export function designDirection(v: DesignValues, format: string) {
-  const d: Record<string, unknown> = {};
-  if (v.renderMode) d.renderMode = v.renderMode;
-  if (v.renderMode === 'ai_full' && v.customPrompt.trim()) d.customPrompt = v.customPrompt.trim();
-  if (v.layout) d.layout = v.layout;
-  if (v.designType) d.designType = v.designType;
-  if (v.concept) d.concept = v.concept;
-  if (v.designStyle) d.designStyle = v.designStyle;
-  if (v.channels.length) d.channels = v.channels;
-  if (format === 'REEL_VIDEO' || format === '') {
-    if (v.reelStyle) d.reelStyle = v.reelStyle;
-    if (v.videoEngine) d.videoEngine = v.videoEngine;
-    if (v.reelDuration) d.reelDuration = Number(v.reelDuration);
-    if (v.audio) d.audio = v.audio;
-    if (v.audio === 'instagram' && v.audioQuery.trim()) d.audioQuery = v.audioQuery.trim();
-  }
-  return d;
-}
+export { EMPTY_DESIGN, designDirection, type DesignValues } from '@/lib/creative/design-direction';
+import type { DesignValues } from '@/lib/creative/design-direction';
 
 function Sel({ label, value, onChange, children, hint }: { label: string; value: string; onChange: (v: string) => void; children: React.ReactNode; hint?: string }) {
   return <div><label className="label">{label}</label><select className="input" value={value} onChange={(e) => onChange(e.target.value)}>{children}</select>{hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}</div>;
@@ -40,8 +17,9 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
     <>
       <fieldset className="space-y-3">
         <legend className="mb-2 text-sm font-extrabold text-navy-800">طريقة التصميم</legend>
-        <div className="grid gap-3 md:grid-cols-3">
-          {[{ value: 'auto', ar: 'تلقائي (موصى به)' }, ...RENDER_MODES].map((m) => (
+        <div className="grid gap-3 md:grid-cols-2">
+          {/* AI-designed layout first; the fixed template is an advanced choice below */}
+          {[{ value: 'auto', ar: 'تلقائي (موصى به)' }, ...RENDER_MODES.filter((m) => m.value !== 'layered'), ...(v.renderMode === 'layered' ? RENDER_MODES.filter((m) => m.value === 'layered') : [])].map((m) => (
             <button type="button" key={m.value} onClick={() => set({ renderMode: m.value })}
               className={`rounded-xl border-2 p-3 text-right text-sm ${v.renderMode === m.value ? 'border-gold-500 bg-gold-300/20' : 'border-slate-200'}`}>
               <div className="font-extrabold">{m.ar}</div>
@@ -53,6 +31,16 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
             </button>
           ))}
         </div>
+        {v.renderMode !== 'layered' && (
+          <button type="button" className="text-xs text-slate-500 underline" onClick={() => set({ renderMode: 'layered' })}>خيار متقدم: قالب ثابت بطبقات النظام (نص مضمون 100% لكن تنسيق قالب)</button>
+        )}
+        {v.renderMode !== 'layered' && (
+          <div className="max-w-sm">
+            <Sel label="موضع الشعار" value={v.logoPosition ?? ''} onChange={(x) => set({ logoPosition: x })} hint="الشعار الأصلي يضعه النظام دائمًا — لا يرسمه الذكاء الاصطناعي ولا يتشوّه">
+              {LOGO_POSITIONS.map((o) => <option key={o.value} value={o.value === 'auto' ? '' : o.value}>{o.ar}</option>)}
+            </Sel>
+          </div>
+        )}
         {v.renderMode === 'ai_full' && (
           <div>
             <label className="label">تعليماتك للتصميم (اختياري — مثل ما تكتبه في ChatGPT)</label>
@@ -65,7 +53,9 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
 
       <fieldset className="grid gap-4 md:grid-cols-4">
         <legend className="mb-2 text-sm font-extrabold text-navy-800">التصميم</legend>
-        <Sel label="قالب التصميم (للطبقات الثابتة)" value={v.layout} onChange={(x) => set({ layout: x })} hint="الملصق الذهبي للصيغ العمودية فقط"><option value="">تلقائي (الملصق الذهبي للعمودي)</option>{LAYOUTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
+        {v.renderMode === 'layered' && (
+          <Sel label="قالب التصميم (للطبقات الثابتة)" value={v.layout} onChange={(x) => set({ layout: x })} hint="الملصق الذهبي للصيغ العمودية فقط"><option value="">تلقائي (الملصق الذهبي للعمودي)</option>{LAYOUTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
+        )}
         <Sel label="نوع التصميم" value={v.designType} onChange={(x) => set({ designType: x })}><option value="">اختيار تلقائي</option>{DESIGN_TYPES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="✨ الفكرة البصرية" value={v.concept ?? ''} onChange={(x) => set({ concept: x })}><option value="">تلقائي (تتناوب)</option><option value="none">بدون — تصوير منتج كلاسيكي</option>{CONCEPTS.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>
         <Sel label="أسلوب التصميم" value={v.designStyle} onChange={(x) => set({ designStyle: x })} hint="يغيّر ألوان القالب وأسلوب الصورة؛ الشعار يبقى كما هو"><option value="auto">تلقائي — يتنوع بين الأساليب</option><option value="">هوية المطبعة (كحلي وذهبي)</option>{DESIGN_STYLES.map((o) => <option key={o.value} value={o.value}>{o.ar}</option>)}</Sel>

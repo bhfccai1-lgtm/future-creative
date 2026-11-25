@@ -288,11 +288,23 @@ export const LANGUAGES = [
   { value: 'ml', ar: 'المالايالامية', en: 'Malayalam' },
 ] as const;
 
+export const LOGO_POSITIONS = [
+  { value: 'auto', ar: 'تلقائي' },
+  { value: 'top-center', ar: 'أعلى الوسط' },
+  { value: 'top-center-name', ar: 'أعلى الوسط مع اسم المركز' },
+  { value: 'top-right', ar: 'أعلى اليمين' },
+  { value: 'top-left', ar: 'أعلى اليسار' },
+  { value: 'bottom-center', ar: 'أسفل الوسط بين الفرعين' },
+] as const;
+export type LogoPosition = (typeof LOGO_POSITIONS)[number]['value'];
+
 export interface Direction {
   contentType?: string; market?: string; segment?: string; occasion?: string; idea?: string;
   designType?: string; designStyle?: string; layout?: 'gold-poster' | 'navy-gold-classic' | 'gold-frame-lower';
   /** layered = deterministic text layers (100% verified); ai_full = the image model designs the whole poster like ChatGPT. */
   renderMode?: 'layered' | 'ai_full' | 'auto'; customPrompt?: string; autoFormat?: boolean;
+  /** full-AI poster: where the ORIGINAL logo goes (auto = centred; «name» adds the centre's name under it) */
+  logoPosition?: LogoPosition;
   /** campaign: auto-pick products only from this category */
   categoryId?: string;
   /** campaign multi-choice lists — one is picked at random per design */

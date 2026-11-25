@@ -34,8 +34,8 @@ async function fail(jobId: string, adId: string, reason: string, accountId: stri
   await emitEvent('publication.failed', { jobId, adId, accountId, reason });
 }
 
-export function contactFooter(lang: string, locs: { nameAr: string; nameEn: string; nameMl?: string; phone: string }[]) {
-  return '📞 ' + locs.map((l) => `${lang === 'ar' ? l.nameAr : lang === 'ml' ? l.nameMl ?? l.nameEn : l.nameEn} ${l.phone}`).join(' | ');
+export function contactFooter(lang: string, locs: { nameAr: string; nameEn: string; nameMl?: string; nameHi?: string; phone: string }[]) {
+  return '📞 ' + locs.map((l) => `${lang === 'ar' ? l.nameAr : lang === 'ml' ? l.nameMl ?? l.nameEn : lang === 'hi' ? l.nameHi ?? l.nameEn : l.nameEn} ${l.phone}`).join(' | ');
 }
 
 /** Text that fits every chosen network; optionally moves hashtags to the first comment (Instagram/Facebook only). */

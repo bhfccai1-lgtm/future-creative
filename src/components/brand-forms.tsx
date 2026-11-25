@@ -23,7 +23,7 @@ export function LogoUpload() {
   );
 }
 
-type Loc = { key: string; nameAr: string; nameEn: string; nameMl?: string; phone: string };
+type Loc = { key: string; nameAr: string; nameEn: string; nameMl?: string; nameHi?: string; phone: string };
 export function BusinessForm({ b }: { b: { nameAr: string; nameEn: string; defaultCtaAr: string; defaultCtaEn: string; defaultCtaMl: string; locations: Loc[] } }) {
   const router = useRouter();
   const [v, setV] = useState(b);
@@ -45,11 +45,12 @@ export function BusinessForm({ b }: { b: { nameAr: string; nameEn: string; defau
       <div>
         <label className="label">الفروع وأرقام التواصل (تُضاف تلقائيًا لكل إعلان)</label>
         {v.locations.map((l, i) => (
-          <div key={l.key} className="mb-2 grid gap-2 md:grid-cols-5">
+          <div key={l.key} className="mb-2 grid gap-2 md:grid-cols-6">
             <input className="input ltr" value={l.key} disabled />
             <input className="input" value={l.nameAr} onChange={(e) => setLoc(i, 'nameAr', e.target.value)} placeholder="الاسم بالعربية" />
             <input className="input ltr" value={l.nameEn} onChange={(e) => setLoc(i, 'nameEn', e.target.value)} placeholder="English" />
             <input className="input" value={l.nameMl ?? ''} onChange={(e) => setLoc(i, 'nameMl', e.target.value)} placeholder="Malayalam" />
+            <input className="input" value={l.nameHi ?? ''} onChange={(e) => setLoc(i, 'nameHi', e.target.value)} placeholder="हिन्दी Hindi" />
             <input className="input ltr" value={l.phone} onChange={(e) => setLoc(i, 'phone', e.target.value)} pattern="\d{8}" title="8 أرقام" />
           </div>
         ))}
@@ -59,22 +60,23 @@ export function BusinessForm({ b }: { b: { nameAr: string; nameEn: string; defau
   );
 }
 
-export function FeaturesForm({ f }: { f: { ar: string[]; en: string[]; ml: string[] } }) {
+export function FeaturesForm({ f }: { f: { ar: string[]; en: string[]; ml: string[]; hi?: string[] } }) {
   const router = useRouter();
-  const [v, setV] = useState({ ar: f.ar.join('\n'), en: f.en.join('\n'), ml: f.ml.join('\n') });
+  const [v, setV] = useState({ ar: f.ar.join('\n'), en: f.en.join('\n'), ml: f.ml.join('\n'), hi: (f.hi ?? []).join('\n') });
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 4);
   return (
     <form className="space-y-3" onSubmit={async (e) => {
       e.preventDefault(); setMsg(null);
-      try { await apiCall('/api/brand/features', { method: 'PUT', body: { ar: lines(v.ar), en: lines(v.en), ml: lines(v.ml) } }); setMsg({ ok: true, t: 'تم الحفظ ✓' }); router.refresh(); }
+      try { await apiCall('/api/brand/features', { method: 'PUT', body: { ar: lines(v.ar), en: lines(v.en), ml: lines(v.ml), hi: lines(v.hi) } }); setMsg({ ok: true, t: 'تم الحفظ ✓' }); router.refresh(); }
       catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
     }}>
       <p className="text-xs text-slate-500">تظهر حتى 4 مزايا بأيقونات ذهبية في تصميم «الملصق الذهبي» — سطر لكل ميزة. اكتب مزايا صحيحة يمكنكم الالتزام بها (لا أسعار ولا مدد تسليم).</p>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <div><label className="label">العربية</label><textarea rows={4} className="input" value={v.ar} onChange={(e) => setV({ ...v, ar: e.target.value })} /></div>
         <div><label className="label">English</label><textarea rows={4} className="input ltr" value={v.en} onChange={(e) => setV({ ...v, en: e.target.value })} /></div>
         <div><label className="label">Malayalam</label><textarea rows={4} className="input" value={v.ml} onChange={(e) => setV({ ...v, ml: e.target.value })} /></div>
+        <div><label className="label">हिन्दी Hindi</label><textarea rows={4} className="input" value={v.hi} onChange={(e) => setV({ ...v, hi: e.target.value })} /></div>
       </div>
       <div className="flex items-center gap-3"><Button>حفظ المزايا</Button>{msg && <span className={msg.ok ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>{msg.t}</span>}</div>
     </form>

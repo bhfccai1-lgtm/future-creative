@@ -104,17 +104,59 @@ export function captionChunks(text: string): string[] {
     const next = [...cur, w].join(' ');
     if (cur.length && (cur.length >= 3 || next.length > 24)) { out.push(cur.join(' ')); cur = []; }
     cur.push(w);
-    if (/[،,.!؟?…:]$/.test(w)) { out.push(cur.join(' ')); cur = []; }
+    if (/[،,.!؟?…:।]$/.test(w)) { out.push(cur.join(' ')); cur = []; }
   }
   if (cur.length) out.push(cur.join(' '));
   return out.map((c) => c.replace(/[،,]$/, '')).filter(Boolean);
 }
-/** Chunk timings proportional to their length over [start, start + span]. */
-export function captionTimings(chunks: string[], start: number, span: number) {
-  const total = chunks.reduce((a, c) => a + c.length + 2, 0) || 1;
-  let t = start;
-  return chunks.map((c) => { const d = Math.max(0.45, (span * (c.length + 2)) / total); const r = { text: c, start: t, end: t + d }; t += d; return r; });
+/** Progress through the spoken words (0…1) → seconds. `isStart` puts a word that begins exactly at a pause after the pause. */
+export type CaptionClock = (u: number, isStart: boolean) => number;
+/** Even pacing over [start, start + span] (no voice, or the voice could not be analysed). */
+export const linearClock = (start: number, span: number): CaptionClock => (u) => start + Math.max(0, Math.min(1, u)) * span;
+
+/** Where the voice actually speaks: the complement of FFmpeg `silencedetect` silences within [0, total]. */
+export function speechIntervals(log: string, total: number): [number, number][] {
+  const starts = [...log.matchAll(/silence_start: (-?[\d.]+)/g)].map((m) => Math.max(0, Number(m[1])));
+  const ends = [...log.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const out: [number, number][] = [];
+  let t = 0;
+  starts.forEach((s, i) => { if (s - t > 0.05) out.push([t, Math.min(s, total)]); t = Math.max(t, ends[i] ?? total); });
+  if (total - t > 0.05) out.push([t, total]);
+  return out.length ? out : [[0, total]];
 }
+/** Clock that only advances while the voice speaks: captions hold during pauses instead of drifting ahead of the voice. */
+export function speechClock(intervals: [number, number][]): CaptionClock {
+  const total = intervals.reduce((a, [s, e]) => a + (e - s), 0);
+  return (u, isStart) => {
+    let left = Math.max(0, Math.min(1, u)) * total;
+    for (const [s, e] of intervals) { if (isStart ? left < e - s : left <= e - s) return s + left; left -= e - s; }
+    return intervals[intervals.length - 1][1];
+  };
+}
+
+export interface CaptionCue { text: string; start: number; end: number; words: { start: number; end: number }[] }
+/**
+ * Word-level caption cues: every word gets speaking time in proportion to its letters along the clock; a phrase stays
+ * on screen through the pause after it (until the next phrase starts), its last word still lit.
+ */
+export function captionCues(chunks: string[], at: CaptionClock): CaptionCue[] {
+  const words = chunks.map((c) => c.split(' ').filter(Boolean));
+  const total = words.flat().reduce((a, w) => a + w.length + 1, 0) || 1;
+  let acc = 0;
+  const cues = words.map((ws, i) => {
+    const wt = ws.map((w) => { const start = at(acc / total, true); acc += w.length + 1; return { start, end: at(acc / total, false) }; });
+    return { text: chunks[i], start: wt[0]?.start ?? 0, end: wt[wt.length - 1]?.end ?? 0, words: wt };
+  }).filter((c) => c.words.length);
+  cues.forEach((c, i) => { const next = cues[i + 1]; if (next && next.start > c.end) { c.end = next.start; c.words[c.words.length - 1].end = next.start; } });
+  return cues;
+}
+/** Speaking intervals of a voice file (falls back to "speaks throughout" if FFmpeg cannot analyse it). */
+async function detectSpeech(file: string, total: number): Promise<[number, number][]> {
+  const r = await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-af', 'silencedetect=noise=-38dB:d=0.18', '-f', 'null', '-'], 60_000).catch(() => null);
+  return r && r.code === 0 ? speechIntervals(r.stderr, total) : [[0, total]];
+}
+/** The spoken word in a caption is lit in gold. */
+const CAPTION_LIT = '#ffd23f';
 /** Final contact screen length: 4 s on reels of 14 s and longer, 3 s on short ones (and on AI-video reels, which add 3 s). */
 export const endCardSeconds = (D: number, aiVideo: boolean, override?: number) => override ?? (D >= 14 && !aiVideo ? 4 : 3);
 /** Voice starts 0.35 s in (adelay). */
@@ -241,26 +283,43 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     }
     // burned-in captions timed to the voice (or spread over the reel without a voice) — readable with the sound off
     // the voice's real length decides its tempo, where it is cut and how the captions are timed
-    let vplan: ReturnType<typeof voicePlan> | null = null;
-    if (opts.voice) { const vf0 = path.join(dir, 'voice-probe.audio'); await fs.writeFile(vf0, opts.voice); const sec = await audioSeconds(vf0); if (sec) vplan = voicePlan(sec, D); }
+    let vplan: ReturnType<typeof voicePlan> | null = null, speech: [number, number][] | null = null;
+    if (opts.voice) {
+      const vf0 = path.join(dir, 'voice-probe.audio'); await fs.writeFile(vf0, opts.voice);
+      const sec = await audioSeconds(vf0);
+      if (sec) { vplan = voicePlan(sec, D); speech = await detectSpeech(vf0, sec); }
+    }
     const capOverlays: string[] = []; // applied AFTER the end card, so the last words stay captioned over it
     if (opts.captions?.text.trim()) {
       let vStart = VOICE_START, span = Math.max(1.5, endStart - 0.8), capEnd = endStart;
       if (vplan) { span = vplan.end - VOICE_START; capEnd = vplan.end; }
       else if (opts.voice) span = Math.min(span, endStart - vStart);
       else vStart = 0.6;
-      for (const cap of captionTimings(captionChunks(opts.captions.text), vStart, span)) {
-        if (cap.start >= capEnd) break;
-        const t = await renderText({ text: cap.text, lang: opts.captions.lang, weight: 'extrabold', color: '#ffffff', maxSize: 80, minSize: 44, boxW: 920, boxH: 200, maxLines: 2 });
-        const pw = t.width + 64, ph = t.height + 34;
+      // with a voice: follow its real speech (pauses included), mapped through the start delay and any tempo change
+      const clock: CaptionClock = vplan && speech
+        ? ((sc, tempo): CaptionClock => (u, isStart) => VOICE_START + sc(u, isStart) / tempo)(speechClock(speech), vplan.tempo)
+        : linearClock(vStart, span);
+      const capY = (ph: number) => captionCenterY(c.manifest.layers.map((l) => ({ id: l.id, top: l.rect.top })), ph) - Math.round(ph / 2);
+      for (const cue of captionCues(captionChunks(opts.captions.text), clock)) {
+        if (cue.start >= capEnd) break;
+        const spec = { text: cue.text, lang: opts.captions.lang, weight: 'extrabold' as const, color: '#ffffff', maxSize: 80, minSize: 44, boxW: 860, boxH: 200, maxLines: 2 };
+        const plain = await renderText(spec);
+        const pw = plain.width + 64, ph = plain.height + 34, x = Math.round((1080 - pw) / 2), y = capY(ph), a = cue.start.toFixed(2);
         const pill = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"><rect x="2" y="2" width="${pw - 4}" height="${ph - 4}" rx="${Math.min(40, ph / 2)}" fill="#0b1730" fill-opacity="0.78" stroke="#e6c25a" stroke-width="3"/></svg>`);
-        const png = await sharp(pill).composite([{ input: t.png, left: 32, top: 17 }]).png().toBuffer();
-        const f = path.join(dir, `cap${idx}.png`); await fs.writeFile(f, png);
-        addStill(f);
-        const a = cap.start.toFixed(2), b = Math.min(cap.end, capEnd).toFixed(2);
-        filters.push(`[${idx}:v]${timedStill},fade=t=in:st=${a}:d=0.08:alpha=1[c${idx}]`);
-        capOverlays.push(`[c${idx}]overlay=x=${Math.round((1080 - pw) / 2)}:y=${captionCenterY(c.manifest.layers.map((l) => ({ id: l.id, top: l.rect.top })), ph) - Math.round(ph / 2)}:enable='between(t,${a},${b})'`);
-        idx++;
+        for (let k = 0; k < cue.words.length; k++) {
+          const ws = k === 0 ? cue.start : cue.words[k].start, we = Math.min(k === cue.words.length - 1 ? cue.end : cue.words[k + 1].start, capEnd);
+          if (we - ws < 0.01) continue;
+          // the same text at the same size with word k lit — identical box, so the pill never jumps between words
+          const lit = await renderText({ ...spec, maxSize: plain.fontSize, minSize: plain.fontSize, highlight: { word: k, color: CAPTION_LIT } });
+          const text = lit.width === plain.width && lit.height === plain.height ? lit.png : plain.png;
+          const f = path.join(dir, `cap${idx}.png`); await fs.writeFile(f, await sharp(pill).composite([{ input: text, left: 32, top: 17 }]).png().toBuffer());
+          addStill(f);
+          filters.push(`[${idx}:v]format=rgba[c${idx}]`);
+          // each phrase rises in softly (cubic ease-out over 0.16 s); the following words swap in place
+          const yy = k === 0 ? `'${y}+18*pow(max(0\\,1-(t-${a})/0.16)\\,3)'` : String(y);
+          capOverlays.push(`[c${idx}]overlay=x=${x}:y=${yy}:enable='between(t,${ws.toFixed(2)},${we.toFixed(2)})'${k === 0 ? ':eval=frame' : ''}`);
+          idx++;
+        }
       }
     }
     const end = await buildEndCard(c, opts.endCard);
@@ -304,7 +363,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       await fs.writeFile(vf, opts.voice);
       inputs.push('-i', vf);
       const vol = Math.max(0.1, Math.min(1, opts.musicVolume ?? 0.35));
-      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},${vplan && vplan.tempo > 1 ? `atempo=${vplan.tempo},` : ''}adelay=350|350,apad,atrim=duration=${(vplan?.trim ?? endStart - 0.2).toFixed(2)},afade=t=out:st=${Math.max(0, (vplan?.trim ?? endStart - 0.2) - 0.3).toFixed(2)}:d=0.3,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
+      filters.push(`[${idx}:a]aresample=${AUDIO_RATE},aformat=channel_layouts=stereo,highpass=f=80,equalizer=f=280:t=q:w=1.1:g=-2,deesser=i=0.35,equalizer=f=3200:t=q:w=1.3:g=2.5,acompressor=threshold=0.125:ratio=3:attack=5:release=120,loudnorm=I=-16:TP=-1.5:LRA=7,aresample=${AUDIO_RATE},${vplan && vplan.tempo > 1 ? `atempo=${vplan.tempo},` : ''}adelay=350|350,apad,atrim=duration=${(vplan?.trim ?? endStart - 0.2).toFixed(2)},afade=t=out:st=${Math.max(0, (vplan?.trim ?? endStart - 0.2) - 0.3).toFixed(2)}:d=0.3,apad,atrim=duration=${D},asplit=2[vo1][vo2]`);
       filters.push(`[mus]volume=${vol}[mbed]`, `[mbed][vo1]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[mduck]`);
       mix.push('[mduck]', '[vo2]');
       idx++;

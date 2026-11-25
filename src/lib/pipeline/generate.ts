@@ -31,7 +31,7 @@ import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
 import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
-import { TEMPLATES, FORMAT_SIZE } from '../render/templates';
+import { TEMPLATES, FORMAT_SIZE, productZone } from '../render/templates';
 import { aiPosterImageSize, aiPosterGeometry } from '../render/poster';
 import { loadReference, referencePrompt, slotsFor } from '../creative/references';
 import { captionIssues } from '../creative/caption-quality';
@@ -175,7 +175,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
   const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
   let aiFull = d.renderMode === 'ai_full';
-  const posterSize = aiPosterImageSize(FORMAT_SIZE[format].h);
+  const posterSize = aiPosterImageSize(FORMAT_SIZE[format].h, d.logoPosition === 'bottom-center');
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
   const formal = /business|corporate|b2b|شركات/i.test(`${account.name} ${account.handle ?? ''} ${account.businessCategory ?? ''}`);
@@ -304,6 +304,13 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     const refPrompt = referencePrompt(refs, styleBrief, aiFull ? 'poster' : 'scene'), references = refs.length ? refs.map((r) => r.png) : undefined;
     const realPhoto = d.realPhotoKey ? await loadReference(d.realPhotoKey) : null;
     if (d.realPhotoKey && !realPhoto) throw new AppError('NO_PHOTO', 'صورة العمل المنجز غير موجودة — ارفعها مرة أخرى.', 422);
+    // the layout is decided BEFORE the image, so the scene leaves the template's text areas free (product zone)
+    const vertical = format === 'IMAGE_STORY' || format === 'REEL_VIDEO';
+    // (a full-AI design that fails text verification falls back to this layered template, with the same free zone)
+    const layeredKey = d.layout && (vertical || d.layout !== 'gold-poster') ? d.layout
+      : vertical ? 'gold-poster'
+      : TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
+    const zone = productZone(layeredKey, FORMAT_SIZE[format].w, FORMAT_SIZE[format].h);
     type Scene = Awaited<ReturnType<typeof provider.generateScene>>;
     // ── IMAGE QUALITY GATE (layered scenes + reel shots): text drawn by mistake, softness, exposure ──
     const gateOn = s.ai.imageQualityGate && !provider.isDryRun && !realPhoto;
@@ -321,8 +328,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       ? ({ png: await sharp(realPhoto).resize(1024, 1536, { fit: 'cover', position: sharp.strategy.attention }).png().toBuffer(), model: 'real-photo' } as Scene)
       : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: [] /* typeset by the system in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h)) })
-        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP });
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system': typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system', d.logoPosition === 'bottom-center')) })
+        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone);
       const prompt = refPrompt ? `${basePrompt}\n${refPrompt}` : basePrompt;
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
       const n = !provider.isDryRun && provider.judgeImages ? s.ai.bestOf : 1;
@@ -358,8 +365,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       // Self-correcting full-AI poster: read the drawn text BEFORE composing; misspelled/missing words → re-draw with an exact correction note
       let pool = candidates;
       if (aiFull && provider.readText && !provider.isDryRun) {
-        const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted].filter((x) => x.trim());
-        const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h).bottomPct;
+        const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted, ...(s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [])].filter((x) => x.trim());
+        const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system', d.logoPosition === 'bottom-center').bottomPct;
         const spell = async (c: (typeof candidates)[number]) => {
           try {
             await assertBudget(s, estimateTextCost(s, 1500, 260));
@@ -412,10 +419,10 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     // ── STEP 07: drawn text still unverified after the re-draws → never ship it: re-render with system-typeset Arabic ──
     let textFallback = false;
     let scene = sceneFirst;
-    if (aiFull && (textCheck as { textPassed?: boolean } | null)?.textPassed === false && s.ai.verifiedTextFallback) {
+    if (aiFull && (textCheck as { textPassed?: boolean } | null)?.textPassed === false && s.ai.aiTextFallback === 'template') {
       await assertBudget(s, estimateImageCost(s, imgQuality));
       scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
         await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         return img;
       });
@@ -428,17 +435,15 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Step 9: deterministic layered composition ──
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
-    // Premium gold poster by default for vertical formats; classic templates alternate for feed/square.
-    const vertical = format === 'IMAGE_STORY' || format === 'REEL_VIDEO';
-    const templateKey = aiFull ? 'ai-poster'
-      : d.layout && (vertical || d.layout !== 'gold-poster') ? d.layout
-      : vertical ? 'gold-poster'
-      : TEMPLATES[(await prisma.advertisement.count({ where: { accountId: account.id } })) % TEMPLATES.length].key;
-    const features = s.brandFeatures[lang] ?? [];
+    // Premium gold poster by default for vertical formats; classic templates alternate for feed/square (decided above).
+    const templateKey = aiFull ? 'ai-poster' : layeredKey;
+    const features = templateKey === 'ai-poster' && s.ai.featuresRow !== 'system' ? [] : (s.brandFeatures[lang] ?? []);
     const composed = await composeAdvertisement({
       scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,
       badge: brief.badge, features,
       footer: lang === 'ar' ? `${business.nameAr} – مملكة البحرين` : `${business.nameEn} – Kingdom of Bahrain`,
+      // full-AI poster: where the original logo goes, and the centre's name for «أعلى الوسط مع اسم المركز»
+      logoPosition: d.logoPosition ?? null, brandName: lang === 'ar' ? business.nameAr : business.nameEn,
     });
 
     // ── Pro reel: extra AI scenes (each a different shot of the SAME product), same layout + theme ──
@@ -531,7 +536,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           let pronunciation: { accuracy: number | null; takes: number; pace: string; missed?: string[] } | null = null;
           try {
             if (provider.writeVoiceover) {
-              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr } }, s.ai.textModel);
+              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr }, brand: lang === 'ar' ? business.nameAr : business.nameEn }, s.ai.textModel);
               if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: w.model, kind: 'text', inputTokens: w.usage.inputTokens, outputTokens: w.usage.outputTokens, costUsd: estimateTextCost(s, w.usage.inputTokens, w.usage.outputTokens) });
               script = sanitizeScript(w.script, maxWords) ?? script; // rule-breaking script → verified copy instead
             }
@@ -544,12 +549,12 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
               const spoken = prepareSpoken(script, s.ai.audio.lexicon, vlang.id);
               // the feeling of the read (occasion → category) and the word to stress (the product, when the script says it)
               const mood = voiceMood({ category, occasion: p.direction?.occasion ?? null });
-              const title = lang === 'en' ? product.titleEn : lang === 'ml' ? product.titleMl : product.titleAr;
+              const title = lang === 'en' || lang === 'hi' ? product.titleEn : lang === 'ml' ? product.titleMl : product.titleAr;
               const emphasisWord = title && spoken.includes(title) ? title : undefined;
               const r = await speakVerified(spoken, {
                 pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
                 speak: async (text, pace, note) => {
-                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note, mood, emphasis: emphasisWord });
+                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note, mood, emphasis: emphasisWord, brand: script.includes(business.nameAr) ? business.nameAr : script.includes(business.nameEn) ? business.nameEn : undefined }); // the original script (the lexicon re-spells it for the voice)
                   await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
                   return v.audio;
                 },
@@ -581,7 +586,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           voice, sfx: s.ai.audio.sfx, musicVolume: s.ai.audio.musicVolume,
           ...(voice && displayScript && s.ai.audio.captions ? { captions: { text: displayScript, lang } } : {}),
           // final contact screen: brand + product name beside the finished product, both branches with WhatsApp
-          endCard: { brand: lang === 'en' ? business.nameEn : business.nameAr, brandLang: lang === 'en' ? 'en' : 'ar', product: (lang === 'en' ? product.titleEn : lang === 'ml' ? (product.titleMl ?? product.titleEn) : product.titleAr) ?? undefined, lang },
+          endCard: { brand: lang === 'en' || lang === 'hi' ? business.nameEn : business.nameAr, brandLang: lang === 'en' || lang === 'hi' ? 'en' : 'ar', product: (lang === 'en' || lang === 'hi' ? product.titleEn : lang === 'ml' ? (product.titleMl ?? product.titleEn) : product.titleAr) ?? undefined, lang },
         });
       } catch (e) { videoError = (e as Error).message; }
     }
@@ -616,7 +621,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     if (carousel) for (let i = 0; i < carousel.slides.length; i++) await put('SLIDE', `slide-${String(i + 2).padStart(2, '0')}.jpg`, carousel.slides[i], 'image/jpeg', { width: 1080, height: 1350, meta: { index: i + 2 } });
     const primarySha = video ? sha256(video.mp4) : sha256(jpeg);
 
-    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'GENERATED', briefId: briefRow.id, headline: brief.headline, caption: buildCaption(brief), logoSha256: logo.sha256, templateKey: composed.templateKey, layerManifest: composed.manifest as unknown as Prisma.InputJsonValue } });
+    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'GENERATED', briefId: briefRow.id, headline: brief.headline, caption: buildCaption(brief, { mentions: s.ai.captionMentions, ownHandle: account.handle, lang }), logoSha256: logo.sha256, templateKey: composed.templateKey, layerManifest: composed.manifest as unknown as Prisma.InputJsonValue } });
 
     // ── Full-AI poster: machine-read the text the image model drew (advisory; a human must still approve) ──
     let aiText: { expected: string[]; transcript: string | null } | null = null;
@@ -713,10 +718,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   }
 }
 
-export function buildCaption(b: CreativeBriefOut) {
+export function buildCaption(b: CreativeBriefOut, o: { mentions?: string[]; ownHandle?: string | null; lang?: 'ar' | 'en' | 'ml' | 'hi' } = {}) {
   // Instagram accepts at most 5 hashtags — keep the first 5 unique ones the model ranked highest
   const tags = [...new Set(b.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '_')))].slice(0, 5).join(' ');
-  return [b.caption.trim(), tags].filter(Boolean).join('\n\n');
+  // the owner's Instagram accounts, mentioned at the end of every caption — never an account in its own post
+  const own = (o.ownHandle ?? '').replace(/^@/, '').toLowerCase();
+  const mentions = [...new Set(o.mentions ?? [])].filter((m) => m.replace(/^@/, '').toLowerCase() !== own && !b.caption.includes(m));
+  const follow = mentions.length ? `${o.lang === 'en' || o.lang === 'ml' ? 'Follow us' : o.lang === 'hi' ? 'हमें फॉलो करें' : 'تابعونا'}: ${mentions.join(' ')}` : '';
+  return [b.caption.trim(), follow, tags].filter(Boolean).join('\n\n');
 }
 
 /** The option not used for the longest time among `recent` (newest first); unused options come first. */

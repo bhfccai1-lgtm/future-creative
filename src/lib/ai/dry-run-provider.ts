@@ -19,10 +19,11 @@ const ANGLES = [
   { key: 'team-identity', en: 'unified team / brand identity' },
 ];
 
-const HEADLINES: Record<'ar' | 'en' | 'ml', string[]> = {
+const HEADLINES: Record<'ar' | 'en' | 'ml' | 'hi', string[]> = {
   ar: ['اطبع فكرتك بإبداع', 'تفاصيل تصنع الفرق', 'هويتك تستحق الأفضل', 'جودة تراها وتلمسها', 'لمسة احترافية لعلامتك', 'من التصميم إلى الطباعة', 'اصنع انطباعًا يدوم', 'أفكارك بين يديك'],
   en: ['Print Your Idea Beautifully', 'Details Make the Difference', 'Your Brand, Printed Right', 'Quality You Can Feel', 'A Professional Touch', 'From Design to Print', 'Make a Lasting Impression', 'Your Ideas in Hand'],
   ml: ['നിങ്ങളുടെ ആശയം പ്രിന്റ് ചെയ്യൂ', 'ഗുണമേന്മയുള്ള പ്രിന്റിംഗ്', 'നിങ്ങളുടെ ബ്രാൻഡിനായി', 'മികച്ച ഡിസൈൻ, മികച്ച പ്രിന്റ്'],
+  hi: ['अपना आइडिया खूबसूरती से प्रिंट करें', 'बेहतरीन क्वालिटी प्रिंटिंग', 'आपके ब्रांड के लिए', 'शानदार डिज़ाइन, शानदार प्रिंट'],
 };
 
 const hashInt = (s: string) => parseInt(createHash('sha256').update(s).digest('hex').slice(0, 8), 16);

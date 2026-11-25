@@ -14,7 +14,7 @@ export const POST = api<{ params: Promise<{ id: string }> }>('ads:create', async
   const claimed = await prisma.idea.updateMany({ where: { id, status: { in: ['NEW', 'APPROVED'] } }, data: { status: 'USED' } });
   if (!claimed.count) throw new AppError('USED', 'هذه الفكرة استُخدمت أو رُفضت', 409);
   await enq.generate({
-    accountId: idea.accountId, productId: idea.productId, createdBy: user.email, language: idea.language as 'ar' | 'en' | 'ml',
+    accountId: idea.accountId, productId: idea.productId, createdBy: user.email, language: idea.language as 'ar' | 'en' | 'ml' | 'hi',
     ...(idea.format ? { format: idea.format } : {}),
     direction: { idea: [idea.title, idea.idea, idea.hook ? `Hook: ${idea.hook}` : ''].filter(Boolean).join(' — ').slice(0, 500), ...(idea.occasion && OCCASIONS.some((o) => o.value === idea.occasion) ? { occasion: idea.occasion } : {}) },
   }, `idea-${id}`);
