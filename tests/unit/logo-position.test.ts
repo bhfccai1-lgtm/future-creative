@@ -64,3 +64,14 @@ describe('no empty band at the top when the logo is in the footer', () => {
     expect(far / (info.width * info.height)).toBeLessThan(0.01);
   });
 });
+
+describe('reels: no empty dark block under the phone numbers', () => {
+  it('below the phones the design itself continues (Instagram draws its caption there); the phones keep their dark backing', async () => {
+    const warm = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><rect width="1024" height="1536" fill="#b07a46"/></svg>')).png().toBuffer();
+    const c = await composeAdvertisement({ scene: warm, format: 'REEL_VIDEO', lang: 'ar', templateKey: 'ai-poster', headline: 'x', cta: 'اطلب الآن', logo: await logo(), contacts: [{ key: 'saar', label: 'سار', phone: '33316319' }, { key: 'salmabad', label: 'سلماباد', phone: '34315316' }] });
+    const mean = async (top: number, h: number) => { const st = await sharp(await sharp(c.background).extract({ left: 200, top, width: 680, height: h }).png().toBuffer()).stats(); return (st.channels[0].mean + st.channels[1].mean + st.channels[2].mean) / 3; }; // stats() ignores extract() → measure the cut-out
+    const bottom = await mean(1760, 100), behindPhones = await mean(1380, 100);
+    expect(bottom).toBeGreaterThan(70);              // the design shows (it was ~0.92 navy before → near black)
+    expect(bottom).toBeGreaterThan(behindPhones);   // the phones still sit on the darker glass/shade
+  });
+});
