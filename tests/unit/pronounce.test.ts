@@ -16,6 +16,13 @@ describe('listen-back check', () => {
     expect(normalizeForCompare('مَطْبَعَةُ إبداع')).toEqual(['مطبعه', 'ابداع']);
     expect(wordAccuracy('أكواب بتصميمك الخاص هدية تبقى', 'اكواب بتصميمك الخاص هديه تبقى')).toBe(1);
     expect(wordAccuracy('أكواب بتصميمك الخاص هدية تبقى', 'اكواب بتصميم الخاص')).toBe(0.4);
+    // Indic scripts: vowel signs belong to the word — a wrong take must not look right
+    expect(normalizeForCompare('इसकी कीमत क्या है')).toEqual(['इसकी', 'कीमत', 'क्या', 'है']);
+    expect(normalizeForCompare('ഇതിന്റെ വില')).toEqual(['ഇതിന്റെ', 'വില']);
+    expect(wordAccuracy('अपना नाम लिखवाएं अभी ऑर्डर करें', 'अपना नाम लिखवाएं, अभी ऑर्डर करें।')).toBe(1);
+    expect(wordAccuracy('अपना नाम लिखवाएं', 'अपनी नीम लाखवाओ')).toBe(0);
+    expect(wordAccuracy('ഇതിന്റെ വില എത്ര', 'ഇതാണ് വാല എത്തി')).toBe(0);
+    expect(normalizeForCompare('آمَنَ مُـمْتاز')).toEqual(['امن', 'ممتاز']); // Arabic unchanged: diacritics and tatweel still dropped
     expect(missedWords('أكواب بتصميمك الخاص', 'اكواب الخاص')).toEqual(['بتصميمك']);
   });
   it('re-takes slower once when words were not understood and keeps the better take', async () => {
