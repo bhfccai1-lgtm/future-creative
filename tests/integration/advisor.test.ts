@@ -33,6 +33,24 @@ describe('professional advisor', () => {
     expect(r.advice.find((x) => x.id === 'story_only')?.evidence).toContain(accounts[0].name);
     expect(r.advice.find((x) => x.id === 'unknown_jobs')).toBeUndefined();
   });
+  it('flags posting overload (too many posts in one day on one account) with the daily-limit and gap fix', async () => {
+    const { accounts } = await seedBase();
+    const [busy, calm] = accounts;
+    const product = await prisma.product.findFirstOrThrow();
+    const day = new Date('2026-11-18T06:00:00Z'); // 09:00 in Bahrain
+    const job = async (accountId: string, i: number) => {
+      const ad = await prisma.advertisement.create({ data: { accountId, productId: product.id, format: 'REEL_VIDEO', language: 'ar', state: 'PUBLISHED', createdBy: 't' } });
+      await prisma.publicationJob.create({ data: { idempotencyKey: `ov-${accountId}-${i}`, advertisementId: ad.id, accountId, provider: 'metricool', state: 'PUBLISHED', scheduledFor: new Date(day.getTime() + i * 3600_000) } });
+    };
+    for (let i = 0; i < 5; i++) await job(busy.id, i); // 5 posts the same day → overload
+    for (let i = 0; i < 3; i++) await job(calm.id, i); // 3 = within the limit
+    const r = await runAdvisor(new Date('2026-11-19T09:00:00Z'));
+    const a = r.advice.find((x) => x.id === 'posting_overload')!;
+    expect(a.evidence).toContain(`${busy.name}: 5 منشورات يوم 2026-11-18`);
+    expect(a.evidence).not.toContain(calm.name);
+    expect(a.steps.join(' ')).toMatch(/180/); // the default 30-minute gap → a longer one is suggested
+    expect(a.link).toBe(`/accounts/${busy.id}`);
+  });
   it('dry-run designs are reported as unpublishable, with the fix', async () => {
     const { accounts } = await seedBase();
     await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't' });
