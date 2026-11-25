@@ -294,6 +294,7 @@ export const LOGO_POSITIONS = [
   { value: 'top-center-name', ar: 'أعلى الوسط مع اسم المركز' },
   { value: 'top-right', ar: 'أعلى اليمين' },
   { value: 'top-left', ar: 'أعلى اليسار' },
+  { value: 'bottom-center', ar: 'أسفل الوسط بين الفرعين' },
 ] as const;
 export type LogoPosition = (typeof LOGO_POSITIONS)[number]['value'];
 

@@ -60,7 +60,7 @@ export const DirectionSchema = z.object({
   designStyle: z.enum(['auto', ...optionValues(DESIGN_STYLES)] as [string, ...string[]]).optional(),
   layout: z.enum(['gold-poster', 'navy-gold-classic', 'gold-frame-lower']).optional(),
   renderMode: z.enum(['layered', 'ai_full', 'auto']).optional(),
-  logoPosition: z.enum(['auto', 'top-center', 'top-center-name', 'top-right', 'top-left']).optional(),
+  logoPosition: z.enum(['auto', 'top-center', 'top-center-name', 'top-right', 'top-left', 'bottom-center']).optional(),
   /** campaign: vary the format per post (growth mix) regardless of the account's fixed format */
   autoFormat: z.boolean().optional(),
   categoryId: z.string().max(64).optional(),

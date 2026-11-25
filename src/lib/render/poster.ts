@@ -197,10 +197,16 @@ export const AI_POSTER_KEY = 'ai-poster';
  * keeps all drawn text inside the safe central width). The model leaves the top zone empty for the ORIGINAL logo and
  * the bottom zone as plain background, where the system overlays the gold order button and the glass phone panel.
  */
-export function aiPosterGeometry(h: number, featureRow = true) {
-  const g = aiPosterGeometryBase(h);
+export function aiPosterGeometry(h: number, featureRow = true, logoBottom = false) {
+  const b = aiPosterGeometryBase(h);
   // no system feature row → nothing reserved for it: the design gets that space (feed: bottom zone 40 % → 26 %)
-  return featureRow || !g.features ? g : { ...g, features: null, bottomPct: h === 1350 ? 26 : g.bottomPct };
+  const g = featureRow || !b.features ? b : { ...b, features: null, bottomPct: h === 1350 ? 26 : b.bottomPct };
+  if (!logoBottom) return g;
+  // logo in the footer, between the two branches (owner's sketch): the design fills the top; the logo box sits centred,
+  // rising a little above the glass panel
+  // as tall as fits between the order button and the panel's bottom edge (never touching the button)
+  const lh = Math.min(Math.round(g.panel.h * 1.3), g.panel.y + g.panel.h - (g.cta.y + g.cta.h) - 10), lw = Math.round(lh * 1.25);
+  return { ...g, topBand: 0, logo: { w: lw, h: lh, y: g.panel.y + g.panel.h - lh } };
 }
 function aiPosterGeometryBase(h: number) {
   // topBand: the logo's own zone (a soft extension of the art) — the AI design starts BELOW it, so the logo can never cover drawn text
@@ -223,10 +229,11 @@ const ribbons = (H: number) => {
 };
 
 /** Background for the full-AI poster: the AI design full-bleed + soft legibility gradient + glass phone panel + ribbons. */
-export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true): Promise<Buffer> {
-  const g = aiPosterGeometry(height, featureRow), H = g.H, artH = H - g.topBand;
+export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true, logoBottom = false): Promise<Buffer> {
+  const g = aiPosterGeometry(height, featureRow, logoBottom), H = g.H, artH = H - g.topBand;
   // never crop the design when the aspect differs a lot (square output from a 1:1 image): fit it whole on a blurred fill
-  const crop = Math.abs(W / artH - 1) > 0.1 && Math.abs(W / artH - 2 / 3) > 0.05;
+  // (a full-height 9:16 story — logo in the footer — is a normal cover crop of the 2:3 design: ~8 % per side)
+  const crop = Math.abs(W / artH - 1) > 0.1 && Math.abs(W / artH - 2 / 3) > 0.05 && Math.abs(W / artH - 9 / 16) > 0.03;
   const soft = (w: number, h: number, blur: number, b: number) => sharp(poster).resize(w, h, { fit: 'fill' }).blur(blur).modulate({ brightness: b }).removeAlpha().png().toBuffer();
   let art: Buffer;
   if (!crop) art = await sharp(poster).resize(W, artH, { fit: 'cover', position: 'centre' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
@@ -257,7 +264,7 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
     ${g.features ? `<rect x="40" y="${g.features.y - 14}" width="${W - 80}" height="${Math.round(g.features.icon + g.features.label * 1.6 + 26)}" rx="28" fill="${NAVY}" fill-opacity="0.72" stroke="url(#gg)" stroke-opacity="0.55" stroke-width="2"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
     <rect x="${px + 24}" y="${g.panel.y + 6}" width="${pw - 48}" height="2" fill="#ffffff" opacity="0.18"/>
-    <rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>
+    ${logoBottom ? '' : `<rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>`}
   </svg>`;
   return sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
 }
@@ -269,8 +276,9 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
 export async function composeAiPoster(input: ComposeInput): Promise<ComposeResult> {
   const lang = input.lang;
   const hasRow = ((input as ComposeInput & { features?: string[] }).features ?? []).length > 0; // the glass row is drawn only when it holds features
-  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h, hasRow), H = g.H;
-  const background = await buildAiPosterBackground(input.scene, H, hasRow);
+  const logoBottom = input.logoPosition === 'bottom-center';
+  const g = aiPosterGeometry(FORMAT_SIZE[input.format].h, hasRow, logoBottom), H = g.H;
+  const background = await buildAiPosterBackground(input.scene, H, hasRow, logoBottom);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
   // the ORIGINAL logo (the supplied file, only scaled) in the empty top zone, where the design needs it:
@@ -280,7 +288,7 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const withName = pos === 'top-center-name' && !!input.brandName?.trim();
   const lw = corner ? Math.round(g.logo.w * 0.72) : g.logo.w;
   const lh = corner ? Math.round(g.logo.h * 0.72) : withName ? Math.round(g.logo.h * 0.66) : g.logo.h;
-  const lx = pos === 'top-right' ? W - g.padX - lw : pos === 'top-left' ? g.padX : Math.round((W - lw) / 2);
+  const lx = pos === 'top-right' ? W - g.padX - lw : pos === 'top-left' ? g.padX : Math.round((W - lw) / 2); // centred also for bottom-center
   const lb = { x: lx, y: g.logo.y, w: lw, h: lh };
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
@@ -329,11 +337,12 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
 
   // branches inside the glass panel: gold branch name, then the number in a gold pill
   const order = lang === 'ar' ? [...input.contacts].reverse() : input.contacts;
-  const inner = W - 2 * g.padX, col = inner / Math.max(1, order.length);
+  const gap = logoBottom ? g.logo.w + 24 : 0; // the logo stands between the two branches
+  const inner = W - 2 * g.padX - gap, col = inner / Math.max(1, order.length);
   const labelH = Math.round(g.panel.h * 0.3), pillH = Math.round(g.panel.h * 0.44);
   const labelY = g.panel.y + Math.round(g.panel.h * 0.08), pillY = g.panel.y + g.panel.h - pillH - Math.round(g.panel.h * 0.1);
   for (let i = 0; i < order.length; i++) {
-    const c = order[i]; const cx = g.padX + col * i + col / 2;
+    const c = order[i]; const cx = g.padX + col * i + col / 2 + (logoBottom && i >= order.length / 2 ? gap : 0);
     const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: '#f6d77a', maxSize: Math.round(labelH * 0.78), minSize: 24, boxW: Math.round(col - 60), boxH: labelH, maxLines: 1 });
     layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, labelY + (labelH - lt.height) / 2, lt.width, lt.height, { x: Math.round(cx - col / 2 + 30), y: labelY, w: Math.round(col - 60), h: labelH }, lt, c.label, '#f6d77a'));
     const nt = await renderText({ text: c.phone, lang: lang === 'ml' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 150), boxH: pillH - 8, maxLines: 1, ltr: true });

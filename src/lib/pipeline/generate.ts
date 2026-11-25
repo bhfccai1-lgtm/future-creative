@@ -621,7 +621,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     if (carousel) for (let i = 0; i < carousel.slides.length; i++) await put('SLIDE', `slide-${String(i + 2).padStart(2, '0')}.jpg`, carousel.slides[i], 'image/jpeg', { width: 1080, height: 1350, meta: { index: i + 2 } });
     const primarySha = video ? sha256(video.mp4) : sha256(jpeg);
 
-    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'GENERATED', briefId: briefRow.id, headline: brief.headline, caption: buildCaption(brief), logoSha256: logo.sha256, templateKey: composed.templateKey, layerManifest: composed.manifest as unknown as Prisma.InputJsonValue } });
+    await prisma.advertisement.update({ where: { id: ad.id }, data: { state: 'GENERATED', briefId: briefRow.id, headline: brief.headline, caption: buildCaption(brief, { mentions: s.ai.captionMentions, ownHandle: account.handle, lang }), logoSha256: logo.sha256, templateKey: composed.templateKey, layerManifest: composed.manifest as unknown as Prisma.InputJsonValue } });
 
     // ── Full-AI poster: machine-read the text the image model drew (advisory; a human must still approve) ──
     let aiText: { expected: string[]; transcript: string | null } | null = null;
@@ -718,10 +718,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   }
 }
 
-export function buildCaption(b: CreativeBriefOut) {
+export function buildCaption(b: CreativeBriefOut, o: { mentions?: string[]; ownHandle?: string | null; lang?: 'ar' | 'en' | 'ml' } = {}) {
   // Instagram accepts at most 5 hashtags — keep the first 5 unique ones the model ranked highest
   const tags = [...new Set(b.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '_')))].slice(0, 5).join(' ');
-  return [b.caption.trim(), tags].filter(Boolean).join('\n\n');
+  // the owner's Instagram accounts, mentioned at the end of every caption — never an account in its own post
+  const own = (o.ownHandle ?? '').replace(/^@/, '').toLowerCase();
+  const mentions = [...new Set(o.mentions ?? [])].filter((m) => m.replace(/^@/, '').toLowerCase() !== own && !b.caption.includes(m));
+  const follow = mentions.length ? `${o.lang === 'en' ? 'Follow us' : o.lang === 'ml' ? 'Follow us' : 'تابعونا'}: ${mentions.join(' ')}` : '';
+  return [b.caption.trim(), follow, tags].filter(Boolean).join('\n\n');
 }
 
 /** The option not used for the longest time among `recent` (newest first); unused options come first. */

@@ -135,6 +135,8 @@ export const SettingsSchema = z.object({
      *  'off'    → not shown — more room for the design
      */
     featuresRow: z.enum(['ai', 'system', 'off']).default('ai'),
+    /** Instagram accounts every post caption mentions at the end («تابعونا: …»); an account is not mentioned in its own post */
+    captionMentions: z.array(z.string().regex(/^@[A-Za-z0-9._]{1,30}$/)).max(5).default(['@bhfcps', '@bhfcpss']),
     /** Reels video engine: FFmpeg motion from AI stills (free) or Google Gemini Veo AI video (paid per second). */
     video: z.object({
       engine: z.enum(['ffmpeg', 'veo']).default('ffmpeg'),
