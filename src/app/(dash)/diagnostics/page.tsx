@@ -7,6 +7,13 @@ import { fmtLocal } from '@/lib/time';
 import { can } from '@/lib/auth/rbac';
 import { serverUpdateState } from '@/lib/ops/server-update';
 import { ServerUpdateButton } from '@/components/server-update-button';
+import { runAnalysis, supportReport, type Verdict } from '@/lib/ops/analysis';
+import { CopyReportButton } from '@/components/copy-report-button';
+import { FixButton } from '@/components/fix-button';
+import { fixFor, safeFixesFor } from '@/lib/ops/fixes';
+import { runSocialAudit, type PlatformCard, type CheckStatus } from '@/lib/ops/social-audit';
+import { runBusinessAudit } from '@/lib/ops/business-audit';
+import { rankOpportunities, EFFORT_AR } from '@/lib/ops/opportunities';
 export const dynamic = 'force-dynamic';
 
 const TONE = { OK: 'green', WARN: 'amber', FAIL: 'red' } as const;
@@ -87,8 +94,9 @@ function AdviceCard({ a, canFix }: { a: Advice; canFix: boolean }) {
 
 export default async function DiagnosticsPage() {
   const user = await requirePageUser();
-  const canUpdate = can(user.perms, 'settings:integrations');
-  const [d, adv, hist, upd] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), canUpdate ? serverUpdateState() : null]);
+  // the same admin permission runs fixes and requests a server update
+  const canFix = can(user.perms, 'settings:integrations'), canUpdate = canFix;
+  const [d, adv, hist, upd, an, social, biz] = await Promise.all([runDiagnostics(), runAdvisor(), healthHistory(), canUpdate ? serverUpdateState() : null, runAnalysis(), runSocialAudit(), runBusinessAudit()]);
   const k = adv.kpis;
   // the analysis adds its own findings (trends, service levels, runtime, migrations) to the advisor's, by priority
   const seenIds = new Set<string>();
