@@ -290,6 +290,7 @@ export const LANGUAGES = [
   { value: 'ar', ar: 'العربية', en: 'Arabic' },
   { value: 'en', ar: 'الإنجليزية', en: 'English' },
   { value: 'ml', ar: 'المالايالامية', en: 'Malayalam' },
+  { value: 'hi', ar: 'الهندية', en: 'Hindi' },
 ] as const;
 
 export const LOGO_POSITIONS = [
