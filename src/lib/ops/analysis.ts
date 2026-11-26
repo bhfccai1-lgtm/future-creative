@@ -117,7 +117,7 @@ export async function runAnalysis(now = new Date()): Promise<AnalysisReport> {
   const [ads, approvals, jobs, aiJobs, usage] = await Promise.all([
     prisma.advertisement.findMany({ where: { createdAt: { gte: tPrev } }, select: { createdAt: true, qcPassed: true, qcReport: true, state: true, dryRun: true, errorMessage: true } }),
     prisma.approvalRequest.findMany({ where: { OR: [{ decidedAt: { gte: tPrev } }, { status: 'PENDING' }] }, select: { status: true, createdAt: true, decidedAt: true } }),
-    prisma.publicationJob.findMany({ where: { scheduledFor: { gte: tPrev, lte: now } }, select: { state: true, scheduledFor: true, lastError: true, result: { select: { verifiedAt: true, engagementScore: true } } } }),
+    prisma.publicationJob.findMany({ where: { scheduledFor: { gte: tPrev, lte: now } }, select: { state: true, scheduledFor: true, lastError: true, result: { select: { verifiedAt: true, publishedAt: true, engagementScore: true } } } }),
     prisma.aiGenerationJob.findMany({ where: { createdAt: { gte: tPrev } }, select: { kind: true, status: true, error: true, startedAt: true, finishedAt: true, createdAt: true } }),
     prisma.aiUsage.findMany({ where: { createdAt: { gte: tPrev } }, select: { costUsd: true, createdAt: true } }),
   ]);
@@ -152,7 +152,13 @@ export async function runAnalysis(now = new Date()): Promise<AnalysisReport> {
   const secs = (a: Date | null, b: Date | null) => (a && b ? (b.getTime() - a.getTime()) / 1000 : null);
   const gen = aiJobs.filter((j) => j.createdAt >= t0 && j.status === 'SUCCEEDED').map((j) => secs(j.startedAt, j.finishedAt)).filter((x): x is number => x !== null && x >= 0);
   const wait = decided.filter((a) => a.decidedAt! >= t0).map((a) => secs(a.createdAt, a.decidedAt)! / 3600).filter((x) => x >= 0);
-  const delay = jobs.filter((j) => j.scheduledFor >= t0 && j.result?.verifiedAt).map((j) => secs(j.scheduledFor, j.result!.verifiedAt!)! / 60).filter((x) => x >= -5);
+  // REAL lateness = the provider's own publish time − the slot (Instagram timestamp, imported with the metrics).
+  // Until a post has it, the confirmation time is the only signal — that measured OUR polling, not Instagram:
+  // posts went out 1–6 min after the slot while «verifiedAt» said ~17 min. Both are now reported separately.
+  const recent = jobs.filter((j) => j.scheduledFor >= t0 && j.result?.verifiedAt);
+  const realPub = recent.filter((j) => j.result!.publishedAt);
+  const delay = (realPub.length >= 5 ? realPub.map((j) => secs(j.scheduledFor, j.result!.publishedAt!)! / 60) : recent.map((j) => secs(j.scheduledFor, j.result!.verifiedAt!)! / 60)).filter((x) => x >= -5);
+  const confirmLag = realPub.map((j) => secs(j.result!.publishedAt!, j.result!.verifiedAt!)! / 60).filter((x) => x >= 0);
   const slo = (id: string, label: string, unit: Slo['unit'], xs: number[], target: number, targetOn: Slo['targetOn']): Slo => {
     const p50 = percentile(xs, 50), p90 = percentile(xs, 90), v = targetOn === 'p50' ? p50 : p90;
     const rr = (x: number | null) => (x === null ? null : r1(x));
@@ -161,7 +167,8 @@ export async function runAnalysis(now = new Date()): Promise<AnalysisReport> {
   const slos: Slo[] = [
     slo('generation', 'زمن توليد خطوة ذكاء اصطناعي', 'ث', gen, 180, 'p90'),
     slo('approval_wait', 'انتظار الموافقة', 'س', wait, 12, 'p50'),
-    slo('publish_delay', 'تأخر النشر عن موعده', 'د', delay, 15, 'p90'),
+    slo('publish_delay', realPub.length >= 5 ? 'تأخر النشر الفعلي (توقيت إنستغرام)' : 'تأخر تأكيد النشر عن موعده', 'د', delay, realPub.length >= 5 ? 10 : 15, 'p90'),
+    slo('confirm_lag', 'سرعة تأكيد النشر بعد ظهوره', 'د', confirmLag, 6, 'p90'),
   ];
 
   // ── 3) root causes (last 7 days) ──
@@ -197,8 +204,8 @@ export async function runAnalysis(now = new Date()): Promise<AnalysisReport> {
     why: t.z !== null ? 'الفرق أكبر من التذبذب العشوائي بثقة 95٪ — ليس صدفة.' : 'زيادة كبيرة عن الأسبوع السابق.', steps: causes.length ? [`ابدأ بأكثر الأسباب تكرارًا: «${causes[0].key}» (${causes[0].share}٪ من الأعطال)`, 'راجع جدول الأسباب الجذرية أدناه'] : ['راجع جدول الأسباب الجذرية أدناه'], link: '/diagnostics' });
   for (const s of slos) if (s.ok === false) advice.push({ id: `slo_${s.id}`, category: s.id === 'approval_wait' ? 'publishing' : 'reliability', severity: 'medium', title: `«${s.label}» أبطأ من الهدف`,
     evidence: `${s.targetOn === 'p50' ? 'الوسيط' : '90٪ من الحالات'} ${s.targetOn === 'p50' ? s.p50 : s.p90} ${s.unit} والهدف ≤ ${s.target} ${s.unit} (عينة ${s.n})`,
-    why: s.id === 'approval_wait' ? 'التصاميم تنتظر طويلًا فتفوت أفضل أوقات النشر.' : s.id === 'publish_delay' ? 'النشر المتأخر يفوّت ذروة الجمهور.' : 'البطء يؤخر الإنتاج ويرفع احتمال انتهاء المهلة.',
-    steps: s.id === 'approval_wait' ? ['خصص وقتًا يوميًا ثابتًا للموافقات', 'فعّل إشعارات الموافقة على الهاتف'] : s.id === 'publish_delay' ? ['تأكد أن عامل الخلفية يعمل (فحص Worker أعلاه)', 'راجع اتصال Metricool'] : ['راجع حالة مزود الذكاء الاصطناعي', 'قلّل عدد المشاهد في الريلز الاحترافي'], link: s.id === 'approval_wait' ? '/approvals' : '/diagnostics' });
+    why: s.id === 'approval_wait' ? 'التصاميم تنتظر طويلًا فتفوت أفضل أوقات النشر.' : s.id === 'confirm_lag' ? 'التأكيد البطيء يؤخر الأرشفة والقصص المتقاطعة والتقارير — النشر نفسه في موعده.' : s.id === 'publish_delay' ? 'النشر المتأخر يفوّت ذروة الجمهور.' : 'البطء يؤخر الإنتاج ويرفع احتمال انتهاء المهلة.',
+    steps: s.id === 'approval_wait' ? ['خصص وقتًا يوميًا ثابتًا للموافقات', 'فعّل إشعارات الموافقة على الهاتف'] : s.id === 'confirm_lag' ? ['تأكد أن عامل الخلفية يعمل (فحص Worker أعلاه) — يفحص كل دقيقة', 'راجع اتصال Metricool'] : s.id === 'publish_delay' ? ['تأكد أن عامل الخلفية يعمل (فحص Worker أعلاه)', 'راجع اتصال Metricool', 'استورد مقاييس الأداء ليُقاس التوقيت الفعلي من إنستغرام'] : ['راجع حالة مزود الذكاء الاصطناعي', 'قلّل عدد المشاهد في الريلز الاحترافي'], link: s.id === 'approval_wait' ? '/approvals' : '/diagnostics' });
   const backlog = runtime.queues?.reduce((a, q) => a + q.waiting, 0) ?? 0, qFailed = runtime.queues?.reduce((a, q) => a + q.failed, 0) ?? 0;
   if (backlog > 50) advice.push({ id: 'queue_backlog', category: 'reliability', severity: 'high', title: 'تراكم مهام في الطوابير', evidence: `${backlog} مهمة تنتظر`, why: 'العامل لا يواكب الحمل أو متوقف.', steps: ['تحقق من فحص Worker', 'على الخادم: docker compose restart worker'], link: '/diagnostics' });
   if (runtime.memory.usedPct !== null && runtime.memory.usedPct > 90) advice.push({ id: 'memory_high', category: 'reliability', severity: 'high', title: 'الذاكرة شبه ممتلئة', evidence: `${runtime.memory.usedPct}٪ من ${runtime.memory.limitMb} MB`, why: 'إنتاج الريلز قد يتوقف فجأة (نفاد الذاكرة).', steps: ['على الخادم: bash scripts/swap.sh (ذاكرة احتياطية)', 'أو ترقية خطة الخادم'], link: '/diagnostics' });

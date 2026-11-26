@@ -48,7 +48,7 @@ async function main() {
   const sched = queue(QUEUE.scheduler);
   // Repeatable jobs (idempotent upsert): hourly cycle at minute 0 Bahrain time; reconcile every 5 minutes; nightly maintenance.
   await sched.upsertJobScheduler('hourly-cycle', { pattern: '0 * * * *', tz: TZ }, { name: 'cycle' });
-  await sched.upsertJobScheduler('reconcile', { every: 5 * 60_000 }, { name: 'reconcile' });
+  await sched.upsertJobScheduler('reconcile', { every: 60_000 }, { name: 'reconcile' }); // due posts are confirmed within ~1–2 min (was every 5 min)
   await sched.upsertJobScheduler('campaigns', { every: 15 * 60_000 }, { name: 'campaigns' });
   await sched.upsertJobScheduler('maintenance', { pattern: '30 3 * * *', tz: TZ }, { name: 'maintenance' });
   await sched.upsertJobScheduler('morning-brief', { pattern: '35 7 * * *', tz: TZ }, { name: 'morning-brief' }); // ☀️ the day's three priorities

@@ -32,7 +32,7 @@ export type SubmitOutcome =
   | { kind: 'UNCERTAIN'; message: string; httpStatus?: number }; // may or may not exist → reconcile
 
 export type RemoteStatus =
-  | { kind: 'PUBLISHED'; providerPostId: string; publicUrl?: string; raw: unknown }
+  | { kind: 'PUBLISHED'; providerPostId: string; publicUrl?: string; publishedAt?: Date; raw: unknown }
   | { kind: 'PENDING'; providerPostId: string; raw: unknown }
   | { kind: 'ERROR'; providerPostId: string; message: string; raw: unknown }
   | { kind: 'NOT_FOUND' };

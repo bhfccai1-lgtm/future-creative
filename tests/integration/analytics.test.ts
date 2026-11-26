@@ -42,7 +42,11 @@ describe('analytics import (read-only, verified posts only)', () => {
     expect(u.engagementScore).toBeCloseTo(((50 + 10 + 30 + 15) / 1000) * 100);
     expect(u.metricsSource).toBe('metricool');
     expect((u.metrics as { matchedBy: string }).matchedBy).toBe('url');
-    expect((await prisma.publicationResult.findUniqueOrThrow({ where: { id: byTime.id } })).engagementScore).toBeCloseTo(2);
+    const bt = await prisma.publicationResult.findUniqueOrThrow({ where: { id: byTime.id } });
+    expect(bt.engagementScore).toBeCloseTo(2);
+    // the REAL publish time (Instagram's timestamp) is stored, separate from our confirmation time
+    expect(bt.publishedAt?.getTime()).toBe(t.getTime() + 3 * 3600_000 + 4 * 60_000);
+    expect(u.publishedAt).toBeNull(); // the URL row had no timestamp: nothing is invented
     expect((await prisma.publicationResult.findUniqueOrThrow({ where: { id: ambiguous.id } })).engagementScore).toBeNull();
     // recently refreshed rows are not re-fetched; manual entries are never overwritten
     expect((await importMetrics(a)).candidates).toBe(1);

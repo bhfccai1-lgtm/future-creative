@@ -524,6 +524,7 @@ model PublicationResult {
   providerStatus   String?
   publicUrl        String?
   verifiedAt       DateTime? // only set when provider confirmed PUBLISHED
+  publishedAt      DateTime? // the REAL publish time reported by the provider (Instagram timestamp) — verifiedAt is only when we confirmed it
   metrics          Json?
   engagementScore  Float?
   metricsFetchedAt DateTime? // V8: last authorised analytics import from the provider
