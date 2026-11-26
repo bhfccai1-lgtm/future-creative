@@ -244,7 +244,9 @@ function aiPosterGeometryBase(h: number) {
   // Stories / Reels: everything Instagram must not cover sits inside IG_SAFE_1920 (logo below the account bar, order
   // button + phones above the caption/reply area, panel clear of the Reels side icons, all inside the 3:4 grid crop).
   // The AI art still fills the whole frame; below y≈1540 it is plain background under Instagram's own UI.
-  if (h === 1920) return { bar: false, H: 1920, topBand: 400, topPct: 3, bottomPct: 48, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 78, padX: 120, logo: { w: 380, h: 150, y: 244 }, cta: { w: 580, h: 100, y: 1222 }, panel: { y: 1350, h: 176 } };
+  // full frame (owner): no blurred logo band — the design starts at the top edge, the logo sits ON it at y=244 (below
+  // Instagram's account bar), the headline starts under the logo (21 %), the product ends above the order button (38 %)
+  if (h === 1920) return { bar: false, H: 1920, topBand: 0, topPct: 21, bottomPct: 38, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 78, padX: 120, logo: { w: 380, h: 150, y: 244 }, cta: { w: 580, h: 100, y: 1222 }, panel: { y: 1350, h: 176 } };
   if (h === 1350) return { bar: false, H: 1350, topBand: 150, topPct: 3, bottomPct: 40, features: { y: 922, icon: 76, label: 26 } as { y: number; icon: number; label: number } | null, safeWidthPct: 90, padX: 70, logo: { w: 320, h: 130, y: 16 }, cta: { w: 540, h: 90, y: 1058 }, panel: { y: 1162, h: 168 } };
   return { bar: false, H: h, topBand: 118, topPct: 4, bottomPct: 36, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 92, padX: 70, logo: { w: 230, h: 100, y: 16 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
 }
@@ -362,17 +364,17 @@ export async function buildAiPosterParts(poster: Buffer, height = 1920, featureR
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
-      <linearGradient id="unfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.92"/><stop offset="0.35" stop-color="${NAVY}" stop-opacity="0.25"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.15"/></linearGradient>
+      <linearGradient id="unfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.6"/><stop offset="0.3" stop-color="${NAVY}" stop-opacity="0.12"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient>
       <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}" stop-opacity="0.94"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.96"/></linearGradient>
       <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset="0.5" stop-color="#e6c25a"/><stop offset="1" stop-color="#9c6f1c"/></linearGradient>
-      <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.35"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></radialGradient></defs>
+      <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${NAVY}" stop-opacity="${g.topBand === 0 && !logoBottom ? 0.55 : 0.35}"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></radialGradient></defs>
     <ellipse cx="${W / 2}" cy="${g.logo.y + g.logo.h / 2}" rx="${g.logo.w * 0.75}" ry="${g.logo.h * 0.8}" fill="url(#lg)"/>
     ${H === 1920
       // Reels / Stories: the shade sits only behind the order button and the phones, then fades out — below them (where
       // Instagram draws its own caption and buttons) the design itself continues instead of an empty dark block
       ? `<rect x="0" y="${zone}" width="${W}" height="${g.panel.y + g.panel.h + 70 - zone}" fill="url(#fade)"/><rect x="0" y="${g.panel.y + g.panel.h + 70}" width="${W}" height="${H - (g.panel.y + g.panel.h + 70)}" fill="url(#unfade)"/>`
       : `<rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>`}
-    ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hzC}" stop-opacity="${Math.round(hzA * 70) / 100}"/><stop offset="${(40 / (headline.h + 110)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="${((headline.h + 40) / (headline.h + 110)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="1" stop-color="${hzC}" stop-opacity="0"/></linearGradient><rect x="0" y="${Math.max(0, headline.y - 40)}" width="${W}" height="${headline.h + 110}" fill="url(#hz)"/>` : ''}
+    ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hzC}" stop-opacity="0"/><stop offset="${(120 / (headline.h + 190)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="${((headline.h + 120) / (headline.h + 190)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="1" stop-color="${hzC}" stop-opacity="0"/></linearGradient><rect x="0" y="${headline.y - 120}" width="${W}" height="${headline.h + 190}" fill="url(#hz)"/>` : ''}
     ${ribbons(H)}
     ${g.strip ? `<rect x="${g.strip.x}" y="${g.strip.y}" width="${g.strip.w}" height="${g.strip.h}" rx="${Math.round(g.strip.h * 0.22)}" fill="${NAVY}" fill-opacity="0.78" stroke="#f3ead6" stroke-opacity="0.9" stroke-width="3"/><line x1="${W / 2}" y1="${g.strip.y + g.strip.h * 0.24}" x2="${W / 2}" y2="${g.strip.y + g.strip.h * 0.76}" stroke="#e2b84a" stroke-width="4" stroke-linecap="round"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>

@@ -91,7 +91,11 @@ describe('full AI poster on every format', () => {
       expect(byId('contact:saar:phone')?.text).toBe('33316319');
       expect(byId('contact:salmabad:phone')?.text).toBe('34315316');
       // the logo sits in the empty top zone of the design; CTA and phones inside the band, never on the AI art
-      expect(byId('logo')!.rect.top + byId('logo')!.rect.height).toBeLessThanOrEqual(g.topBand); // own band, never on the AI art
+      // feed/square: the logo's own band; story/reel (full frame, owner): on the art, inside the calm top margin the design
+      // keeps free of text and products, and below Instagram's account bar
+      const calmTop = g.topBand + Math.round(((h - g.topBand) * g.topPct) / 100);
+      expect(byId('logo')!.rect.top + byId('logo')!.rect.height).toBeLessThanOrEqual(g.topBand || calmTop);
+      if (h === 1920) { expect(g.topBand).toBe(0); expect(byId('logo')!.rect.top).toBeGreaterThanOrEqual(236); }
       for (const id of ['cta', 'contact:saar:phone', 'contact:salmabad:phone']) {
         expect(byId(id)!.rect.top).toBeGreaterThanOrEqual(Math.round(g.topBand + (h - g.topBand) * (100 - g.bottomPct) / 100) - 2);
         expect(byId(id)!.rect.top + byId(id)!.rect.height).toBeLessThanOrEqual(h);
