@@ -117,7 +117,7 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam', hi: 'Hindi (
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml' | 'hi'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
+  layout?: string; decor?: string; lighting?: string; lens?: string; recipe?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
   /** HYBRID (golden rule): the model designs everything EXCEPT text; the headline area stays calm for the system's typeset Arabic */
   textless?: { headlinePct: number };
 }) {
@@ -131,6 +131,7 @@ export function fullPosterPrompt(p: {
     `Hero product photo: ${p.sceneDescription}`,
     REALISM_RULES,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
+    p.recipe ?? '',
     ...(p.textless ? [
       'TEXT-FREE DESIGN: this is the visual of the advertisement — the headline, badge and every word are typeset afterwards by our system in perfect Arabic. Draw NO letters, words, numbers, logos, labels or pseudo-text anywhere (not on the product, not on signs, not in the background).',
       `HEADLINE AREA: keep the upper ${p.textless.headlinePct}% of the poster (below the ${p.topPct ?? 5}% top margin) as a calm, uncluttered, slightly darker continuation of the background (soft gradient, gentle bokeh) — no product, no objects, no bright highlights there, so white Arabic headline text reads perfectly on it. Build the composition below it.`,

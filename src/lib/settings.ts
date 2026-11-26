@@ -116,6 +116,10 @@ export const SettingsSchema = z.object({
     aiFullTextRetries: z.number().int().min(0).max(3).default(2),
     /** art director: generate N candidate images and keep the best (vision-scored). 1 = off. Each extra candidate costs one image. */
     bestOf: z.number().int().min(1).max(3).default(1),
+    /** product-aware photography (camera, light set-up, set, material) instead of a blind lens rotation — free */
+    shotRecipes: z.boolean().default(true),
+    /** measured studio retouch after generation (clarity, product colour grade, soft vignette) — free, no AI call */
+    photoFinish: z.boolean().default(true),
     /** V10 quality rubric on the finished ad (one small vision call ≈ $0.002; each re-draw = one image) */
     adScore: z.object({ enabled: z.boolean().default(true), threshold: z.number().int().min(50).max(100).default(95), maxRedraws: z.number().int().min(0).max(3).default(1) }).prefault({}),
     /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */

@@ -344,8 +344,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       ? ({ png: await sharp(realPhoto).resize(1024, 1536, { fit: 'cover', position: sharp.strategy.attention }).png().toBuffer(), model: 'real-photo' } as Scene)
       : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: !hybrid && s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system'/hybrid: typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: hybrid ? undefined /* the layouts place drawn text — the system owns the text area in the hybrid */ : POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA', textless: hybrid }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, featureRowOn, d.logoPosition === 'bottom-center')), ...(hybrid ? { textless: { headlinePct: headlinePct(FORMAT_SIZE[format].h) } } : {}) })
-        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone);
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: !hybrid && s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system'/hybrid: typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: hybrid ? undefined /* the layouts place drawn text — the system owns the text area in the hybrid */ : POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA', textless: hybrid }) : undefined, lighting: lightingP, lens: lensP, recipe: recipeP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, featureRowOn, d.logoPosition === 'bottom-center')), ...(hybrid ? { textless: { headlinePct: headlinePct(FORMAT_SIZE[format].h) } } : {}) })
+        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP, recipe: recipeP }, zone);
       const prompt = refPrompt ? `${basePrompt}\n${refPrompt}` : basePrompt;
       lastScenePrompt = prompt; // the rubric's re-draw starts from the same direction
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
@@ -445,6 +445,13 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       });
       aiFull = false; textFallback = true;
     }
+    // 🎞 studio retouch of the AI picture: clarity, the product's colour grade, a soft vignette (layered scenes only —
+    // a full-AI poster is designed edge to edge); measured, the original is kept if it would clip or shift
+    let photoFinish: FinishReport | null = null;
+    if (s.ai.photoFinish && scene.model !== 'real-photo') {
+      const f = await finishPhoto(scene.png, recipe?.grade ?? 'neutral', { vignette: !aiFull });
+      scene = { ...scene, png: f.png }; photoFinish = f.report;
+    }
     // ── Step 9 inputs: the deterministic layers (also used for the rubric's preview) ──
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
     // Premium gold poster by default for vertical formats; classic templates alternate for feed/square (decided above).
@@ -491,9 +498,9 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       if (best) { scene = best.scene; adScore = best.score; }
     }
 
-    if (artDirector || textCheck || refs.length || styleBrief || conceptSelection || textFallback || adScore) {
+    if (artDirector || textCheck || refs.length || styleBrief || conceptSelection || textFallback || adScore || recipe || photoFinish) {
       const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(adScore ? { adScore: { ...adScore, history: scoreHistory } } : {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...new Set([...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])])] } : {}) } as Prisma.InputJsonValue } });
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(recipe || photoFinish ? { photo: { recipe: recipe?.key ?? null, finish: photoFinish?.applied ?? [], ...(photoFinish?.skipped ? { finishSkipped: photoFinish.skipped } : {}) } } : {}), ...(adScore ? { adScore: { ...adScore, history: scoreHistory } } : {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...new Set([...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])])] } : {}) } as Prisma.InputJsonValue } });
     }
 
     // ── Step 9: deterministic layered composition ──
