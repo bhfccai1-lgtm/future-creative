@@ -23,16 +23,22 @@ describe('V10 engine: style by product, the golden rule prompt, the 100-point ru
     expect(fullPosterPrompt(base)).toMatch(/kicker line near the top: "صباحك أحلى"/); // the drawn-text mode is unchanged
   });
 
-  it('rubric: 100 points, judged criteria clamped, brand and text MEASURED from the layers', () => {
+  it('«مؤشر الخوارزمية» (spec §6): 100 points — hook/clarity/format/value judged, action and execution MEASURED', () => {
     expect(RUBRIC.reduce((a, r) => a + r.max, 0)).toBe(100);
-    const layers = [{ id: 'logo', fits: true, missing: [] }, { id: 'headline', text: 'صباحك', fits: true, missing: [] }, { id: 'cta', text: 'اطلب الآن', fits: true, missing: [] }];
-    const m = { layers: layers.map((l) => ({ ...l, rect: { left: 0, top: 0, width: 1, height: 1 }, box: { x: 0, y: 0, w: 1, h: 1 } })) };
-    const s = combineScore({ attention: 19, creativity: 18, image: 15, clarity: 14, share: 99 /* clamped to 10 */ }, m, 95, 'w', 'f');
-    expect(s.parts).toMatchObject({ share: 10, brand: 10, text: 10 });
-    expect(s.total).toBe(96); expect(s.passed).toBe(true);
-    const noLogo = combineScore({ attention: 19, creativity: 18, image: 15, clarity: 14, share: 10 }, { layers: m.layers.filter((l) => l.id !== 'logo') }, 95);
-    expect(noLogo.parts.brand).toBe(0); expect(noLogo.passed).toBe(false);
-    const cut = combineScore({ attention: 20, creativity: 20, image: 15, clarity: 15, share: 10 }, { layers: m.layers.map((l) => (l.id === 'headline' ? { ...l, fits: false } : l)) }, 95);
-    expect(cut.parts.text).toBe(5); // a clipped text layer costs the text points even if the AI loved the ad
+    const mk = (over: Record<string, unknown> = {}) => [
+      { id: 'logo', fits: true, missing: [] }, { id: 'headline', text: 'صباحك', fits: true, missing: [] }, { id: 'cta', text: 'اطلب الآن', fits: true, missing: [] },
+      { id: 'contact:saar:phone', text: '33316319', fits: true, missing: [] }, { id: 'contact:salmabad:phone', text: '34315316', fits: true, missing: [] },
+    ].map((l) => ({ ...l, ...(over[l.id] as object ?? {}), rect: { left: 0, top: 0, width: 1, height: 1 }, box: { x: 0, y: 0, w: 1, h: 1 } }));
+    const ctx = { approvedPhones: ['33316319', '34315316'], caption: 'اطلب الآن عبر واتساب' };
+    const s = combineScore({ hook: 19, clarity: 18, format: 15, value: 99 /* clamped to 15 */ }, { layers: mk() }, 95, 'w', 'f', ctx, { hook: 'الكوب يطير — يوقف التمرير' });
+    expect(s.parts).toMatchObject({ value: 15, action: 15, execution: 15 });
+    expect(s.total).toBe(97); expect(s.passed).toBe(true); expect(s.reasons.hook).toMatch(/يوقف/);
+    const noCta = combineScore({ hook: 19, clarity: 18, format: 15, value: 15 }, { layers: mk() }, 95, '', '', { ...ctx, caption: 'كوب جميل' });
+    expect(noCta.parts.action).toBe(10); expect(noCta.passed).toBe(false); // no call to action in the caption
+    const cut = combineScore({ hook: 20, clarity: 20, format: 15, value: 15 }, { layers: mk({ headline: { fits: false } }) }, 95, '', '', ctx);
+    expect(cut.parts.execution).toBe(11); // a clipped text layer costs execution points even if the AI loved the ad
+    // a wrong number: never approvable, whatever the total (owner's rule)
+    const wrong = combineScore({ hook: 20, clarity: 20, format: 15, value: 15 }, { layers: mk({ 'contact:saar:phone': { text: '33316318' } }) }, 95, '', '', ctx);
+    expect(wrong.passed).toBe(false); expect(wrong.blocked).toMatch(/33316318/);
   });
 });

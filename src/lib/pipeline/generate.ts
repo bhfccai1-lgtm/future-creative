@@ -489,7 +489,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           const jpg = await sharp(preview.png).resize({ width: 768 }).jpeg({ quality: 82 }).toBuffer();
           const j = await provider.scoreAd(jpg, s.ai.textModel, { product: product.titleEn, idea: brief!.idea ?? brief!.headline, platform: format });
           await recordUsage({ provider: provider.name, model: j.model, kind: 'text', inputTokens: j.usage.inputTokens, outputTokens: j.usage.outputTokens, costUsd: estimateTextCost(s, j.usage.inputTokens, j.usage.outputTokens) });
-          const sc = combineScore(j.judged, preview.manifest, s.ai.adScore.threshold, j.weakness, j.fix);
+          // measured: the order button, both approved numbers exactly, a call to action in the caption (owner's §6)
+          const sc = combineScore(j.judged, preview.manifest, s.ai.adScore.threshold, j.weakness, j.fix, { approvedPhones: locationsOf(business).map((l) => l.phone), caption: brief!.caption }, j.reasons);
           scoreHistory.push(sc.total);
           if (!best || sc.total > best.score.total) best = { scene: cand, score: sc };
           if (sc.passed) break;
@@ -727,7 +728,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       algorithm: { score: algoFit.after, grade: algoFit.grade, remaining: algoFit.remaining.map((r) => r.label) },
       aiProofread: proof,
       imageQuality,
-      adScore: adScore ? { total: adScore.total, threshold: adScore.threshold, weakness: adScore.weakness, versions: scoreHistory.length } : null,
+      adScore: adScore ? { total: adScore.total, threshold: adScore.threshold, weakness: adScore.weakness, versions: scoreHistory.length, blocked: adScore.blocked } : null,
     });
 
     await storeFingerprints(account.id, ad.id, [

@@ -34,7 +34,7 @@ export interface QcInput {
   /** the AI picture quality gate (layered scenes + reel shots) */
   imageQuality?: { score: number; pass: boolean; issues: string[]; retried: number } | null;
   /** V10 rubric on the finished ad: below the threshold → a human approves it (never auto-published) */
-  adScore?: { total: number; threshold: number; weakness: string; versions: number } | null;
+  adScore?: { total: number; threshold: number; weakness: string; versions: number; blocked?: string } | null;
   /** AI proofreading result (only when `useAiReview` is on) */
   aiProofread?: { applied: { wrong: string; fix: string; reason: string }[]; flagged: { wrong: string; fix: string; reason: string }[]; error?: string } | null;
   /** Gemini Veo requested for this reel: whether it was really used (otherwise FFmpeg fallback). */
@@ -103,7 +103,7 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
   const capIssues = captionIssues(q.caption, { cta: q.cta, hashtags: q.hashtags });
   checks.push({ id: 'caption_quality', label: 'جودة نص المنشور (افتتاحية قصيرة، دعوة واضحة، ≤5 وسوم)', passed: capIssues.length === 0, severity: 'WARNING', detail: capIssues.join('؛ ') || undefined });
 
-  if (q.adScore) checks.push({ id: 'ad_score', label: `تقييم الجودة الداخلي (معيار ${q.adScore.threshold}/100)`, passed: q.adScore.total >= q.adScore.threshold, severity: 'WARNING', detail: `${q.adScore.total}/100${q.adScore.versions > 1 ? ` · أفضل ${q.adScore.versions} نسخ` : ''}${q.adScore.total < q.adScore.threshold && q.adScore.weakness ? ` — ${q.adScore.weakness}` : ''}` });
+  if (q.adScore) checks.push({ id: 'ad_score', label: `مؤشر الخوارزمية الداخلي (معيار ${q.adScore.threshold}/100 — تقدير تحريري، ليس ضمانًا للانتشار)`, passed: q.adScore.total >= q.adScore.threshold && !q.adScore.blocked, severity: q.adScore.blocked ? 'BLOCKER' : 'WARNING', detail: `${q.adScore.total}/100${q.adScore.versions > 1 ? ` · أفضل ${q.adScore.versions} نسخ` : ''}${q.adScore.blocked ? ` — ${q.adScore.blocked}` : q.adScore.total < q.adScore.threshold && q.adScore.weakness ? ` — ${q.adScore.weakness}` : ''}` });
   if (q.imageQuality) checks.push({ id: 'image_quality', label: 'جودة الصورة: بلا نص داخلها، حادة، تعريض سليم', passed: q.imageQuality.pass, severity: 'WARNING', detail: `${q.imageQuality.score}/100${q.imageQuality.retried ? ` · أُعيد التوليد ${q.imageQuality.retried}×` : ''}${q.imageQuality.issues.length ? ` — ${q.imageQuality.issues.join('؛ ')}` : ''}` });
   if (q.aiProofread) checks.push({ id: 'ai_proofread', label: 'مراجعة لغوية بالذكاء الاصطناعي (الأخطاء المؤكدة صُحّحت قبل الرسم)', passed: !q.aiProofread.error && q.aiProofread.flagged.length === 0, severity: 'WARNING', detail: q.aiProofread.error ? `تعذّرت المراجعة: ${q.aiProofread.error}` : (proofSummary(q.aiProofread) || 'لا أخطاء') });
   if (q.algorithm) checks.push({ id: 'algorithm_index', label: 'مؤشر الخوارزمية B أو أعلى (≥ 70)', passed: q.algorithm.score >= 70, severity: 'WARNING', detail: `${q.algorithm.score}/100 (${q.algorithm.grade})${q.algorithm.remaining.length ? ` — ينقص: ${q.algorithm.remaining.join('؛ ')}` : ''}` });
