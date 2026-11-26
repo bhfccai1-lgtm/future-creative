@@ -66,8 +66,29 @@ if [ "${1:-}" != "force" ] && command -v python3 >/dev/null && command -v curl >
   fi
 fi
 if [ -n "${FC_REF:-}" ]; then PULL=(bash -c "git fetch -q --tags origin && git merge --ff-only \"\$0\"" "$FC_REF"); else PULL=(git pull --ff-only); fi
+# disk guard: a build into a full disk took the database down (PANIC: No space left on device) — clean first, refuse if still full
+free_gb() { df -Pk / | awk 'NR==2 {print int($4/1048576)}'; }
+clean_docker() { docker builder prune -af >>"$LOG" 2>&1; docker image prune -f >>"$LOG" 2>&1; }
+if [ "$(free_gb)" -lt 6 ]; then
+  step "المساحة الحرة $(free_gb)GB فقط — تنظيف مخلفات البناء القديمة..." "Only $(free_gb)GB free — cleaning old build leftovers..."
+  clean_docker
+  if [ "$(free_gb)" -lt 4 ]; then
+    fail "المساحة الحرة $(free_gb)GB لا تكفي للبناء بأمان — لم يتغير شيء." "Only $(free_gb)GB free — not enough to build safely; nothing changed."
+    say "شغّل: docker system df ثم أرسل الصورة للدعم (لا تحذف مجلد backups أو الوسائط دون مراجعة)." "Run: docker system df and send a photo to support (do not delete backups or media without review)."; exit 1
+  fi
+  ok "أصبحت المساحة الحرة $(free_gb)GB" "Now $(free_gb)GB free"
+fi
 if ! "${PULL[@]}" >>"$LOG" 2>&1; then
-  fail "فشل تنزيل التحديث (git pull). آخر سطور السجل:" "Download failed (git pull). Last log lines:"; tail -15 "$LOG"; exit 1
+  # untracked copies of files the update now ships (e.g. fonts copied by hand) block the merge: set them aside, retry once
+  BLOCKED=$(awk '/untracked working tree files would be overwritten/{f=1;next} /Please move or remove/{f=0} f && NF {print $1}' "$LOG" | sort -u)
+  if [ -n "$BLOCKED" ]; then
+    KEEP=".update-backup/$(date +%Y%m%d-%H%M%S)"
+    step "ملفات محلية تمنع التحديث — نُقلت إلى $KEEP وإعادة المحاولة" "Local files blocked the update — moved to $KEEP, retrying"
+    for f in $BLOCKED; do mkdir -p "$KEEP/$(dirname "$f")" && mv "$f" "$KEEP/$f"; done
+  fi
+  if [ -z "$BLOCKED" ] || ! "${PULL[@]}" >>"$LOG" 2>&1; then
+    fail "فشل تنزيل التحديث (git pull). آخر سطور السجل:" "Download failed (git pull). Last log lines:"; tail -15 "$LOG"; exit 1
+  fi
 fi
 NEW=$(git rev-parse --short HEAD)
 if [ "$OLD" = "$NEW" ] && [ "${1:-}" != "force" ]; then
@@ -106,6 +127,11 @@ done
 
 if [ "$HEALTHY" = "1" ]; then
   ok "تم التحديث بنجاح — الإصدار $NEW يعمل" "UPDATE DONE — version $NEW is running"
+  # every build left ~2–3 GB of cache and an old image behind until the disk filled: keep ≤ 3 GB of cache (fast builds) and
+  # only the images in use + :previous (rollback)
+  docker builder prune -f --keep-storage 3gb >>"$LOG" 2>&1 || docker builder prune -f >>"$LOG" 2>&1
+  docker image prune -f >>"$LOG" 2>&1
+  say "المساحة الحرة: $(free_gb)GB" "Free disk: $(free_gb)GB"
   docker compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
   if docker compose --profile n8n ps -q n8n 2>/dev/null | grep -q .; then say "n8n يعمل. لتحديث قوالبه: bash scripts/n8n-setup.sh" "n8n is running. To refresh its templates: bash scripts/n8n-setup.sh"; fi
   exit 0

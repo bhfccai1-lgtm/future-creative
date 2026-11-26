@@ -10,3 +10,4 @@ backups
 dump.rdb
 .tmp/
 .autoupdate-state
+.update-backup/
