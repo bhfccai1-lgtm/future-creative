@@ -21,7 +21,7 @@ describe('«تلقائي» format / design style / design method', () => {
       const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { designStyle: 'auto', renderMode: 'auto' } });
       const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { designStyle: string; direction: { renderMode: string; autoPicked: string[] } };
       expect(o.designStyle).not.toBe('auto');
-      expect(o.direction.renderMode).toBe('ai_full'); // every format → full AI poster (owner request)
+      expect(o.direction.renderMode).toBe('hybrid'); // golden rule (owner's V10 spec): AI design + system-typeset text
       expect(o.direction.autoPicked).toEqual(expect.arrayContaining(['designStyle', 'renderMode']));
       styles.push(o.designStyle);
     }
@@ -70,14 +70,14 @@ describe('«تلقائي» format / design style / design method', () => {
     expect(art.composition).toBe('macro_detail');
     expect(['85mm', '50mm']).toContain(art.lens);
   });
-  it('production default for automatic designs: signature style; «auto» method = full AI poster everywhere, layered on autonomous accounts while full-AI designs still need approval; colour by category', async () => {
+  it('production default for automatic designs: signature style; «auto» method = HYBRID everywhere (also on autonomous accounts — the text is the system\'s, verified); colour by category', async () => {
     const { accounts } = await seedBase({ autoRenderMode: 'auto' });
     const r = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 'scheduler', format: 'IMAGE_STORY' });
     const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: r.advertisement.id } })).options as { direction: { renderMode: string; designStyle: string } };
-    expect(o.direction).toMatchObject({ renderMode: 'ai_full', designStyle: 'fc_signature' });
+    expect(o.direction).toMatchObject({ renderMode: 'hybrid', designStyle: 'fc_signature' });
     await prisma.socialAccount.update({ where: { id: accounts[1].id }, data: { autonomousAuthorized: true } });
     const r2 = await generateAdvertisement({ accountId: accounts[1].id, createdBy: 'scheduler', format: 'IMAGE_STORY' });
-    expect(((await prisma.advertisement.findUniqueOrThrow({ where: { id: r2.advertisement.id } })).options as { direction: { renderMode: string } }).direction.renderMode).toBe('layered');
+    expect(((await prisma.advertisement.findUniqueOrThrow({ where: { id: r2.advertisement.id } })).options as { direction: { renderMode: string } }).direction.renderMode).toBe('hybrid');
     const { paletteFor } = await import('@/lib/creative/options');
     expect(paletteFor({}, 'الأعراس والحفلات')!.decor).toMatch(/blush/);
     expect(paletteFor({ occasion: 'bahrain_national_day' }, 'الأعراس والحفلات')!.theme).toBe('festive_red'); // occasion wins

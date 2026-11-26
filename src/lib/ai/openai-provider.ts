@@ -239,6 +239,25 @@ export class OpenAiProvider implements AiProvider {
     return { text: (res.choices[0]?.message?.content ?? '').trim().slice(0, 1200), model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async scoreAd(jpeg: Buffer, model: string, ctx: { product: string; idea: string; platform: string }) {
+    const { scoreAdPrompt } = await import('../creative/ad-score');
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: scoreAdPrompt(ctx) },
+          { type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${jpeg.toString('base64')}` } },
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('score-ad'));
+    } catch (e) { throw mapError(e); }
+    let j: Record<string, unknown> = {};
+    try { j = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    const judged = Object.fromEntries(['attention', 'creativity', 'image', 'clarity', 'share'].map((k) => [k, Number(j[k]) || 0]));
+    return { judged, weakness: String(j.weakness ?? ''), fix: String(j.fix ?? ''), model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
   async judgeImages(images: Buffer[], brief: string, model: string) {
     let res;
     try {

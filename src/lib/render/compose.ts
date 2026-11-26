@@ -33,6 +33,8 @@ export interface ComposeInput {
   /** Full-AI poster: where the original logo goes; brandName is typed under it for 'top-center-name' */
   logoPosition?: string | null;
   brandName?: string | null;
+  /** HYBRID (golden rule): the AI drew a text-free design; the system typesets these in its calm headline area */
+  typeset?: { headline: string; badge?: string | null; support?: string | null } | null;
 }
 
 export interface PlacedLayer {

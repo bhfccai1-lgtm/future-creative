@@ -3,13 +3,13 @@ export interface DesignValues {
   renderMode: string; customPrompt: string; layout: string; designType: string; designStyle: string; channels: string[]; concept?: string; logoPosition?: string;
   reelStyle: string; reelDuration: string; audio: string; audioQuery: string; videoEngine?: string;
 }
-export const EMPTY_DESIGN: DesignValues = { renderMode: 'ai_full', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: '', audioQuery: '', videoEngine: '' };
+export const EMPTY_DESIGN: DesignValues = { renderMode: 'hybrid', customPrompt: '', layout: '', designType: '', designStyle: '', channels: [], reelStyle: 'standard', reelDuration: '', audio: '', audioQuery: '', videoEngine: '' };
 
 /** Adds the design/channel/reel options of a DesignValues object to a direction payload. */
 export function designDirection(v: DesignValues, format: string) {
   const d: Record<string, unknown> = {};
   if (v.renderMode) d.renderMode = v.renderMode;
-  if (v.renderMode === 'ai_full' && v.customPrompt.trim()) d.customPrompt = v.customPrompt.trim();
+  if ((v.renderMode === 'ai_full' || v.renderMode === 'hybrid') && v.customPrompt.trim()) d.customPrompt = v.customPrompt.trim();
   if (v.layout && v.renderMode === 'layered') d.layout = v.layout; // the fixed template only applies to the template method
   if (v.logoPosition && v.renderMode !== 'layered') d.logoPosition = v.logoPosition;
   if (v.designType) d.designType = v.designType;

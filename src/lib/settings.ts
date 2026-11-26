@@ -94,7 +94,7 @@ export const SettingsSchema = z.object({
     /** Full-AI posters (AI-drawn text): require a human approval before publishing. Admin may turn it off. */
     aiFullRequiresApproval: z.boolean().default(true),
     /** Automatic designs (schedule, campaigns, n8n) that don't choose: design method and style. 'auto' method = full AI poster for vertical formats on approval-mode accounts, verified layers for autonomous ones. */
-    autoRenderMode: z.enum(['auto', 'layered', 'ai_full']).default('auto'),
+    autoRenderMode: z.enum(['auto', 'layered', 'ai_full', 'hybrid']).default('auto'),
     autoDesignStyle: z.string().max(40).default('fc_signature'),
     /** owner's standing guidance for every design (taste), e.g. «ألوان فاتحة، بدون وجوه أشخاص» */
     ownerGuidance: z.string().max(600).default(''),
@@ -116,6 +116,8 @@ export const SettingsSchema = z.object({
     aiFullTextRetries: z.number().int().min(0).max(3).default(2),
     /** art director: generate N candidate images and keep the best (vision-scored). 1 = off. Each extra candidate costs one image. */
     bestOf: z.number().int().min(1).max(3).default(1),
+    /** V10 quality rubric on the finished ad (one small vision call ≈ $0.002; each re-draw = one image) */
+    adScore: z.object({ enabled: z.boolean().default(true), threshold: z.number().int().min(50).max(100).default(95), maxRedraws: z.number().int().min(0).max(3).default(1) }).prefault({}),
     /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */
     conceptTournament: z.boolean().default(true),
     /** FreeLLMAPI (self-hosted, free provider tiers) — used ONLY for idea suggestions; copy, poster and text checks stay on OpenAI */
