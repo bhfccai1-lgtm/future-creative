@@ -41,6 +41,25 @@ export function parseBestTimes(json: unknown): BestTimeCell[] {
   return out.filter((c) => c.day >= 1 && c.day <= 7 && c.hour >= 0 && c.hour <= 23 && c.value >= 0);
 }
 
+/** An HTTP failure from Metricool with its status and the provider's own message (shown to the owner, grouped). */
+export class MetricoolHttpError extends Error {
+  constructor(public status: number, public detail: string, message?: string) {
+    super(message ?? `Metricool HTTP ${status === 408 ? 'timeout' : status === 0 ? 'network' : status}${detail ? `: ${detail}` : ''}`);
+  }
+}
+/** Metricool's error text from a JSON or raw body (message / error / detail / raw), short and single-line */
+export function providerMessage(json: unknown): string {
+  const o = (json ?? {}) as Record<string, unknown>;
+  const v = o.message ?? o.error ?? o.detail ?? o.errorMessage ?? o.raw ?? '';
+  return String(typeof v === 'object' ? JSON.stringify(v) : v).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
+/** [from, to] split into consecutive windows of at most `days` days */
+export function dateWindows(from: Date, to: Date, days: number): [Date, Date][] {
+  const out: [Date, Date][] = [], step = days * 86400_000;
+  for (let a = from.getTime(); a < to.getTime(); a += step) out.push([new Date(a), new Date(Math.min(a + step, to.getTime()))]);
+  return out.length ? out : [[from, to]];
+}
+
 /** Normalised per-post metrics read from the provider (absent metrics stay undefined — never invented). */
 export interface ProviderPostMetrics {
   url?: string; postId?: string; publishedAt?: Date; kind: 'posts' | 'reels' | 'stories';
@@ -59,19 +78,36 @@ function num(o: Record<string, unknown>, ...keys: string[]): number | undefined 
 }
 
 /** Tolerant parser: Metricool field names differ between post types and API versions. */
-export function parsePostMetrics(json: unknown, kind: ProviderPostMetrics['kind']): ProviderPostMetrics[] {
+/**
+ * A provider time as a Date. Metricool sends several shapes: ISO strings, epoch numbers, `{dateTime, timezone}` and the
+ * compact local form «20261126132101» (yyyyMMddHHmmss, brand timezone) — the last one made `new Date()` return Invalid
+ * Date, so time matching silently failed for every post without a stored URL.
+ */
+export function providerTime(pub: unknown, timezone = 'Asia/Bahrain'): Date | undefined {
+  let d: Date | undefined;
+  if (typeof pub === 'number') d = new Date(pub > 1e12 ? pub : pub * 1000);
+  else if (typeof pub === 'string' && /^\d{8}(\d{4}(\d{2})?)?$/.test(pub.trim())) {
+    const s = pub.trim();
+    d = fromZonedTime(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10) || '00'}:${s.slice(10, 12) || '00'}:${s.slice(12, 14) || '00'}`, timezone);
+  } else if (typeof pub === 'string') d = /[zZ]|[+-]\d{2}:?\d{2}$/.test(pub) ? new Date(pub) : fromZonedTime(pub, timezone);
+  else if (pub && typeof pub === 'object' && typeof (pub as { dateTime?: unknown }).dateTime === 'string') {
+    const o = pub as { dateTime: string; timezone?: string };
+    d = /[zZ]|[+-]\d{2}:?\d{2}$/.test(o.dateTime) ? new Date(o.dateTime) : fromZonedTime(o.dateTime, o.timezone || timezone);
+  }
+  return d && !Number.isNaN(d.getTime()) ? d : undefined;
+}
+
+export function parsePostMetrics(json: unknown, kind: ProviderPostMetrics['kind'], timezone = 'Asia/Bahrain'): ProviderPostMetrics[] {
   const arr = Array.isArray(json) ? json : ((json as { data?: unknown })?.data as unknown[]) ?? [];
   if (!Array.isArray(arr)) return [];
   return (arr as Record<string, unknown>[]).map((p) => {
     // field names verified against Metricool's analytics catalogue (posts/reels: timestamp, saved, views, averageWatchTime, retention, reelsSkipRate…)
-    const pub = (p.timestamp ?? p.publishedAt ?? p.published ?? p.date ?? p.created) as unknown;
-    const dt = typeof pub === 'number' ? new Date(pub > 1e12 ? pub : pub * 1000).toISOString() : typeof pub === 'string' ? pub : (pub as { dateTime?: string } | null)?.dateTime;
-    const d = dt ? new Date(dt) : undefined;
+    const d = providerTime((p.timestamp ?? p.publishedAt ?? p.published ?? p.date ?? p.created) as unknown, timezone);
     return {
       kind, raw: p,
       url: (p.url ?? p.permalink ?? p.link) as string | undefined, // stories use `permalink`
       postId: (p.postId ?? p.id ?? p.mediaId)?.toString(),
-      publishedAt: d && !Number.isNaN(d.getTime()) ? d : undefined,
+      publishedAt: d,
       reach: num(p, 'reach', 'reachTotal'),
       views: num(p, 'views', 'videoViews', 'plays', 'impressions', 'impressionsTotal'),
       likes: num(p, 'likes', 'likeCount'),
@@ -107,7 +143,7 @@ export const safeMetricoolBase = (url: string | null | undefined) => (isMetricoo
 
 export class MetricoolAdapter implements PublishingAdapter {
   readonly name = 'metricool';
-  constructor(private cfg: { token: string; userId: string; baseUrl: string; fetchImpl?: FetchFn; timeoutMs?: number }) {}
+  constructor(private cfg: { token: string; userId: string; baseUrl: string; fetchImpl?: FetchFn; timeoutMs?: number; retryDelayMs?: number }) {}
 
   private url(p: string, q: Record<string, string> = {}) {
     const u = new URL(this.cfg.baseUrl.replace(/\/$/, '') + p);
@@ -116,9 +152,11 @@ export class MetricoolAdapter implements PublishingAdapter {
     return u.toString();
   }
 
-  private async req(method: string, p: string, q: Record<string, string>, body?: unknown) {
+  private async req(method: string, p: string, q: Record<string, string>, body?: unknown) { return this.reqT(method, p, q, this.cfg.timeoutMs ?? 30_000, body); }
+
+  private async reqT(method: string, p: string, q: Record<string, string>, timeoutMs: number, body?: unknown) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs ?? 30_000);
+    const t = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs ?? timeoutMs);
     try {
       const res = await (this.cfg.fetchImpl ?? fetch)(this.url(p, q), {
         method, signal: ctrl.signal,
@@ -132,12 +170,46 @@ export class MetricoolAdapter implements PublishingAdapter {
   }
 
   /** Read-only analytics for one brand and time range (Bahrain local dates). */
+  /**
+   * Resilient: the whole range in one request first (fast, the normal case); only when that times out it is re-read in
+   * windows of ≤ 7 days. Each request gets a 90 s timeout and one retry on a timeout / 5xx / 429; a request shape
+   * Metricool rejects (400/404/405/422) is retried once without the timezone parameter. Errors carry the HTTP code
+   * and Metricool's own message.
+   */
   async listPostMetrics(brandId: string, kind: ProviderPostMetrics['kind'], from: Date, to: Date, timezone = 'Asia/Bahrain'): Promise<ProviderPostMetrics[]> {
     const fmt = (d: Date) => localDateTime(d, timezone).slice(0, 19);
-    const r = await this.req('GET', ENDPOINTS.analytics(kind), { blogId: brandId, from: fmt(from), to: fmt(to), timezone });
-    if (r.status === 401 || r.status === 403) throw new Error(`Metricool رفض الوصول إلى التحليلات (${r.status}) — قد لا تتيح خطتك ذلك.`);
-    if (r.status !== 200) throw new Error(`استجابة تحليلات غير متوقعة من Metricool (${r.status}).`);
-    return parsePostMetrics(r.json, kind);
+    const out: ProviderPostMetrics[] = [], seen = new Set<string>();
+    const read = async (a: Date, b: Date) => {
+      const base = { blogId: brandId, from: fmt(a), to: fmt(b) };
+      let r = await this.analyticsReq(ENDPOINTS.analytics(kind), { ...base, timezone });
+      if ([400, 404, 405, 422].includes(r.status)) r = await this.analyticsReq(ENDPOINTS.analytics(kind), base);
+      return r;
+    };
+    const fail = (r: { status: number; json: unknown }) => r.status === 401 || r.status === 403
+      ? new MetricoolHttpError(r.status, providerMessage(r.json), `Metricool رفض الوصول إلى التحليلات (${r.status}) — قد لا تتيح خطتك ذلك أو انتهت صلاحية الرمز.`)
+      : new MetricoolHttpError(r.status, providerMessage(r.json));
+    const whole = await read(from, to);
+    const pages: { status: number; json: unknown }[] = whole.status === 408 ? [] : [whole];
+    if (whole.status === 408) for (const [a, b] of dateWindows(from, to, 7)) pages.push(await read(a, b));
+    for (const r of pages) {
+      if (r.status !== 200) throw fail(r);
+      for (const m of parsePostMetrics(r.json, kind, timezone)) {
+        const k = m.url ?? m.postId ?? `${m.publishedAt?.toISOString()}`;
+        if (!seen.has(k)) { seen.add(k); out.push(m); }
+      }
+    }
+    return out;
+  }
+
+  /** GET for analytics: 90 s timeout, one retry (after 2 s) on a timeout, network error, 429 or 5xx */
+  private async analyticsReq(path: string, q: Record<string, string>) {
+    const once = async () => {
+      try { return await this.reqT('GET', path, q, 90_000); }
+      catch (e) { return { status: (e as Error).name === 'AbortError' ? 408 : 0, json: { message: (e as Error).name === 'AbortError' ? 'انتهت مهلة الانتظار (90 ثانية)' : (e as Error).message }, headers: new Headers() }; }
+    };
+    let r = await once();
+    if (r.status === 0 || r.status === 408 || r.status === 429 || r.status >= 500) { await new Promise((s) => setTimeout(s, this.cfg.retryDelayMs ?? 2000)); r = await once(); }
+    return r;
   }
 
   /** Read-only «best time to post» heatmap (day of week × hour, higher = better) for the coming days. */

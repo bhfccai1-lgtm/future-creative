@@ -40,12 +40,18 @@ const FIXES: FixDef[] = [
     id: 'metrics_import', label: 'استيراد مقاييس الأداء الآن', safe: true,
     run: async () => {
       const { getAdapter } = await import('../publishing/registry');
-      const { importMetrics } = await import('../analytics/import');
+      const { importMetrics, summarizeErrors } = await import('../analytics/import');
       const r = await importMetrics(await getAdapter('metricool'), { minAgeH: 1 }) as Record<string, unknown>;
       const n = typeof r.updated === 'number' ? r.updated : 0;
       if ('skipped' in r) return { ok: false, message: `لم يُنفَّذ الاستيراد: ${String(r.skipped)}` };
-      const errs = Array.isArray(r.errors) ? r.errors.length : Number(r.errors) || 0;
-      return { ok: errs === 0, message: `حُدّثت مقاييس ${n} من ${Number(r.candidates) || 0} منشور${errs ? ` — ${errs} خطأ (افحص اتصال Metricool)` : ''}` };
+      const list = Array.isArray(r.errors) ? (r.errors as string[]) : [];
+      const errs = list.length || Number(r.errors) || 0;
+      const unmatched = Number(r.unmatched) || 0;
+      // the real reason, grouped (most frequent first), instead of a bare count
+      const top = summarizeErrors(list)[0];
+      const why = top ? ` — ${errs} طلب فشل، أغلبها: «${top.cause}»${top.count < errs ? ` (${top.count} من ${errs})` : ''}. ${top.hint}` : errs ? ` — ${errs} خطأ` : '';
+      const left = unmatched ? ` · ${unmatched} منشور لم يُطابق بعد (يُطابَق بالرابط أو بوقت النشر ±20 دقيقة)` : '';
+      return { ok: errs === 0, message: `حُدّثت مقاييس ${n} من ${Number(r.candidates) || 0} منشور${why}${left}` };
     },
   },
   {
