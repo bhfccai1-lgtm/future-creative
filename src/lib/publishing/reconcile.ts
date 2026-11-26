@@ -3,7 +3,7 @@ import { queueGoogleArchive } from '../integrations/google-archive';
 import { queueCrossPromo } from '../promo/cross-story';
 import { audit, notify } from '../audit';
 import { getAdapter } from './registry';
-import { buildPublishRequest } from './publisher';
+import { buildPublishRequest, FIRST_CHECK_MS } from './publisher';
 import { enq } from '../queue/queues';
 import { getSettings } from '../settings';
 import { AppError } from '../errors';
@@ -11,6 +11,10 @@ import { emitEvent } from '../integrations/events';
 import { adWrite } from './ad-state';
 
 export const MAX_PUBLISH_ATTEMPTS = 3;
+/** while a post is due: every 90 s for the first 30 min after the slot, then every 5 min (a stuck post stays cheap) */
+export function nextPendingCheck(scheduledFor: Date, now = Date.now()): Date {
+  return new Date(now + (now - scheduledFor.getTime() < 30 * 60_000 ? 90_000 : 5 * 60_000));
+}
 export const ABSENT_MSG = 'absent at provider — awaiting operator decision';
 const ABSENCE_GRACE_MS = 5 * 60_000;
 
@@ -30,7 +34,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
     catch (e) { await prisma.publicationJob.update({ where: { id: job.id }, data: { nextCheckAt: new Date(Date.now() + 5 * 60_000), lastError: `reconcile lookup failed: ${(e as Error).message}` } }); return 'STILL_UNKNOWN'; }
     if (found) {
       await prisma.$transaction([
-        prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'SCHEDULED', nextCheckAt: new Date(Math.max(Date.now(), job.scheduledFor.getTime()) + 3 * 60_000) } }),
+        prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'SCHEDULED', nextCheckAt: new Date(Math.max(Date.now(), job.scheduledFor.getTime()) + FIRST_CHECK_MS) } }),
         prisma.publicationResult.upsert({ where: { jobId: job.id }, create: { jobId: job.id, providerPostId: found.providerPostId, providerStatus: 'PENDING' }, update: { providerPostId: found.providerPostId } }),
         adWrite(job.primary, job.advertisementId, { state: 'SCHEDULED' }),
       ]);
@@ -80,7 +84,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
     if (st.kind === 'PUBLISHED') {
       await prisma.$transaction([
         prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'PUBLISHED', nextCheckAt: null } }),
-        prisma.publicationResult.update({ where: { jobId: job.id }, data: { providerStatus: 'PUBLISHED', publicUrl: st.publicUrl ?? null, verifiedAt: new Date() } }),
+        prisma.publicationResult.update({ where: { jobId: job.id }, data: { providerStatus: 'PUBLISHED', publicUrl: st.publicUrl ?? null, verifiedAt: new Date(), ...(st.publishedAt ? { publishedAt: st.publishedAt } : {}) } }),
         adWrite(job.primary, job.advertisementId, { state: 'PUBLISHED' }),
         prisma.socialAccount.update({ where: { id: job.accountId }, data: { lastPublishedAt: new Date() } }),
       ]);
@@ -111,7 +115,7 @@ export async function reconcileJob(jobId: string): Promise<string> {
       await notify('WARNING', 'PUBLISH_UNVERIFIED', 'تعذر تأكيد النشر', `المنشور ${postId} لم يُؤكد نشره من المزود.`, job.accountId);
       return 'UNVERIFIED';
     }
-    await prisma.publicationJob.update({ where: { id: job.id }, data: { nextCheckAt: new Date(Date.now() + 5 * 60_000) } });
+    await prisma.publicationJob.update({ where: { id: job.id }, data: { nextCheckAt: nextPendingCheck(job.scheduledFor) } });
     return 'PENDING';
   }
   return 'NOOP';
@@ -136,7 +140,7 @@ export async function resolveUnknownJob(jobId: string, action: 'resubmit' | 'can
   const found = await adapter.findExisting(await buildPublishRequest(jobId)); // throws → caller sees the error, nothing re-sent
   if (found) {
     await prisma.$transaction([
-      prisma.publicationJob.update({ where: { id: jobId }, data: { state: 'SCHEDULED', lastError: null, nextCheckAt: new Date(Math.max(Date.now(), job.scheduledFor.getTime()) + 3 * 60_000) } }),
+      prisma.publicationJob.update({ where: { id: jobId }, data: { state: 'SCHEDULED', lastError: null, nextCheckAt: new Date(Math.max(Date.now(), job.scheduledFor.getTime()) + FIRST_CHECK_MS) } }),
       prisma.publicationResult.upsert({ where: { jobId }, create: { jobId, providerPostId: found.providerPostId, providerStatus: 'PENDING' }, update: { providerPostId: found.providerPostId } }),
       adWrite(job.primary, job.advertisementId, { state: 'SCHEDULED' }),
     ]);

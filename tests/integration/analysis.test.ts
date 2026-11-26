@@ -44,6 +44,24 @@ describe('expert analysis on the diagnostics page', () => {
     expect(txt).not.toMatch(/postgres(ql)?:\/\/|password|sk-/i); // no connection strings or keys in the support report
   });
 
+  it('on-time publishing: real lateness (Instagram time) and our confirmation speed are measured separately', async () => {
+    const { accounts } = await seedBase();
+    const product = await prisma.product.findFirstOrThrow();
+    for (let i = 0; i < 12; i++) {
+      const at = new Date(NOW.getTime() - D - i * 3 * H);
+      const ad = await prisma.advertisement.create({ data: { accountId: accounts[0].id, productId: product.id, format: 'IMAGE_FEED', language: 'ar', state: 'PUBLISHED', createdBy: 't', qcPassed: true, createdAt: at } });
+      // Instagram shows the post 3 min after the slot; the old 5-minute polling confirmed it ~17 min after the slot
+      await prisma.publicationJob.create({ data: { idempotencyKey: `ot-${i}`, advertisementId: ad.id, accountId: accounts[0].id, provider: 'metricool', state: 'PUBLISHED', scheduledFor: at,
+        result: { create: { publishedAt: new Date(at.getTime() + 3 * 60_000), verifiedAt: new Date(at.getTime() + 17 * 60_000) } } } });
+    }
+    const a = await runAnalysis(NOW);
+    const real = a.slos.find((s) => s.id === 'publish_delay')!, lag = a.slos.find((s) => s.id === 'confirm_lag')!;
+    expect(real).toMatchObject({ label: 'تأخر النشر الفعلي (توقيت إنستغرام)', p90: 3, target: 10, ok: true }); // publishing itself is on time
+    expect(lag).toMatchObject({ n: 12, p90: 14, ok: false }); // the delay was our confirmation, not Instagram
+    expect(a.advice.find((x) => x.id === 'slo_confirm_lag')!.why).toContain('النشر نفسه في موعده');
+    expect(a.advice.find((x) => x.id === 'slo_publish_delay')).toBeUndefined();
+  });
+
   it('a database update that failed half-way is critical advice (the likely cause of «internal server error»)', async () => {
     await seedBase();
     await prisma.$executeRawUnsafe(`INSERT INTO "_prisma_migrations" (id, checksum, migration_name, started_at, applied_steps_count) VALUES ('test-failed', 'x', '20991231000000_broken', now(), 0)`);

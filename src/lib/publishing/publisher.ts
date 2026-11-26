@@ -19,6 +19,9 @@ import { sha256 } from '../crypto';
 import { log } from '../ops/log';
 import { emitEvent } from '../integrations/events';
 import { adWrite, adWriteIf } from './ad-state';
+
+/** first status check right after the slot (Metricool usually publishes within 1–6 min; was +3 min, then every 5) */
+export const FIRST_CHECK_MS = 90_000;
 import { bundleSha, publishableMedia } from './media';
 
 export type PublishResult = 'SKIPPED_LOCKED' | 'KILL_SWITCH' | 'ACCOUNT_PAUSED' | 'NOT_DUE' | 'SCHEDULED' | 'FAILED' | 'UNKNOWN' | 'RATE_LIMITED';
@@ -195,7 +198,7 @@ export async function processPublishJob(jobId: string, workerId: string): Promis
   switch (outcome.kind) {
     case 'ACCEPTED':
       await prisma.$transaction([
-        prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'SCHEDULED', lockedBy: null, nextCheckAt: new Date(req.publishAt.getTime() + 3 * 60_000), lastError: null } }),
+        prisma.publicationJob.update({ where: { id: job.id }, data: { state: 'SCHEDULED', lockedBy: null, nextCheckAt: new Date(req.publishAt.getTime() + FIRST_CHECK_MS), lastError: null } }),
         prisma.publicationResult.upsert({ where: { jobId: job.id }, create: { jobId: job.id, providerPostId: outcome.providerPostId, providerStatus: outcome.providerStatus, rawResponse: outcome.raw as Prisma.InputJsonValue }, update: { providerPostId: outcome.providerPostId, providerStatus: outcome.providerStatus } }),
         adWrite(job.primary, ad.id, { state: 'SCHEDULED' }),
       ]);

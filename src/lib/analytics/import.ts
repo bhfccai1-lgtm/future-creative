@@ -59,7 +59,7 @@ export async function importMetrics(adapter: PublishingAdapter, opts: { days?: n
       const score = engagementRate(metrics);
       await prisma.publicationResult.update({
         where: { id: r.id },
-        data: { metrics: { ...metrics, providerMediaId: postId ?? null, matchedBy: m.method } as Prisma.InputJsonValue, engagementScore: score, metricsFetchedAt: now, metricsSource: 'metricool' },
+        data: { metrics: { ...metrics, providerMediaId: postId ?? null, matchedBy: m.method } as Prisma.InputJsonValue, engagementScore: score, metricsFetchedAt: now, metricsSource: 'metricool', ...(m.row.publishedAt ? { publishedAt: m.row.publishedAt } : {}) },
       });
       updated++;
     }
