@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import type { MediaFormat } from '@prisma/client';
 import { renderText, type RenderedText } from './text';
 import { FORMAT_SIZE, productZone, px, templateFor } from './templates';
-import { AI_POSTER_KEY, POSTER_KEY, buildAiPosterBackground, buildPosterBackground, composeAiPoster, composePoster } from './poster';
+import { AI_POSTER_KEY, POSTER_KEY, buildAiPosterParts, buildPosterParts, composeAiPoster, composePoster } from './poster';
 import type { Lang } from './fonts';
 
 export const COLORS = { navy: '#0b1730', navyMid: '#13265a', gold: '#d4af37', goldLight: '#ecd58c', white: '#ffffff' };
@@ -45,7 +45,10 @@ export interface PlacedLayer {
 
 export interface ComposeResult {
   width: number; height: number; templateKey: string; themeKey: ThemeKey;
-  background: Buffer; // scene + shading + panels, no text/logo — used as the moving layer for video
+  background: Buffer; // scene + shading + panels, no text/logo (stills, QC contrast, the reel's cover/end card)
+  /** reels: the camera moves over `art` only; `chrome` (contact panel, shades, plates, ribbons) stays fixed with the text —
+   *  when both were baked into one moving picture, the panel slid and grew away from the fixed phone numbers */
+  art?: Buffer; chrome?: Buffer;
   layers: PlacedLayer[]; // deterministic overlay layers in z-order
   png: Buffer; // final lossless composite
   manifest: LayerManifest;
@@ -90,7 +93,8 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
   const scale = W / 1080;
 
   const th = THEMES[input.theme ?? 'navy_gold'];
-  const background = await buildBackground(input.scene, input.format, t.key, input.contacts.length, input.theme);
+  const parts = await buildBackgroundParts(input.scene, input.format, t.key, input.contacts.length, input.theme);
+  const background = await joinParts(parts);
 
 
   const layers: PlacedLayer[] = [];
@@ -151,7 +155,7 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
     width: W, height: H, templateKey: t.key, lang: input.lang,
     layers: layers.map((l) => ({ id: l.id, text: l.text, rect: { left: l.left, top: l.top, width: l.width, height: l.height }, box: l.box, fits: l.fits, missing: l.missing, fontSize: l.fontSize, color: l.color })),
   };
-  return { width: W, height: H, templateKey: t.key, themeKey: input.theme ?? 'navy_gold', background, layers, png, manifest };
+  return { width: W, height: H, templateKey: t.key, themeKey: input.theme ?? 'navy_gold', background, art: parts.art, chrome: parts.chrome, layers, png, manifest };
 }
 
 
@@ -159,9 +163,15 @@ export async function composeAdvertisement(input: ComposeInput): Promise<Compose
  * Layer 1 + static decoration (shading, bottom panel, dividers, frame) for a scene.
  * Exported so pro reels can build extra scenes with exactly the same layout.
  */
+export interface BackgroundParts { art: Buffer; chrome: Buffer }
+export const joinParts = (p: BackgroundParts) => sharp(p.art).composite([{ input: p.chrome }]).png().toBuffer();
 export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, templateKey: string | null | undefined, contactsCount: number, themeKey: ThemeKey = 'navy_gold', featureCount = 4): Promise<Buffer> {
-  if (templateKey === AI_POSTER_KEY) return buildAiPosterBackground(sceneBuf, FORMAT_SIZE[format].h, featureCount > 0);
-  if (templateKey === POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildPosterBackground(sceneBuf, featureCount);
+  return joinParts(await buildBackgroundParts(sceneBuf, format, templateKey, contactsCount, themeKey, featureCount));
+}
+/** the background as the moving art + the fixed decorations (see ComposeResult.art / chrome) */
+export async function buildBackgroundParts(sceneBuf: Buffer, format: MediaFormat, templateKey: string | null | undefined, contactsCount: number, themeKey: ThemeKey = 'navy_gold', featureCount = 4): Promise<BackgroundParts> {
+  if (templateKey === AI_POSTER_KEY) return buildAiPosterParts(sceneBuf, FORMAT_SIZE[format].h, featureCount > 0);
+  if (templateKey === POSTER_KEY && FORMAT_SIZE[format].h === 1920) return buildPosterParts(sceneBuf, featureCount);
   const { w: W, h: H } = FORMAT_SIZE[format];
   const t = templateFor(templateKey, H);
   const scale = W / 1080;
@@ -181,8 +191,7 @@ export async function buildBackground(sceneBuf: Buffer, format: MediaFormat, tem
     ${Array.from({ length: Math.max(0, contactsCount - 1) }, (_, i) => { const n = contactsCount; const pad = t.contacts.padX * W; const g = t.contacts.gap * W; const cw = (W - 2 * pad - g * (n - 1)) / n; const xx = Math.round(pad + (i + 1) * cw + i * g + g / 2); return `<rect x="${xx - 1}" y="${Math.round((t.contacts.y + 0.015) * H)}" width="2" height="${Math.round((t.contacts.h - 0.03) * H)}" fill="${th.accent}" fill-opacity="0.6"/>`; }).join('')}
     ${t.frame ? `<rect x="${Math.round(22 * scale)}" y="${Math.round(22 * scale)}" width="${W - Math.round(44 * scale)}" height="${H - Math.round(44 * scale)}" fill="none" stroke="${th.accent}" stroke-width="${Math.round(4 * scale)}" rx="${Math.round(18 * scale)}"/>` : ''}
   </svg>`;
-  const background = await sharp(scene).composite([{ input: Buffer.from(deco) }]).png().toBuffer();
-  return background;
+  return { art: scene, chrome: await sharp(Buffer.from(deco)).png().toBuffer() };
 }
 
 /** Instagram's publishing API accepts JPEG for still images; export a high-quality JPEG. */

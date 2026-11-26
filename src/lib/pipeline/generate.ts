@@ -30,7 +30,7 @@ import { qualityFor, assertBudget, estimateAdCost, estimateImageCost, estimateTe
 import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
-import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
+import { buildBackgroundParts, joinParts, composeAdvertisement, toJpeg } from '../render/compose';
 import { TEMPLATES, FORMAT_SIZE, productZone } from '../render/templates';
 import { aiPosterImageSize, aiPosterGeometry, headlinePct } from '../render/poster';
 import { loadReference, referencePrompt, slotsFor } from '../creative/references';
@@ -566,7 +566,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         return img;
       }));
     }
-    const extraBackgrounds = await Promise.all(extraScenes.map((x) => buildBackground(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme, features.length)));
+    // pro reel shots: the art only when the reel lays the fixed chrome on top (same template → same chrome)
+    const extraBackgrounds = await Promise.all(extraScenes.map(async (x) => { const p = await buildBackgroundParts(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme, features.length); return composed.chrome ? p.art : joinParts(p); }));
     const jpeg = await toJpeg(composed.png);
 
     // ── Carousel: teaching slides + save/CTA slide (same theme, product backdrop, contacts on every slide) ──

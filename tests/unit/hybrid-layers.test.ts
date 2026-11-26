@@ -30,15 +30,65 @@ describe('hybrid layers never overlap, and the headline stays readable on any pi
     expect(layer.width - head.rect.width).toBe(28); // 14 px shadow margin on each side, drawn but not counted
   });
 
-  it('busy art under the headline gets a deeper shade than calm art (measured, free)', async () => {
-    const zoneMean = async (scene: Buffer) => {
-      const c = await compose(scene, 'IMAGE_FEED', { headline: 'صباحك أحلى', badge: 'أكواب', support: 'باسمك' });
-      const r = await sharp(c.background).extract({ left: 0, top: 200, width: 1080, height: 120 }).greyscale().png().toBuffer();
-      return (await sharp(r).stats()).channels[0].mean;
-    };
-    const busyArt = await busy(1024, 1024);
-    const raw = await sharp(busyArt).resize(1080, 1080).extract({ left: 0, top: 50, width: 1080, height: 120 }).greyscale().png().toBuffer();
-    // the shade darkens the busy picture well below its own brightness → the white headline reads on it
-    expect(await zoneMean(busyArt)).toBeLessThan((await sharp(raw).stats()).channels[0].mean * 0.7);
+  it('contrast on ANY art: dark art → white/gold text on a navy shade, light art → navy/deep-gold text on a light veil; always ≥ 3.5:1 (QC asks 3:1)', async () => {
+    const { checkContrast, contrastRatio } = await import('@/lib/qc/checks');
+    const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+    const t = { headline: 'صباحك أحلى', badge: 'أكواب بالاسم', support: 'بكوب يحمل اسمك' };
+    let worst = 99;
+    for (const scene of [await calm(1024, 1024), await busy(1024, 1024), ...(await Promise.all(['#ffffff', '#f4ead5', '#9fd3f0', '#8a8a8a', '#000000'].map((c) => sharp({ create: { width: 1024, height: 1024, channels: 3, background: c } }).png().toBuffer())))]) {
+      const c = await compose(scene, 'IMAGE_FEED', t);
+      expect((await checkContrast(c.background, c.manifest)).passed).toBe(true);
+      for (const id of ['headline', 'support']) {
+        const l = c.manifest.layers.find((x) => x.id === id)!;
+        const reg = await sharp(c.background).extract({ left: l.rect.left, top: l.rect.top, width: l.rect.width, height: l.rect.height }).png().toBuffer();
+        const st = await sharp(reg).stats();
+        worst = Math.min(worst, contrastRatio(hex(l.color!), [st.channels[0].mean, st.channels[1].mean, st.channels[2].mean]));
+      }
+    }
+    expect(worst).toBeGreaterThanOrEqual(3.5);
+    // the tone follows the art: cream → navy headline, navy → white headline
+    const cream = await compose(await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#f4ead5' } }).png().toBuffer(), 'IMAGE_FEED', t);
+    const navy = await compose(await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#14295c' } }).png().toBuffer(), 'IMAGE_FEED', t);
+    expect(cream.manifest.layers.find((l) => l.id === 'headline')!.color).toBe('#0b1730');
+    expect(navy.manifest.layers.find((l) => l.id === 'headline')!.color).toBe('#ffffff');
+  });
+});
+
+describe('reel / story with the logo in the footer (the owner\'s sketch): a professional layout', () => {
+  it('text below Instagram\'s account bar, the product zone ends above the order button, the emblem never touches a phone pill', async () => {
+    const { aiPosterGeometry, headlineZone } = await import('@/lib/render/poster');
+    const { IG_SAFE_1920 } = await import('@/lib/render/templates');
+    const g = aiPosterGeometry(1920, false, true);
+    expect(Math.round((1920 * g.topPct) / 100)).toBeGreaterThanOrEqual(IG_SAFE_1920.top); // was 3 % = 58 px, under IG's bar
+    expect(headlineZone(1920, false, true).y).toBeGreaterThanOrEqual(IG_SAFE_1920.top);
+    expect(Math.round(1920 * (1 - g.bottomPct / 100))).toBeLessThan(g.cta.y - 60); // product never behind the order button
+    expect(g.panel.y + g.panel.h).toBeLessThanOrEqual(IG_SAFE_1920.bottom);
+    for (const logoBottom of [false, true]) { const x = aiPosterGeometry(1920, false, logoBottom); expect(x.topBand + ((1920 - x.topBand) * (100 - x.bottomPct)) / 100, `logoBottom=${logoBottom}`).toBeLessThanOrEqual(x.cta.y); }
+    const c = await composeAdvertisement({ scene: await calm(1024, 1536), format: 'REEL_VIDEO', lang: 'ar', templateKey: 'ai-poster', headline: '204 ركضة.. والكوب يطير؟', supportingCopy: 'هدية لعاشقة الكريكيت', badge: 'الأكواب', cta: 'اطلب الآن', logo: await logo(), contacts, typeset: { headline: '204 ركضة.. والكوب يطير؟', badge: 'الأكواب', support: 'هدية لعاشقة الكريكيت' }, logoPosition: 'bottom-center' });
+    expect(checkLayout(c.manifest).filter((x) => !x.passed)).toEqual([]);
+    const phone = c.manifest.layers.find((l) => l.id === 'contact:saar:phone')!;
+    expect(phone.fontSize).toBeGreaterThanOrEqual(40); // was 37 with the wide logo
+  });
+});
+
+describe('reels: the owner\'s contact bar (sketch) — one wide bar, big digits, large logo rising above it', () => {
+  it('both branches on one navy/gold bar, digits ≥ 50 px clear of the edges, the logo centred above the bar edge, the order button above', async () => {
+    const c = await composeAdvertisement({ scene: await calm(1024, 1536), format: 'REEL_VIDEO', lang: 'ar', templateKey: 'ai-poster', headline: 'قبل لا يطلع؟', supportingCopy: 'امسح وتواصل بسهولة', badge: 'بطاقات QR', cta: 'اطلب الآن', logo: await logo(), contacts, typeset: { headline: 'قبل لا يطلع؟', badge: 'بطاقات QR', support: 'امسح وتواصل بسهولة' }, logoPosition: 'bottom-center' });
+    expect(checkLayout(c.manifest).filter((x) => !x.passed)).toEqual([]);
+    const L = (id: string) => c.manifest.layers.find((l) => l.id === id)!;
+    const { aiPosterGeometry } = await import('@/lib/render/poster');
+    const g = aiPosterGeometry(1920, false, true);
+    expect(g.bar).toBe(true);
+    for (const k of ['saar', 'salmabad']) {
+      const p = L(`contact:${k}:phone`);
+      expect(p.fontSize).toBeGreaterThanOrEqual(50);
+      expect(p.rect.top).toBeGreaterThan(g.panel.y); expect(p.rect.top + p.rect.height).toBeLessThan(g.panel.y + g.panel.h); // ON the bar
+      expect(p.rect.left).toBeGreaterThanOrEqual(g.padX + 20); expect(p.rect.left + p.rect.width).toBeLessThanOrEqual(1080 - g.padX - 20);
+    }
+    const lg = L('logo').rect;
+    expect(Math.abs(lg.left + lg.width / 2 - 540)).toBeLessThan(4);
+    expect(lg.top).toBeLessThan(g.panel.y); // rises above the bar's top edge
+    expect(L('cta').rect.top + L('cta').rect.height).toBeLessThan(lg.top); // the order button above, never touching
+    expect(L('contact:saar:phone').rect.left).toBeGreaterThan(lg.left + lg.width); // Arabic: Saar right of the logo
   });
 });

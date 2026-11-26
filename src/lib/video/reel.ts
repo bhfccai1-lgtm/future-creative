@@ -198,7 +198,10 @@ async function audioSeconds(file: string): Promise<number> {
 export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelOptions = {}): Promise<ReelResult> {
   if (c.width !== 1080 || c.height !== 1920) throw new VideoRenderError('Reels require a 1080x1920 composition');
   const D = Math.max(6, Math.min(60, durationSec));
-  const backgrounds = opts.baseVideo ? [c.background] : [c.background, ...(opts.extraBackgrounds ?? [])];
+  // with art + chrome the camera moves over the art only and the chrome (contact panel, shades, plate) stays fixed under
+  // the fixed text — baked together, the panel slid ~57 px and grew 12 % away from the phone numbers during the push-in
+  const fixedChrome = !opts.baseVideo && !!c.art && !!c.chrome;
+  const backgrounds = opts.baseVideo ? [c.background] : [fixedChrome ? c.art! : c.background, ...(opts.extraBackgrounds ?? [])];
   const n = backgrounds.length;
   const audio: ReelAudio = opts.audio ?? 'none';
   const endStart = D - endCardSeconds(D, !!opts.baseVideo, opts.endSeconds);
@@ -252,6 +255,12 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
       base = out;
     }
     if (n > 1) { filters.push(`[${base}]tpad=stop_mode=clone:stop_duration=${D},trim=duration=${D}[vb]`); base = 'vb'; }
+    if (fixedChrome) {
+      const cf = path.join(dir, 'chrome.png'); await fs.writeFile(cf, c.chrome!);
+      addStill(cf);
+      filters.push(`[${inputs.filter((x) => x === '-i').length - 1}:v]format=rgba[chrome]`, `[${base}][chrome]overlay=0:0[vc]`);
+      base = 'vc';
+    }
 
     // overlay timeline — pro mode spreads the copy across scenes
     const byId = (id: string) => c.layers.find((l) => l.id === id);
@@ -268,7 +277,7 @@ export async function renderReel(c: ComposeResult, durationSec = 12, opts: ReelO
     c.layers.filter((l) => l.id.startsWith('benefit:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(Math.min(1, last)) + 1.0 : hook ? 1.5 : 2.2) + i * 0.15, 30));
     c.layers.filter((l) => l.id.startsWith('contact:')).forEach((l, i) => push(l, (n > 1 ? sceneStart(last) + 0.9 : hook ? 2.4 : 3.0) + i * 0.15));
 
-    let idx = opts.baseVideo ? 2 : n;
+    let idx = opts.baseVideo ? 2 : n + (fixedChrome ? 1 : 0); // the fixed chrome took input n
     for (const t of timeline) {
       const f = path.join(dir, `l${idx}.png`);
       await fs.writeFile(f, t.layer.png);
