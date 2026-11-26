@@ -15,6 +15,24 @@
       "headers": {
         "x-api-key": "${API_KEY_21ST}"
       }
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.84",
+        "--headless",
+        "--isolated",
+        "--no-sandbox",
+        "--executable-path",
+        "/opt/pw-browsers/chromium",
+        "--viewport-size",
+        "1360,900",
+        "--output-dir",
+        "/tmp/playwright-mcp"
+      ],
+      "env": {}
     }
   }
 }
