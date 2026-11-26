@@ -4,6 +4,7 @@ import { api } from '@/lib/auth/server';
 import { getSettings, updateSettings } from '@/lib/settings';
 import { audit } from '@/lib/audit';
 import { PERSONAS, VOICE_LANGS } from '@/lib/audio/voices';
+import { EMOTIONS, STYLES } from '@/lib/audio/performance';
 
 const Body = z.object({
   persona: z.string().refine((v) => v === 'auto' || PERSONAS.some((p) => p.id === v), 'شخصية غير معروفة'),
@@ -12,6 +13,9 @@ const Body = z.object({
   musicVolume: z.number().min(0.1).max(1),
   defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']),
   pace: z.enum(['slow', 'normal', 'fast']).default('normal'),
+  emotion: z.string().refine((v) => v === 'auto' || EMOTIONS.some((e) => e.id === v), 'شعور غير معروف').default('auto'),
+  style: z.string().refine((v) => v === 'auto' || STYLES.some((x) => x.id === v), 'أسلوب غير معروف').default('auto'),
+  intensity: z.enum(['subtle', 'natural', 'expressive']).default('natural'),
   verifyPronunciation: z.boolean().default(true),
   captions: z.boolean().default(true),
   lexicon: z.array(z.object({ from: z.string().trim().min(1).max(60), to: z.string().trim().min(1).max(80) })).max(150).default([]),

@@ -1,7 +1,8 @@
 import OpenAI, { toFile } from 'openai';
 import { normalizeBrief, briefIssueAr } from './brief-normalize';
 import type { CommentAnalysis, CommentAnalysisRequest } from './types';
-import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion, type VoiceoverRequest } from './types';
+import { AiProviderError, CreativeBriefJsonSchema, CreativeBriefSchema, IdeaSuggestionsJsonSchema, type AiProvider, type BriefRequest, type IdeaSuggestion, type VoiceoverRequest, type VoiceoverLine } from './types';
+import { EMOTIONS } from '../audio/performance';
 import { voiceoverSystemPrompt } from './prompts';
 import { briefSystemPrompt, briefUserPrompt, ideasSystemPrompt } from './prompts';
 
@@ -134,14 +135,18 @@ export class OpenAiProvider implements AiProvider {
       res = await callWithParamFallback({
         model,
         messages: [{ role: 'system' as const, content: voiceoverSystemPrompt() }, { role: 'user' as const, content: JSON.stringify(req) }],
-        response_format: { type: 'json_schema', json_schema: { name: 'voiceover', strict: true, schema: { type: 'object', additionalProperties: false, required: ['script'], properties: { script: { type: 'string', description: 'The spoken script only, in the requested language/dialect.' } } } } },
+        response_format: { type: 'json_schema', json_schema: { name: 'voiceover', strict: true, schema: { type: 'object', additionalProperties: false, required: ['script', 'lines'], properties: {
+          script: { type: 'string', description: 'The spoken script only, in the requested language/dialect.' },
+          lines: { type: 'array', description: 'The same script split into its spoken lines, in order, word for word, each with its acting direction.', items: { type: 'object', additionalProperties: false, required: ['text', 'emotion', 'delivery', 'stress', 'pause'], properties: {
+            text: { type: 'string' }, emotion: { type: 'string', enum: EMOTIONS.map((e) => e.id) }, delivery: { type: 'string', description: 'how to say this line, in English, max 12 words (e.g. "rising curious question", "soft smile, slower")' },
+            stress: { type: 'array', items: { type: 'string' }, description: '0–2 words of this line to stress, copied exactly' }, pause: { type: 'string', enum: ['none', 'short', 'long'] } } } } } } } },
       }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('voiceover'));
     } catch (e) { throw mapError(e); }
-    let script = '';
-    try { script = String(JSON.parse(res.choices[0]?.message?.content ?? '{}').script ?? '').trim(); }
+    let script = '', lines: VoiceoverLine[] | undefined;
+    try { const j = JSON.parse(res.choices[0]?.message?.content ?? '{}'); script = String(j.script ?? '').trim(); lines = Array.isArray(j.lines) ? j.lines : undefined; }
     catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
     if (!script) throw new AiProviderError('BAD_OUTPUT', 'نص التعليق الصوتي فارغ.', true);
-    return { script, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+    return { script, lines, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
   async readText(png: Buffer, model: string) {

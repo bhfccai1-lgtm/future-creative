@@ -168,6 +168,10 @@ export const SettingsSchema = z.object({
       defaultReelAudio: z.enum(['none', 'ambient', 'upbeat', 'library', 'voiceover', 'instagram']).default('upbeat'),
       /** reading pace of the voice-over */
       pace: z.enum(['slow', 'normal', 'fast']).default('normal'),
+      /** the voice director: feeling, speaking style and how strongly it shows ('auto' = from occasion / product / persona) */
+      emotion: z.string().max(30).default('auto'),
+      style: z.string().max(30).default('auto'),
+      intensity: z.enum(['subtle', 'natural', 'expressive']).default('natural'),
       /** listen back to the generated voice (transcription) and re-take once when words were not clear */
       verifyPronunciation: z.boolean().default(true),
       /** burned-in captions of the voice-over on reels (muted viewing) */

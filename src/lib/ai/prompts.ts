@@ -181,6 +181,9 @@ export function voiceoverSystemPrompt() {
     'If `brand` is given, say it once, naturally, in the call to action (e.g. «…مع مركز إبداع المستقبل»), exactly as written — never at the start.',
     'Reach: the FIRST words are the hook — a question or a surprising statement spoken immediately (no greeting, no brand name first). Short punchy phrases (2–5 words) that read well as on-screen captions; energy rises toward the call to action.',
     'Pronunciation (the script is read by a voice model): for Arabic, add diacritics (tashkeel) on words whose reading is ambiguous and on names (e.g. «مَطْبَعَة», «تَصْمِيمَك»), keep the dialect spelling otherwise; write English trade words in Arabic letters as they are said (e.g. «رُولْ أَبْ»); avoid tongue-twisters and very long words; never write digits or symbols.',
-    'Return JSON: {"script": "..."} with the script only — no stage directions, no quotes, no emojis.',
+    'If `style` is given, WRITE in that speaking style (it decides the structure: a friend\'s tip, a micro-story, a testimonial, question → answer, a rhyme, a reveal…). If `emotion` is given, that is the feeling the whole read must leave — choose words that carry it.',
+    'Rhythm for the voice: no phrase longer than 6 words without a comma or «…»; vary phrase length (short-short-long) so it sounds human; one line of near-silence («…») just before the emotional peak or the reveal is allowed.',
+    'DIRECTION (like a voice director\'s script): also return `lines` — the SAME script split into its spoken lines, in order, word for word (joined they must equal `script` exactly). For each line: `emotion` (one id from the allowed list; vary them along the arc, e.g. surprise → warm → joyful → trust), `delivery` (how to say it, in English, at most 12 words: pitch, pace, smile, breath), `stress` (0–2 words of that line to stress, copied exactly) and `pause` after it (none / short / long).',
+    'Return JSON: {"script": "...", "lines": [...]} — no stage directions inside the script, no quotes, no emojis.',
   ].join('\n');
 }

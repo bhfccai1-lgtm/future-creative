@@ -82,7 +82,12 @@ export interface VoiceoverRequest {
   brand?: string;
   /** the reel's shots in order (beat: scene) — the voice-over follows them */
   storyboard?: string[];
+  /** the voice director's target feeling and speaking style (see audio/performance.ts) */
+  emotion?: string;
+  style?: string;
 }
+/** one directed line of the script (the words are checked against the script before use) */
+export interface VoiceoverLine { text: string; emotion: string; delivery: string; stress: string[]; pause: 'none' | 'short' | 'long' }
 
 export interface AiProvider {
   readonly name: string;
@@ -98,7 +103,7 @@ export interface AiProvider {
   describeStyle?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
   suggestIdeas(req: BriefRequest, model: string, count: number): Promise<{ ideas: IdeaSuggestion[]; usage: TextUsage; model: string }>;
   /** Optional: writes a spoken voice-over script in a given dialect/language for a persona. */
-  writeVoiceover?(req: VoiceoverRequest, model: string): Promise<{ script: string; usage: TextUsage; model: string }>;
+  writeVoiceover?(req: VoiceoverRequest, model: string): Promise<{ script: string; lines?: VoiceoverLine[]; usage: TextUsage; model: string }>;
   /** Optional art-director: scores candidate images (JPEG) for the brief and returns the index of the best one. */
   judgeImages?(images: Buffer[], brief: string, model: string): Promise<{ best: number; scores: number[]; reason: string; usage: TextUsage; model: string }>;
   /** V10 rubric: the art director scores the FINISHED ad on the judged criteria (attention, creativity, image, clarity, share) */

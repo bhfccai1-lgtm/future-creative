@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { apiCall, csrfToken } from '@/lib/client/api';
 import { Button, Badge } from './ui';
 import { LANG_GROUPS, PERSONA_GROUPS, PERSONAS, Q_AR, VOICE_LANGS } from '@/lib/audio/voices';
+import { EMOTIONS, INTENSITY_AR, STYLES, emotionOf, styleOf, type Intensity } from '@/lib/audio/performance';
 
-type Audio = { persona: string; voiceLang: string; sfx: boolean; musicVolume: number; defaultReelAudio: string; pace?: 'slow' | 'normal' | 'fast'; verifyPronunciation?: boolean; captions?: boolean; lexicon?: { from: string; to: string }[] };
+type Audio = { persona: string; voiceLang: string; sfx: boolean; musicVolume: number; defaultReelAudio: string; pace?: 'slow' | 'normal' | 'fast'; emotion?: string; style?: string; intensity?: Intensity; verifyPronunciation?: boolean; captions?: boolean; lexicon?: { from: string; to: string }[] };
 const lexToText = (l?: { from: string; to: string }[]) => (l ?? []).map((e) => `${e.from} = ${e.to}`).join('\n');
 const textToLex = (t: string) => t.split(/\r?\n/).map((l) => l.split(/\s*=\s*/)).filter((p) => p.length === 2 && p[0].trim() && p[1].trim()).map(([from, to]) => ({ from: from.trim(), to: to.trim() })).slice(0, 150);
 type Track = { id: string; name: string; mood: string; durationSec: number; startSec: number; licenseNote: string; active: boolean; uses: number };
@@ -21,7 +22,8 @@ export function AudioSettings({ audio, tracks, stumbles = [] }: { audio: Audio; 
   const [busy, setBusy] = useState(false);
   const curLang = VOICE_LANGS.find((l) => l.id === v.voiceLang);
   const [group, setGroup] = useState(curLang?.group ?? 'arabic');
-  const [sample, setSample] = useState<{ url: string; script: string; accuracy: number | null; heard: string; missed: string; takes: number } | null>(null);
+  type Dir = { emotion: string; style: string; intensity: Intensity; lines: { text: string; emotion: string; delivery: string; stress: string[] }[] };
+  const [sample, setSample] = useState<{ url: string; script: string; accuracy: number | null; heard: string; missed: string; takes: number; dir: Dir | null } | null>(null);
   const [lexText, setLexText] = useState(lexToText(audio.lexicon));
   const [tryText, setTryText] = useState('');
   const [sampling, setSampling] = useState(false);
@@ -45,12 +47,12 @@ export function AudioSettings({ audio, tracks, stumbles = [] }: { audio: Audio; 
         <Button type="button" variant="outline" disabled={sampling} onClick={async () => {
           setSampling(true); setMsg(null);
           try {
-            const r = await fetch('/api/settings/audio/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken() }, body: JSON.stringify({ persona: v.persona, voiceLang: v.voiceLang, group, pace: v.pace ?? 'normal', lexicon: textToLex(lexText), ...(tryText.trim() ? { text: tryText.trim() } : {}) }) });
+            const r = await fetch('/api/settings/audio/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken() }, body: JSON.stringify({ persona: v.persona, voiceLang: v.voiceLang, group, pace: v.pace ?? 'normal', emotion: v.emotion ?? 'auto', style: v.style ?? 'auto', intensity: v.intensity ?? 'natural', lexicon: textToLex(lexText), ...(tryText.trim() ? { text: tryText.trim() } : {}) }) });
             if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { message?: string }).message ?? `HTTP ${r.status}`);
             const script = decodeURIComponent(r.headers.get('x-voice-script') ?? '');
             if (sample) URL.revokeObjectURL(sample.url);
             const acc = r.headers.get('x-voice-accuracy');
-            setSample({ url: URL.createObjectURL(await r.blob()), script, accuracy: acc ? Number(acc) : null, heard: decodeURIComponent(r.headers.get('x-voice-heard') ?? ''), missed: decodeURIComponent(r.headers.get('x-voice-missed') ?? ''), takes: Number(r.headers.get('x-voice-takes') ?? 1) });
+            setSample({ url: URL.createObjectURL(await r.blob()), script, accuracy: acc ? Number(acc) : null, heard: decodeURIComponent(r.headers.get('x-voice-heard') ?? ''), missed: decodeURIComponent(r.headers.get('x-voice-missed') ?? ''), takes: Number(r.headers.get('x-voice-takes') ?? 1), dir: (() => { try { return JSON.parse(decodeURIComponent(r.headers.get('x-voice-direction') ?? '')) as Dir; } catch { return null; } })() });
           } catch (x) { setMsg({ ok: false, t: (x as Error).message }); }
           setSampling(false);
         }}>{sampling ? 'جارٍ التوليد والتحقق…' : tryText.trim() ? '🔊 استمع لجملتك' : '🔊 استماع لعينة'}</Button>
@@ -68,8 +70,57 @@ export function AudioSettings({ audio, tracks, stumbles = [] }: { audio: Audio; 
           )}
           <p className="text-xs text-slate-600"><b>ما قُرئ:</b> {sample.script}</p>
           {sample.heard && <p className="text-xs text-slate-500"><b>ما سُمع:</b> {sample.heard}</p>}
+          {sample.dir && (
+            <div className="rounded-lg border border-gold-300 bg-white p-2">
+              <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                <b className="text-navy-900">🎬 أداء المخرج الصوتي:</b>
+                <span className="rounded-full bg-gold-300/30 px-2 py-0.5 font-bold">{emotionOf(sample.dir.emotion)?.icon} {emotionOf(sample.dir.emotion)?.ar ?? sample.dir.emotion}</span>
+                <span className="rounded-full bg-navy-800 px-2 py-0.5 font-bold text-white">{styleOf(sample.dir.style)?.ar ?? sample.dir.style}</span>
+                <span className="text-slate-500">{INTENSITY_AR[sample.dir.intensity]}</span>
+              </div>
+              {sample.dir.lines.length > 0 && <ol className="space-y-1 text-xs">{sample.dir.lines.map((l, i) => (
+                <li key={i} className="flex flex-wrap items-baseline gap-1.5"><span className="font-bold text-slate-400">{i + 1}</span>
+                  <span title={emotionOf(l.emotion)?.ar}>{emotionOf(l.emotion)?.icon ?? '•'}</span>
+                  <span className="font-bold text-navy-900" dir="auto">{l.text}</span>
+                  {l.delivery && <span className="ltr text-[11px] text-slate-500" dir="ltr">— {l.delivery}</span>}
+                  {l.stress.length > 0 && <span className="text-[11px] text-gold-600">نبرة على: {l.stress.join('، ')}</span>}</li>))}</ol>}
+            </div>
+          )}
         </div>
       )}
+
+      <fieldset className="space-y-3 rounded-xl border-2 border-gold-300 bg-gradient-to-b from-gold-300/10 to-transparent p-3">
+        <legend className="px-1 text-sm font-extrabold text-navy-800">🎭 المشاعر وأسلوب الكلام</legend>
+        <p className="text-xs text-slate-600">مثل مخرج صوتي محترف: تختار الشعور الذي يصل للمستمع وأسلوب الحديث، ويكتب كاتب الإعلان النص بهذا الأسلوب ثم يوجّه أداء <b>كل جملة</b> (شعورها، نبرتها، الكلمة التي تُشدّ، والوقفة بعدها). الكلمات نفسها لا تتغير — الأداء فقط.</p>
+        <div>
+          <div className="label">الشعور</div>
+          <div role="radiogroup" aria-label="الشعور" className="flex flex-wrap gap-1.5">
+            {[{ id: 'auto', ar: 'تلقائي', icon: '🪄' }, ...EMOTIONS].map((e) => (
+              <button key={e.id} type="button" role="radio" aria-checked={(v.emotion ?? 'auto') === e.id} onClick={() => setV({ ...v, emotion: e.id })}
+                className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${(v.emotion ?? 'auto') === e.id ? 'border-gold-500 bg-gold-300/40 text-navy-900 shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-gold-400'}`}>
+                <span aria-hidden>{e.icon}</span> {e.ar}</button>))}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-500">«تلقائي»: من المناسبة أولًا (العيد الوطني فخر، يوم الأم حنان، رمضان دفء…) ثم فئة المنتج.</p>
+        </div>
+        <div>
+          <div className="label">أسلوب الكلام</div>
+          <div role="radiogroup" aria-label="أسلوب الكلام" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {[{ id: 'auto', ar: 'تلقائي', hint: 'حسب الشخصية الصوتية والمنتج' }, ...STYLES].map((st) => (
+              <button key={st.id} type="button" role="radio" aria-checked={(v.style ?? 'auto') === st.id} onClick={() => setV({ ...v, style: st.id })}
+                className={`rounded-xl border-2 p-2 text-right transition ${(v.style ?? 'auto') === st.id ? 'border-gold-500 bg-gold-300/20' : 'border-slate-200 bg-white hover:border-gold-300'}`}>
+                <div className="text-sm font-extrabold text-navy-900">{st.ar}</div><div className="text-[11px] leading-4 text-slate-500">{st.hint}</div></button>))}
+          </div>
+        </div>
+        <div>
+          <div className="label">قوة التعبير</div>
+          <div role="radiogroup" aria-label="قوة التعبير" className="inline-flex overflow-hidden rounded-lg border">
+            {(Object.keys(INTENSITY_AR) as Intensity[]).map((k) => (
+              <button key={k} type="button" role="radio" aria-checked={(v.intensity ?? 'natural') === k} onClick={() => setV({ ...v, intensity: k })}
+                className={`px-3 py-1.5 text-xs font-bold ${(v.intensity ?? 'natural') === k ? 'bg-navy-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{INTENSITY_AR[k]}</button>))}
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500">اضغط «🔊 استماع لعينة» بالأعلى لتسمع الشعور والأسلوب قبل الحفظ — وتظهر لك خريطة الأداء لكل جملة.</p>
+      </fieldset>
 
       <fieldset className="space-y-3 rounded-xl border-2 border-gold-300 p-3">
         <legend className="px-1 text-sm font-extrabold text-navy-800">🗣️ النطق الصحيح</legend>
