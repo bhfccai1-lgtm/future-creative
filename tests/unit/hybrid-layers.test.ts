@@ -124,3 +124,17 @@ describe('brand features: one framed bar under the product, above the order butt
     expect(aiPosterGeometry(1350, false).bottomPct).toBeLessThan(aiPosterGeometry(1350, true).bottomPct);
   });
 });
+
+describe('stories / reels fill the whole frame (owner): no blurred logo band, no dark block under the panel', () => {
+  it('the top of the output IS the design (not a blurred copy) and the bottom under the panel stays close to the design', async () => {
+    // a design with sharp detail at the very top and a bright floor at the bottom
+    const w = 1024, h = 1536;
+    const scene = await sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#5a1a1a"/>${Array.from({ length: 32 }, (_, i) => `<rect x="${i * 32}" y="0" width="16" height="200" fill="#f0d090"/>`).join('')}<rect y="${h - 220}" width="${w}" height="220" fill="#c8a070"/></svg>`)).png().toBuffer();
+    const c = await compose(scene, 'IMAGE_STORY', { headline: 'اختاري صورة قريبة', badge: 'أكواب العائلة', support: 'ذكرى كل يوم' });
+    const top = await sharp(c.png).extract({ left: 0, top: 0, width: 1080, height: 120 }).greyscale().png().toBuffer().then((b) => sharp(b).stats()); // stats() ignores extract() → buffer first
+    expect(top.channels[0].stdev).toBeGreaterThan(40); // the stripes survive: real detail, not a blur
+    const bottom = await sharp(c.png).extract({ left: 300, top: 1800, width: 480, height: 100 }).png().toBuffer().then((b) => sharp(b).stats());
+    expect(bottom.channels[0].mean).toBeGreaterThan(160); // the bright floor still reads (was buried under navy 0.92→0.15)
+    expect(checkLayout(c.manifest).filter((x) => !x.passed)).toEqual([]);
+  });
+});

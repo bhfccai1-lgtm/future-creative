@@ -126,6 +126,8 @@ export function fullPosterPrompt(p: {
   layout?: string; decor?: string; lighting?: string; lens?: string; recipe?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
   /** HYBRID (golden rule): the model designs everything EXCEPT text; the headline area stays calm for the system's typeset Arabic */
   textless?: { headlinePct: number };
+  /** Stories / Reels (9:16): the scene runs edge to edge — the app's own bars cover the top/bottom strips */
+  fullFrame?: boolean;
 }) {
   const S = SCRIPT_NAME[p.lang];
   const square = p.aspect === 'square';
@@ -153,7 +155,10 @@ export function fullPosterPrompt(p: {
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail. Restraint like a top agency: at most 2–3 decorative motifs, kept toward the edges and corners — never crossing the hero product, never in the text areas, never cluttering; generous breathing space around the product.`,
     'MANDATORY reserved areas:',
-    `  • Keep a calm margin of ${p.topPct ?? 5}% at the very top edge (no text touching the edge); do NOT draw any logo or brand name — the official logo is placed in its own band above the poster.`,
+    p.fullFrame
+      ? `  • The top ${p.topPct ?? 5}% is part of the scene (light, sky, decor) but kept free of text, products and busy detail — the official logo is placed over it later; do NOT draw any logo or brand name.`
+      : `  • Keep a calm margin of ${p.topPct ?? 5}% at the very top edge (no text touching the edge); do NOT draw any logo or brand name — the official logo is placed in its own band above the poster.`,
+    p.fullFrame ? '  • FULL FRAME (Story/Reel): the picture runs edge to edge. The top 12% and the bottom 20% are partly covered by the app\'s own bars — continue the scene there richly (light, sky or ceiling and decor at the top; the table surface, reflections, props or a softly lit Bahrain backdrop at the bottom). Never a flat, dark or empty band there, and no text or key objects.' : '',
     `  • The BOTTOM ${p.bottomPct ?? 20}% is covered later by the order button and phone panel: draw there ONLY plain surface/background (table top, soft bokeh, gold ribbon swooshes from the corners). Do NOT draw a row of feature/benefit icons anywhere (the system adds it). The product and every object, text and icon must END ABOVE this zone — place the product in the middle of the poster, never touching the bottom part.`,
     `  • Keep every drawn text, the badge and the product inside the central ${p.safeWidthPct ?? 80}% of the width (the sides may be trimmed); fill the full frame edge to edge with the scene, no borders or frames around the poster.`,
     '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately).',
