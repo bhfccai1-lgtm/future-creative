@@ -103,10 +103,10 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
             <div><label className="label">مزايا المطبعة (تصاميم مخصصة، جودة طباعة…) في التصميم الكامل</label>
               <select className="input" style={{ width: '22rem' }} value={v.featuresRow ?? 'ai'} onChange={(e) => setV({ ...v, featuresRow: e.target.value as 'ai' | 'system' | 'off' })}>
                 <option value="ai">مدمجة في التصميم حسب الفكرة (موصى به)</option>
-                <option value="system">شريط أيقونات ثابت فوق زر الطلب</option>
+                <option value="system">شريط مزايا تحت المنتج فوق زر الطلب (نص النظام)</option>
                 <option value="off">بدون — مساحة أكبر للتصميم</option>
               </select></div>
-            <p className="text-xs text-slate-500">«مدمجة»: يرسمها الذكاء الاصطناعي في مكان يناسب الفكرة (قائمة بعلامات ذهبية، شارات…) ويُدقق إملاؤها مع العنوان. الشريط الثابت كان يغطي أسفل التصميم.</p>
+            <p className="text-xs text-slate-500">«مدمجة»: يرسمها الذكاء الاصطناعي في مكان يناسب الفكرة (قائمة بعلامات ذهبية، شارات…) ويُدقق إملاؤها مع العنوان. «شريط تحت المنتج»: إطار واحد يضم أول ميزتين بأيقونة ذهبية وفاصل، بإملاء مضمون — والوضع الهجين يستخدمه تلقائيًا.</p>
           </div>
           <div className="mt-3">
             <label className="label">حسابات إنستغرام تُذكر في نص كل منشور</label>

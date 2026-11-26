@@ -92,3 +92,35 @@ describe('reels: the owner\'s contact bar (sketch) — one wide bar, big digits,
     expect(L('contact:saar:phone').rect.left).toBeGreaterThan(lg.left + lg.width); // Arabic: Saar right of the logo
   });
 });
+
+describe('brand features: one framed bar under the product, above the order button (owner\'s sketch)', () => {
+  it('Arabic: two features in one bar, first on the right, one type size, inside the bar, above the button; the product zone ends above the bar', async () => {
+    const { aiPosterGeometry } = await import('@/lib/render/poster');
+    const feats = ['تصميم مخصص', 'طباعة عالية الجودة', 'تسليم سريع', 'أسعار منافسة'];
+    for (const [format, w, h, H] of [['IMAGE_STORY', 1024, 1536, 1920], ['IMAGE_FEED', 1024, 1536, 1350], ['IMAGE_SQUARE', 1024, 1024, 1080]] as const) {
+      const c = await compose(await calm(w, h), format, { headline: 'كوبك بتصميمك', badge: 'جديد', support: 'طباعة أكواب حسب الطلب' }, feats);
+      expect(checkLayout(c.manifest).filter((x) => !x.passed).map((x) => x.detail), format).toEqual([]);
+      const b = c.manifest.layers.filter((l) => l.id.startsWith('benefit:'));
+      expect(b.map((l) => l.text), format).toEqual(['تصميم مخصص', 'طباعة عالية الجودة']); // the first two, like the sketch
+      const g = aiPosterGeometry(H, true), st = g.strip!;
+      const cta = c.manifest.layers.find((l) => l.id === 'cta')!;
+      expect(st.y + st.h, format).toBeLessThan(cta.rect.top);
+      for (const l of b) { expect(l.rect.top).toBeGreaterThanOrEqual(st.y); expect(l.rect.top + l.rect.height).toBeLessThanOrEqual(st.y + st.h); }
+      expect(b[0].rect.left, format).toBeGreaterThan(1080 / 2); // RTL: first feature in the right cell
+      expect(b[1].rect.left + b[1].rect.width, format).toBeLessThan(1080 / 2);
+      expect(b[0].fontSize, format).toBe(b[1].fontSize);
+      expect(b[0].fontSize!, format).toBeGreaterThanOrEqual(22);
+      // the design keeps the product above the bar: the reserved bottom zone covers it
+      expect(H - Math.round(((H - g.topBand) * g.bottomPct) / 100), format).toBeLessThanOrEqual(st.y);
+    }
+  });
+
+  it('English: first feature on the left; no features → no bar and nothing reserved for it', async () => {
+    const { aiPosterGeometry } = await import('@/lib/render/poster');
+    const c = await composeAdvertisement({ scene: await calm(1024, 1536), format: 'IMAGE_FEED', lang: 'en', templateKey: 'ai-poster', headline: 'Your mug, your design', supportingCopy: 'Premium print', badge: 'New', cta: 'Order now', logo: await logo(), contacts, typeset: { headline: 'Your mug, your design', badge: 'New', support: 'Premium print' }, features: ['Custom designs', 'Fast delivery'] });
+    const b = c.manifest.layers.filter((l) => l.id.startsWith('benefit:'));
+    expect(b[0].rect.left + b[0].rect.width).toBeLessThan(1080 / 2);
+    expect(aiPosterGeometry(1350, false).strip).toBeNull();
+    expect(aiPosterGeometry(1350, false).bottomPct).toBeLessThan(aiPosterGeometry(1350, true).bottomPct);
+  });
+});
