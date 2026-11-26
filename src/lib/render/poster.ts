@@ -202,7 +202,20 @@ export const AI_POSTER_KEY = 'ai-poster';
  * keeps all drawn text inside the safe central width). The model leaves the top zone empty for the ORIGINAL logo and
  * the bottom zone as plain background, where the system overlays the gold order button and the glass phone panel.
  */
+export type FeatureStrip = { y: number; h: number; x: number; w: number };
 export function aiPosterGeometry(h: number, featureRow = true, logoBottom = false) {
+  // the brand features: ONE framed bar under the product, right above the order button — two features side by side
+  // with a gold divider (owner's sketch, every format). The design's bottom zone grows to include the bar, so the
+  // product always ends above it.
+  const g = geometryCore(h, false, logoBottom);
+  if (!featureRow) return { ...g, strip: null as FeatureStrip | null };
+  const sh = g.H === 1920 ? 96 : g.H === 1350 ? 84 : 72, mx = g.H === 1920 ? 90 : 60;
+  const strip: FeatureStrip = { x: mx, w: W - 2 * mx, h: sh, y: g.cta.y - (g.H === 1080 ? 16 : 24) - sh };
+  const artH = g.H - g.topBand;
+  const bottomPct = Math.max(g.bottomPct, Math.ceil(((g.H - (strip.y - 12)) / artH) * 100));
+  return { ...g, bottomPct, strip: strip as FeatureStrip | null };
+}
+function geometryCore(h: number, featureRow = true, logoBottom = false) {
   const b = aiPosterGeometryBase(h);
   // no system feature row → nothing reserved for it: the design gets that space (feed: bottom zone 40 % → 26 %)
   const g = featureRow || !b.features ? b : { ...b, features: null, bottomPct: h === 1350 ? 26 : b.bottomPct };
@@ -331,7 +344,7 @@ export async function buildAiPosterParts(poster: Buffer, height = 1920, featureR
   const base = await sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
     // no logo band (logo in the footer): the design itself starts at the top edge — no blend, no dark seam
     .composite(g.topBand === 0 ? [{ input: art, left: 0, top: 0 }] : [{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
-  const zone = (g.features?.y ?? g.cta.y) - 70, px = g.padX, pw = W - 2 * px;
+  const zone = g.cta.y - 70, px = g.padX, pw = W - 2 * px;
   const hzC = headline?.tone === 'light' ? '#fffaf0' : NAVY;
   // the headline shade follows how busy the art is under the text: calm art → light shade, busy art → deeper shade,
   // so the typeset headline never fights the picture (measured, no AI call; stats() needs the extracted pixels first)
@@ -361,7 +374,7 @@ export async function buildAiPosterParts(poster: Buffer, height = 1920, featureR
       : `<rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>`}
     ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hzC}" stop-opacity="${Math.round(hzA * 70) / 100}"/><stop offset="${(40 / (headline.h + 110)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="${((headline.h + 40) / (headline.h + 110)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="1" stop-color="${hzC}" stop-opacity="0"/></linearGradient><rect x="0" y="${Math.max(0, headline.y - 40)}" width="${W}" height="${headline.h + 110}" fill="url(#hz)"/>` : ''}
     ${ribbons(H)}
-    ${g.features ? `<rect x="40" y="${g.features.y - 14}" width="${W - 80}" height="${Math.round(g.features.icon + g.features.label * 1.6 + 26)}" rx="28" fill="${NAVY}" fill-opacity="0.72" stroke="url(#gg)" stroke-opacity="0.55" stroke-width="2"/>` : ''}
+    ${g.strip ? `<rect x="${g.strip.x}" y="${g.strip.y}" width="${g.strip.w}" height="${g.strip.h}" rx="${Math.round(g.strip.h * 0.22)}" fill="${NAVY}" fill-opacity="0.78" stroke="#f3ead6" stroke-opacity="0.9" stroke-width="3"/><line x1="${W / 2}" y1="${g.strip.y + g.strip.h * 0.24}" x2="${W / 2}" y2="${g.strip.y + g.strip.h * 0.76}" stroke="#e2b84a" stroke-width="4" stroke-linecap="round"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
     <rect x="${px + 24}" y="${g.panel.y + 6}" width="${pw - 48}" height="2" fill="#ffffff" opacity="0.18"/>
     ${logoBottom && g.bar ? `<radialGradient id="halo" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff6dc" stop-opacity="0.55"/><stop offset="0.6" stop-color="#fff6dc" stop-opacity="0.18"/><stop offset="1" stop-color="#fff6dc" stop-opacity="0"/></radialGradient><ellipse cx="${W / 2}" cy="${g.logo.y + g.logo.h / 2}" rx="${g.logo.w * 0.62}" ry="${g.logo.h * 0.62}" fill="url(#halo)"/>` : logoBottom ? `<rect x="${(W - g.logo.w) / 2}" y="${g.logo.y}" width="${g.logo.w}" height="${g.logo.h}" rx="30" fill="#fffdf7" fill-opacity="0.97" stroke="url(#gg)" stroke-width="5"/>` : `<rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>`}
@@ -438,21 +451,27 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
     layers.push(place('brand' as PlacedLayer['id'], nt.png, nb.x + (nb.w - nt.width) / 2, nb.y, nt.width, nt.height, nb, nt, name, '#ffffff'));
   }
 
-  // feature row — typeset by the system (verified spelling) in its own row above the order button, never drawn by the AI
-  const feats = ((input as ComposeInput & { features?: string[] }).features ?? []).slice(0, 4);
-  if (g.features && feats.length) {
-    const f = g.features, n = feats.length, colW = (W - 120) / n;
-    const order = lang === 'ar' ? feats.map((_, i) => n - 1 - i) : feats.map((_, i) => i);
-    for (let slot = 0; slot < n; slot++) {
-      const i = order[slot];
-      const cx = 60 + colW * slot + colW / 2, D = f.icon;
-      const icon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${D}" height="${D}" viewBox="0 0 128 128"><defs>${goldGrad('g')}</defs><circle cx="64" cy="64" r="58" fill="${NAVY}" fill-opacity="0.78" stroke="url(#g)" stroke-width="5"/><g transform="translate(32 32) scale(0.64)" fill="none" stroke="#f2cf5b" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">${ICONS[ICON_ORDER[i % ICON_ORDER.length]]}</g></svg>`);
-      const lbl = await renderText({ text: feats[i], lang, weight: 'bold', color: '#f6d77a', maxSize: f.label, minSize: 18, boxW: Math.round(colW - 16), boxH: Math.round(f.label * 1.5), maxLines: 1 });
-      const cw = Math.round(colW - 8), ch = D + 8 + lbl.height;
-      const png = await sharp({ create: { width: cw, height: ch, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-        .composite([{ input: icon, left: Math.round((cw - D) / 2), top: 0 }, { input: lbl.png, left: Math.round((cw - lbl.width) / 2), top: D + 8 }]).png().toBuffer();
-      const boxH = g.cta.y - f.y - 8;
-      layers.push(place(`benefit:${i}` as PlacedLayer['id'], png, cx - cw / 2, f.y, cw, ch, { x: Math.round(cx - cw / 2), y: f.y, w: cw, h: boxH }, { ...lbl, fits: lbl.fits && ch <= boxH }, feats[i], '#f6d77a'));
+  // feature BAR (owner's sketch) — typeset by the system (verified spelling): two features in one framed bar under the
+  // product, a gold line icon beside each label, a gold divider between them; the first feature on the reading-start
+  // side (right in Arabic). One type size for both, never drawn by the AI.
+  const feats = ((input as ComposeInput & { features?: string[] }).features ?? []).map((f) => f.trim()).filter(Boolean).slice(0, 2);
+  if (g.strip && feats.length) {
+    const st = g.strip, n = feats.length, cellW = st.w / n, D = Math.round(st.h * 0.5), gapI = Math.round(st.h * 0.16);
+    const labelW = Math.round(cellW - D - gapI - 40), labelH = Math.round(st.h * 0.7);
+    const spec = (t: string, size: number) => renderText({ text: t, lang, weight: 'bold', color: '#f6efe0', minSize: Math.min(size, 18), maxSize: size, boxW: labelW, boxH: labelH, maxLines: 1 });
+    const first = await Promise.all(feats.map((t) => spec(t, Math.round(st.h * 0.42))));
+    const size = Math.max(18, Math.min(...first.map((l) => l.fontSize)));
+    const labels = await Promise.all(feats.map((t) => spec(t, size)));
+    for (let i = 0; i < n; i++) {
+      const slot = lang === 'ar' ? n - 1 - i : i; // Arabic: the first feature in the right cell
+      const lbl = labels[i];
+      const icon = await svgPng(`<svg xmlns="http://www.w3.org/2000/svg" width="${D}" height="${D}" viewBox="10 10 84 84"><g fill="none" stroke="#e2b84a" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">${ICONS[ICON_ORDER[i % ICON_ORDER.length]]}</g></svg>`);
+      const gw = D + gapI + lbl.width, gh = Math.max(D, lbl.height);
+      const png = await sharp({ create: { width: gw, height: gh, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+        .composite([{ input: icon, left: 0, top: Math.round((gh - D) / 2) }, { input: lbl.png, left: D + gapI, top: Math.round((gh - lbl.height) / 2) }]).png().toBuffer();
+      const cx = st.x + cellW * slot + cellW / 2;
+      const box = { x: Math.round(st.x + cellW * slot + 14), y: st.y + 6, w: Math.round(cellW - 28), h: st.h - 12 };
+      layers.push(place(`benefit:${i}` as PlacedLayer['id'], png, Math.round(cx - gw / 2), Math.round(st.y + (st.h - gh) / 2), gw, gh, box, { ...lbl, fits: lbl.fits && gw <= box.w && gh <= box.h }, feats[i], '#f6efe0'));
     }
   }
 
