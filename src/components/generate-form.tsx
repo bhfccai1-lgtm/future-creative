@@ -185,7 +185,7 @@ export function GenerateForm({ accounts, products, initialIdea = '' }: { account
             {([
               ['الحساب', accountLabel, 0], ['المنتج', productLabel, 0], ['الصيغة', FORMAT_AR[v.format] ?? 'حسب إعداد الحساب', 0],
               ['الفكرة', v.idea.trim() || 'يبتكرها المخرج الإبداعي', 1],
-              ['طريقة التصميم', design.renderMode === 'ai_full' ? 'تصميم كامل بالذكاء الاصطناعي (مع تصحيح الإملاء)' : design.renderMode === 'layered' ? 'طبقات النظام (نص مضمون 100%)' : 'تلقائي (موصى به)', 2],
+              ['طريقة التصميم', design.renderMode === 'hybrid' ? 'هجين: تصميم ذكي + نص مضمون من النظام' : design.renderMode === 'ai_full' ? 'تصميم كامل بالذكاء الاصطناعي (مع تصحيح الإملاء)' : design.renderMode === 'layered' ? 'طبقات النظام (نص مضمون 100%)' : 'تلقائي (موصى به)', 2],
               ['الأسلوب', DESIGN_STYLES.find((x) => x.value === design.designStyle)?.ar ?? 'تلقائي', 2],
               ['الفكرة البصرية', design.concept === 'none' ? 'بدون' : CONCEPTS.find((x) => x.value === design.concept)?.ar ?? 'تلقائي (تتناوب)', 2],
             ] as const).map(([k, val, s]) => (

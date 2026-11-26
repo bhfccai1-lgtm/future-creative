@@ -24,7 +24,9 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
               className={`rounded-xl border-2 p-3 text-right text-sm ${v.renderMode === m.value ? 'border-gold-500 bg-gold-300/20' : 'border-slate-200'}`}>
               <div className="font-extrabold">{m.ar}</div>
               <div className="mt-1 text-xs text-slate-600">{m.value === 'auto'
-                ? 'الملصق الكامل بالذكاء الاصطناعي لكل الصيغ (ستوري، ريلز، منشور، كاروسيل، مربع) مع تدقيق إملائي آلي وإعادة رسم حتى يصح النص. الاستثناء: ريلز Veo، والحسابات الذاتية ما دام «طلب موافقتي» مفعّلًا.'
+                ? 'الهجين لكل الصيغ: الذكاء الاصطناعي يصمم الإعلان كاملًا حسب الفكرة بلا أي نص، ثم يكتب النظام العنوان والشارة بخط عربي صحيح 100٪ مع الشعار الأصلي والأرقام. الاستثناء: ريلز Veo.'
+                : m.value === 'hybrid'
+                ? 'القاعدة الذهبية: يصمم الذكاء الاصطناعي المشهد الإعلاني كاملًا (الألوان، الزخارف، المنتج، التكوين) ويترك مساحة هادئة للعنوان، ثم يضيف النظام العنوان والشارة والشعار والأرقام كطبقات مستقلة بدقة 100٪ — تصميم مختلف لكل فكرة، ونص بلا أخطاء.'
                 : m.value === 'ai_full'
                 ? 'يرسم الذكاء الاصطناعي الملصق كاملًا (العناوين، الشارة الذهبية، المزايا، الزخارف، المنتج). النظام يضيف الشعار الأصلي والأرقام وزر الطلب. يُقرأ النص المرسوم آليًا ويُعاد الرسم حتى يطابق النص الصحيح حرفيًا، ثم يمر بموافقتك (حسب الإعداد).'
                 : 'الذكاء الاصطناعي يصوّر المنتج فقط، والنظام يكتب كل النصوص بخط صحيح 100% ويفحصها آليًا. مناسب للنشر الذاتي.'}</div>
@@ -41,7 +43,7 @@ export function DesignFields({ v, set, format }: { v: DesignValues; set: (patch:
             </Sel>
           </div>
         )}
-        {v.renderMode === 'ai_full' && (
+        {(v.renderMode === 'ai_full' || v.renderMode === 'hybrid') && (
           <div>
             <label className="label">تعليماتك للتصميم (اختياري — مثل ما تكتبه في ChatGPT)</label>
             <textarea rows={4} maxLength={3000} className="input" value={v.customPrompt} onChange={(e) => set({ customPrompt: e.target.value })}

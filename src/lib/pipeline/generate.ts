@@ -32,7 +32,7 @@ import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
 import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
 import { TEMPLATES, FORMAT_SIZE, productZone } from '../render/templates';
-import { aiPosterImageSize, aiPosterGeometry } from '../render/poster';
+import { aiPosterImageSize, aiPosterGeometry, headlinePct } from '../render/poster';
 import { loadReference, referencePrompt, slotsFor } from '../creative/references';
 import { captionIssues } from '../creative/caption-quality';
 import { scoreConcepts, type ConceptScore } from '../creative/concept-select';
@@ -50,6 +50,8 @@ import { signedMediaUrl } from '../storage';
 import { storage } from '../storage';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
+import { combineScore, type AdScore } from '../creative/ad-score';
+import { adStyleFor, adStylePrompt } from '../creative/ad-styles';
 import { CONCEPTS, paletteFor, signaturePoster, DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 import { recipeFor, recipePrompt } from '../creative/photo-recipes';
 import { finishPhoto, type FinishReport } from '../creative/photo-finish';
@@ -153,10 +155,11 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       auto.push('designStyle');
     }
     if (dir.renderMode === 'auto') {
-      // the full AI poster for every format (spell-checked and re-drawn automatically). Exceptions: Veo reels animate a
-      // clean product scene, and auto-publishing accounts while the owner still wants to approve full-AI designs by hand
+      // golden rule (owner's V10 spec): HYBRID — the AI designs the whole ad without text, the system typesets the
+      // headline/badge and adds the logo and numbers as exact layers. Veo reels animate a clean product scene instead.
       const veoReel = format === 'REEL_VIDEO' && (dir.videoEngine ?? s.ai.video.engine) === 'veo';
-      dir.renderMode = veoReel || (account.autonomousAuthorized && s.ai.aiFullRequiresApproval) ? 'layered' : 'ai_full';
+      // (the text is the system's own, so autonomous accounts get it too — no drawn text to approve)
+      dir.renderMode = veoReel ? 'layered' : 'hybrid';
       auto.push('renderMode');
     }
     p = { ...p, direction: { ...dir, autoPicked: auto } };
@@ -170,13 +173,19 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   let dtype = designTypeOf(d.designType);
   // colour story by occasion / audience — only when the user didn't pick a specific look (default, auto, or the signature style)
   const styleOpen = !d.designStyle || d.designStyle === 'fc_signature' || (d.autoPicked ?? []).includes('designStyle');
-  const categoryName = (await prisma.productCategory.findUnique({ where: { id: product.categoryId }, select: { nameAr: true } }))?.nameAr;
+  const cat = await prisma.productCategory.findUnique({ where: { id: product.categoryId }, select: { nameAr: true, slug: true } });
+  const categoryName = cat?.nameAr;
+  // V10 §4: the product decides the ad's tone and visual language (mugs playful 3D, weddings luxurious gold…)
+  const adStyle = adStyleFor({ slug: product.slug, name: product.name, titleAr: product.titleAr, titleEn: product.titleEn, categorySlug: cat?.slug });
   const palette = styleOpen ? paletteFor(d, categoryName) : null;
   const signature = !d.designStyle || d.designStyle === 'fc_signature';
-  const creativeStyle = (style?.prompt ?? s.ai.creativeStyle) + (palette ? ` Colour story: ${palette.decor}.` : '');
+  const creativeStyle = (style?.prompt ?? s.ai.creativeStyle) + (palette ? ` Colour story: ${palette.decor}.` : '') + (adStyle ? ` ${adStylePrompt(adStyle)}` : '');
   const reelDuration = d.reelDuration ?? account.reelDurationSec;
   const imgQuality = qualityFor(s, format); // per-format quality (e.g. stories low)
-  let aiFull = d.renderMode === 'ai_full';
+  const hybrid = d.renderMode === 'hybrid';
+  // the hybrid runs the full-AI poster path (designed artwork, logo/CTA/phones as layers) without drawn text
+  let aiFull = d.renderMode === 'ai_full' || hybrid;
+  const featureRowOn = hybrid ? s.ai.featuresRow !== 'off' : s.ai.featuresRow === 'system'; // hybrid: features are typeset in their row
   const posterSize = aiPosterImageSize(FORMAT_SIZE[format].h, d.logoPosition === 'bottom-center');
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
@@ -330,13 +339,15 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         return r.text;
       } : null,
     });
+    let lastScenePrompt = '';
     const sceneFirst: Scene = realPhoto
       ? ({ png: await sharp(realPhoto).resize(1024, 1536, { fit: 'cover', position: sharp.strategy.attention }).png().toBuffer(), model: 'real-photo' } as Scene)
       : await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
       const basePrompt = aiFull
-        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system': typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA' }) : undefined, lighting: lightingP, lens: lensP, recipe: recipeP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system', d.logoPosition === 'bottom-center')) })
-        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP, recipe: recipeP }, zone);
+        ? fullPosterPrompt({ lang, headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy, features: !hybrid && s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [] /* 'ai': woven into the design; 'system'/hybrid: typeset in its own row */, sceneDescription: brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), style: creativeStyle, customPrompt: d.customPrompt, layout: hybrid ? undefined /* the layouts place drawn text — the system owns the text area in the hybrid */ : POSTER_LAYOUTS.find((x) => x.value === art.poster)?.prompt, decor: palette?.decor ?? THEME_DECOR[style?.theme ?? 'navy_gold'], signature: signature ? signaturePoster({ bahrain: marketOf(account) !== 'KSA', textless: hybrid }) : undefined, lighting: lightingP, lens: lensP, concept: conceptP, productText: quoted, aspect: posterSize === '1024x1024' ? 'square' : 'portrait', ...(({ topPct, bottomPct, safeWidthPct }) => ({ topPct, bottomPct, safeWidthPct }))(aiPosterGeometry(FORMAT_SIZE[format].h, featureRowOn, d.logoPosition === 'bottom-center')), ...(hybrid ? { textless: { headlinePct: headlinePct(FORMAT_SIZE[format].h) } } : {}) })
+        : scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone);
       const prompt = refPrompt ? `${basePrompt}\n${refPrompt}` : basePrompt;
+      lastScenePrompt = prompt; // the rubric's re-draw starts from the same direction
       // Art director (bestOf > 1): several candidates, a vision judge keeps the strongest one
       const n = !provider.isDryRun && provider.judgeImages ? s.ai.bestOf : 1;
       const candidates: Awaited<ReturnType<typeof provider.generateScene>>[] = [];
@@ -345,14 +356,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         const img = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt, { model: s.ai.imageModel, quality: imgQuality, size: aiFull ? posterSize : '1024x1536', seedHint: `${ad.id}${k ? `-c${k}` : ''}`, references }));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         candidates.push(img);
-        if (gateOn && !aiFull) {
+        if (gateOn && (!aiFull || hybrid)) {
           let q = await assessScene(img.png, jobId); qualities.push(q);
           // one corrective re-draw per design: the reason goes into the prompt (only within the AI budget)
           if (!q.pass && !gateRetried) {
             gateRetried = true;
             try {
               await assertBudget(s, estimateImageCost(s, imgQuality));
-              const again = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt + retryHint(q), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-q${k}`, references }));
+              const again = await retrying(s.ai.maxRetries, () => provider.generateScene(prompt + retryHint(q), { model: s.ai.imageModel, quality: imgQuality, size: aiFull ? posterSize : '1024x1536', seedHint: `${ad.id}-q${k}`, references }));
               await recordUsage({ jobId, provider: provider.name, model: again.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
               q = await assessScene(again.png, jobId); candidates.push(again); qualities.push(q);
             } catch { /* budget reached → keep the best attempt; QC shows the issue */ }
@@ -360,7 +371,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         }
       }
       // the quality gate decides which candidates the art director may choose from: passing ones, else the best-scoring
-      if (gateOn && !aiFull && qualities.length === candidates.length) {
+      if (gateOn && (!aiFull || hybrid) && qualities.length === candidates.length) {
         const ok = candidates.filter((_, i) => qualities[i].pass);
         const bestI = qualities.reduce((b, q, i) => (q.score > qualities[b].score ? i : b), 0);
         const keep = ok.length ? ok : [candidates[bestI]];
@@ -370,7 +381,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       }
       // Self-correcting full-AI poster: read the drawn text BEFORE composing; misspelled/missing words → re-draw with an exact correction note
       let pool = candidates;
-      if (aiFull && provider.readText && !provider.isDryRun) {
+      if (aiFull && !hybrid && provider.readText && !provider.isDryRun) {
         const expected = [brief!.headline, brief!.badge, brief!.supportingCopy ?? '', ...quoted, ...(s.ai.featuresRow === 'ai' ? (s.brandFeatures[lang] ?? []).slice(0, 4) : [])].filter((x) => x.trim());
         const zoneBottom = aiPosterGeometry(FORMAT_SIZE[format].h, s.ai.featuresRow === 'system', d.logoPosition === 'bottom-center').bottomPct;
         const spell = async (c: (typeof candidates)[number]) => {
@@ -434,30 +445,59 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       });
       aiFull = false; textFallback = true;
     }
-    // 🎞 studio retouch of the AI picture: clarity, the product's colour grade, a soft vignette (layered scenes only —
-    // a full-AI poster is designed edge to edge); measured, the original is kept if it would clip or shift
-    let photoFinish: FinishReport | null = null;
-    if (s.ai.photoFinish && scene.model !== 'real-photo') {
-      const f = await finishPhoto(scene.png, recipe?.grade ?? 'neutral', { vignette: !aiFull });
-      scene = { ...scene, png: f.png }; photoFinish = f.report;
-    }
-    if (artDirector || textCheck || refs.length || styleBrief || conceptSelection || textFallback || recipe || photoFinish) {
-      const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(recipe || photoFinish ? { photo: { recipe: recipe?.key ?? null, finish: photoFinish?.applied ?? [], ...(photoFinish?.skipped ? { finishSkipped: photoFinish.skipped } : {}) } } : {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...new Set([...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])])] } : {}) } as Prisma.InputJsonValue } });
-    }
-
-    // ── Step 9: deterministic layered composition ──
+    // ── Step 9 inputs: the deterministic layers (also used for the rubric's preview) ──
     const cta = ctaFor(business, lang); // official CTA, never AI-invented
     // Premium gold poster by default for vertical formats; classic templates alternate for feed/square (decided above).
     const templateKey = aiFull ? 'ai-poster' : layeredKey;
-    const features = templateKey === 'ai-poster' && s.ai.featuresRow !== 'system' ? [] : (s.brandFeatures[lang] ?? []);
-    const composed = await composeAdvertisement({
-      scene: scene.png, format, lang, templateKey, headline: brief.headline, supportingCopy: brief.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,
-      badge: brief.badge, features,
+    const features = templateKey === 'ai-poster' && !featureRowOn ? [] : (s.brandFeatures[lang] ?? []);
+    const composeFor = (png: Buffer) => composeAdvertisement({
+      scene: png, format, lang, templateKey, headline: brief!.headline, supportingCopy: brief!.supportingCopy, cta, logo: logo.buffer, contacts: contactLines(business, lang), theme: palette?.theme ?? style?.theme,
+      badge: brief!.badge, features,
       footer: lang === 'ar' ? `${business.nameAr} – مملكة البحرين` : `${business.nameEn} – Kingdom of Bahrain`,
       // full-AI poster: where the original logo goes, and the centre's name for «أعلى الوسط مع اسم المركز»
       logoPosition: d.logoPosition ?? null, brandName: lang === 'ar' ? business.nameAr : business.nameEn,
+      ...(hybrid && aiFull ? { typeset: { headline: brief!.headline, badge: brief!.badge, support: brief!.supportingCopy } } : {}),
     });
+
+    // ── V10 quality rubric (owner's §5): the finished ad is scored /100; below the threshold it is re-drawn with the art
+    // director's note (within maxRedraws and the AI budget). The best version is kept; still below the bar → QC asks a
+    // human — never auto-published below it. A quality standard, not a promise of virality. ──
+    let adScore: AdScore | null = null; const scoreHistory: number[] = [];
+    if (aiFull && s.ai.adScore.enabled && provider.scoreAd && !provider.isDryRun && scene.model !== 'real-photo') {
+      let best: { scene: Scene; score: AdScore } | null = null;
+      for (let r = 0; r <= s.ai.adScore.maxRedraws; r++) {
+        let cand = scene;
+        if (r > 0 && best) {
+          try { await assertBudget(s, estimateImageCost(s, imgQuality) + estimateTextCost(s, 1600, 200)); } catch { break; }
+          const note = `\nART DIRECTOR NOTE (version ${r + 1}): the previous version scored ${best.score.total}/100. Biggest problem: ${best.score.weakness || 'not striking enough'}. Fix: ${best.score.fix || 'a bolder, more original concept with the product as a sharper hero'}. Keep every rule above.`;
+          const img = await retrying(s.ai.maxRetries, () => provider.generateScene(lastScenePrompt + note, { model: s.ai.imageModel, quality: imgQuality, size: posterSize, seedHint: `${ad.id}-score${r}`, references }));
+          await recordUsage({ provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+          if (gateOn && hybrid && !(await assessScene(img.png)).pass) continue; // the re-draw drew text / is soft → not a candidate
+          cand = img as Scene;
+        } else {
+          try { await assertBudget(s, estimateTextCost(s, 1600, 200)); } catch { break; }
+        }
+        try {
+          const preview = await composeFor(cand.png);
+          const jpg = await sharp(preview.png).resize({ width: 768 }).jpeg({ quality: 82 }).toBuffer();
+          const j = await provider.scoreAd(jpg, s.ai.textModel, { product: product.titleEn, idea: brief!.idea ?? brief!.headline, platform: format });
+          await recordUsage({ provider: provider.name, model: j.model, kind: 'text', inputTokens: j.usage.inputTokens, outputTokens: j.usage.outputTokens, costUsd: estimateTextCost(s, j.usage.inputTokens, j.usage.outputTokens) });
+          const sc = combineScore(j.judged, preview.manifest, s.ai.adScore.threshold, j.weakness, j.fix);
+          scoreHistory.push(sc.total);
+          if (!best || sc.total > best.score.total) best = { scene: cand, score: sc };
+          if (sc.passed) break;
+        } catch { break; } // scoring unavailable → keep what we have (QC still applies)
+      }
+      if (best) { scene = best.scene; adScore = best.score; }
+    }
+
+    if (artDirector || textCheck || refs.length || styleBrief || conceptSelection || textFallback || adScore) {
+      const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(adScore ? { adScore: { ...adScore, history: scoreHistory } } : {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...new Set([...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])])] } : {}) } as Prisma.InputJsonValue } });
+    }
+
+    // ── Step 9: deterministic layered composition ──
+    const composed = await composeFor(scene.png);
 
     // ── Pro reel: extra AI scenes (each a different shot of the SAME product), same layout + theme ──
     const SHOTS = [
@@ -639,7 +679,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     // ── Full-AI poster: machine-read the text the image model drew (advisory; a human must still approve) ──
     let aiText: { expected: string[]; transcript: string | null } | null = null;
-    if (aiFull) {
+    if (aiFull && !hybrid) {
       const expected = [brief.headline, brief.badge, brief.supportingCopy ?? ''].filter((x) => x.trim());
       let transcript: string | null = null;
       if (provider.readText && !provider.isDryRun) {
@@ -680,6 +720,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       algorithm: { score: algoFit.after, grade: algoFit.grade, remaining: algoFit.remaining.map((r) => r.label) },
       aiProofread: proof,
       imageQuality,
+      adScore: adScore ? { total: adScore.total, threshold: adScore.threshold, weakness: adScore.weakness, versions: scoreHistory.length } : null,
     });
 
     await storeFingerprints(account.id, ad.id, [

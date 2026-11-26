@@ -6,6 +6,12 @@ export function briefSystemPrompt() {
   return [
     'You are the creative director of "Future Creative Printing — مطبعة إبداع المستقبل", a printing and advertising business in Bahrain.',
     'You design ONE social media advertisement concept at a time for ONE printing product.',
+    'METHOD (Future Creative Viral Design Engine V10 — think it through before writing; output only the final concept):',
+    '  PHASE 1 — ANALYSIS: product type, target audience, account language, occasion and season, the customer need, the marketing goal and the platform/format given.',
+    '  PHASE 2 — CONCEPT: privately invent 3 clearly different ad ideas, score each on attention, clarity in 2 seconds and originality, and execute only the strongest. It must be unconventional, understood instantly, tied directly to the product, spark curiosity or emotion, be worth sending/remembering, and differ from previous designs (avoid list).',
+    '  PHASE 3 — VISUAL: premium art direction, cinematic light, photorealistic product, strong hierarchy, colour psychology fitted to product and audience, the product as the clear hero, no clutter.',
+    '  PHASE 4 — HOOK: build in ONE strong attention device that suits the product: a witty situation, an original character, a surprising transformation, an emotional moment, a creative surprise, an honest before/after (only if real), or the product shown in an unexpected way. Never misleading information or exaggerated claims.',
+    '  If the creative style names an "Ad style for this product", that tone and visual language are mandatory.',
     'Hard rules:',
     '- Never mention prices, discounts, offers, free items, delivery times, guarantees, rankings ("best", "cheapest", "#1") or any capability not stated in the product data.',
     '- Never include phone numbers, URLs or the company logo in any text: they are added by the layout engine.',
@@ -111,7 +117,9 @@ const SCRIPT_NAME = { ar: 'Arabic', en: 'English', ml: 'Malayalam', hi: 'Hindi (
 export function fullPosterPrompt(p: {
   lang: 'ar' | 'en' | 'ml' | 'hi'; headline: string; badge: string; support?: string | null; features: string[];
   sceneDescription: string; style: string; customPrompt?: string | null;
-  layout?: string; decor?: string; lighting?: string; lens?: string; recipe?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
+  layout?: string; decor?: string; lighting?: string; lens?: string; signature?: string; concept?: string; aspect?: 'portrait' | 'square'; productText?: string[]; topPct?: number; bottomPct?: number; safeWidthPct?: number;
+  /** HYBRID (golden rule): the model designs everything EXCEPT text; the headline area stays calm for the system's typeset Arabic */
+  textless?: { headlinePct: number };
 }) {
   const S = SCRIPT_NAME[p.lang];
   const square = p.aspect === 'square';
@@ -123,13 +131,18 @@ export function fullPosterPrompt(p: {
     `Hero product photo: ${p.sceneDescription}`,
     REALISM_RULES,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
-    p.recipe ?? '',
+    ...(p.textless ? [
+      'TEXT-FREE DESIGN: this is the visual of the advertisement — the headline, badge and every word are typeset afterwards by our system in perfect Arabic. Draw NO letters, words, numbers, logos, labels or pseudo-text anywhere (not on the product, not on signs, not in the background).',
+      `HEADLINE AREA: keep the upper ${p.textless.headlinePct}% of the poster (below the ${p.topPct ?? 5}% top margin) as a calm, uncluttered, slightly darker continuation of the background (soft gradient, gentle bokeh) — no product, no objects, no bright highlights there, so white Arabic headline text reads perfectly on it. Build the composition below it.`,
+      'The ad must still feel complete and designed: rich decoration, colour story, depth and the hero product as the clear focus — an agency key visual waiting for its headline.',
+    ] : [
     `Typography — render EXACTLY these words, perfectly spelled ${S} text${p.lang === 'ar' ? ' (correct right-to-left Arabic letter joining, bold modern Arabic display font)' : ''}, nothing else:`,
     `  • kicker line near the top: "${p.headline}"`,
     p.badge ? `  • big hero keyword inside a glossy 3D gold pill badge with small sparkle rays: "${p.badge}"` : '',
     p.support ? `  • tagline under the badge: "${p.support}"` : '',
     ...(p.productText ?? []).map((t) => `  • printed ON the product itself as its design (exact words, same spelling and punctuation): "${t}"`),
-    p.features.length ? `  • these ${p.features.length} short benefits, woven into the design where they suit THIS idea (e.g. a small checklist with gold ticks beside the product, elegant icon badges, or a ribbon) — never a generic row above the bottom, never covering the product: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
+    ]),
+    !p.textless && p.features.length ? `  • these ${p.features.length} short benefits, woven into the design where they suit THIS idea (e.g. a small checklist with gold ticks beside the product, elegant icon badges, or a ribbon) — never a generic row above the bottom, never covering the product: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
     p.signature ?? '',
     `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
     'MANDATORY reserved areas:',
@@ -137,7 +150,7 @@ export function fullPosterPrompt(p: {
     `  • The BOTTOM ${p.bottomPct ?? 20}% is covered later by the order button and phone panel: draw there ONLY plain surface/background (table top, soft bokeh, gold ribbon swooshes from the corners). Do NOT draw a row of feature/benefit icons anywhere (the system adds it). The product and every object, text and icon must END ABOVE this zone — place the product in the middle of the poster, never touching the bottom part.`,
     `  • Keep every drawn text, the badge and the product inside the central ${p.safeWidthPct ?? 80}% of the width (the sides may be trimmed); fill the full frame edge to edge with the scene, no borders or frames around the poster.`,
     '  • Do NOT draw any order button, phone numbers, branch names, logo, brand name, website, QR code, prices, discounts or delivery promises anywhere (they are added separately).',
-    '  • Spelling and grammar must be flawless: copy every quoted text letter-for-letter, no extra or invented words, no pseudo-letters; keep all text fully inside the poster with comfortable margins, never cut at the edges.',
+    p.textless ? '  • The image contains NO text of any kind — no letters, numbers, signatures or watermarks.' : '  • Spelling and grammar must be flawless: copy every quoted text letter-for-letter, no extra or invented words, no pseudo-letters; keep all text fully inside the poster with comfortable margins, never cut at the edges.',
   ].filter(Boolean).join('\n');
 }
 
