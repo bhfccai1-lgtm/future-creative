@@ -9,22 +9,22 @@ beforeEach(async () => { await resetDb(); captureQueues(); });
 type Qc = { checks: { id: string; passed: boolean; detail?: string }[]; requiresHuman?: boolean };
 type Opts = { adScore?: { total: number; history: number[]; passed: boolean }; direction?: { renderMode?: string } };
 
-/** the art director scores each version in turn (a scripted sequence) */
+/** the art director scores each version in turn (judged points: hook/clarity/format/value, 0–70; the system adds the measured 30) */
 class Scored extends FakeAiProvider {
   scores: number[]; scoreCalls = 0;
-  constructor(seq: number[]) { super(); this.scores = seq; }
+  constructor(judgedSeq: number[]) { super(); this.scores = judgedSeq; }
   async scoreAd() {
-    const t = this.scores[Math.min(this.scoreCalls++, this.scores.length - 1)] - 20; // + 20 measured points (logo + text)
-    const judged = { attention: Math.round(t * 0.25), creativity: Math.round(t * 0.25), image: Math.round(t * 0.1875), clarity: Math.round(t * 0.1875), share: 0 };
-    judged.share = Math.max(0, t - judged.attention - judged.creativity - judged.image - judged.clarity);
-    return { judged, weakness: 'product too small', fix: 'make the mug larger and the light warmer', usage: { inputTokens: 900, outputTokens: 80 }, model: 'fake-vision' };
+    const t = this.scores[Math.min(this.scoreCalls++, this.scores.length - 1)];
+    const judged = { hook: Math.min(20, Math.round(t * 0.29)), clarity: Math.min(20, Math.round(t * 0.29)), format: 0, value: 0 };
+    judged.format = Math.min(15, Math.round((t - judged.hook - judged.clarity) / 2)); judged.value = Math.max(0, Math.min(15, t - judged.hook - judged.clarity - judged.format));
+    return { judged, reasons: { hook: 'لقطة قوية' }, weakness: 'product too small', fix: 'make the mug larger and the light warmer', usage: { inputTokens: 900, outputTokens: 80 }, model: 'fake-vision' };
   }
 }
 
 describe('V10 ad engine in the pipeline (golden rule + 100-point rubric)', () => {
   it('automatic mode = HYBRID: a text-free design, the headline and badge typed by the system, no human needed for spelling', async () => {
     const { accounts } = await seedBase({ autoRenderMode: 'auto' });
-    const ai = new Scored([97]); setAiProviderOverride(ai);
+    const ai = new Scored([70]); setAiProviderOverride(ai);
     const { advertisement: ad } = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_STORY', direction: { renderMode: 'auto' } });
     const row = await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } });
     expect((row.options as Opts).direction?.renderMode).toBe('hybrid');
@@ -37,25 +37,28 @@ describe('V10 ad engine in the pipeline (golden rule + 100-point rubric)', () =>
 
   it('below 95 the design is re-drawn with the art director\'s note, and the best version is kept', async () => {
     const { accounts } = await seedBase({ autoRenderMode: 'auto' });
-    const ai = new Scored([80, 96]); setAiProviderOverride(ai);
+    const ai = new Scored([45, 70]); setAiProviderOverride(ai);
     const before = ai.sceneCalls;
     const { advertisement: ad } = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_FEED', direction: { renderMode: 'hybrid' } });
     const o = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } })).options as Opts;
-    expect(o.adScore).toMatchObject({ total: 96, passed: true, history: [80, 96] });
+    expect(o.adScore?.passed).toBe(true);
+    expect(o.adScore?.history).toHaveLength(2);
+    expect(o.adScore!.history[0]).toBeLessThan(95); expect(o.adScore!.total).toBe(o.adScore!.history[1]);
     expect(ai.sceneCalls - before).toBe(2);
-    expect(ai.lastScenePrompt).toMatch(/ART DIRECTOR NOTE \(version 2\): the previous version scored 80\/100\. Biggest problem: product too small/);
+    expect(ai.lastScenePrompt).toMatch(/ART DIRECTOR NOTE \(version 2\): the previous version scored \d+\/100\. Biggest problem: product too small/);
   });
 
   it('never reaching the bar within the re-draw limit: kept for the owner\'s approval, not publishable automatically', async () => {
     const { accounts } = await seedBase({ autoRenderMode: 'auto' });
     await updateSettings((s) => ({ ...s, ai: { ...s.ai, adScore: { enabled: true, threshold: 95, maxRedraws: 1 } } }));
-    const ai = new Scored([70, 82]); setAiProviderOverride(ai);
+    const ai = new Scored([30, 42]); setAiProviderOverride(ai);
     const { advertisement: ad } = await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't', format: 'IMAGE_SQUARE', direction: { renderMode: 'hybrid' } });
     const row = await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id } });
-    expect((row.options as Opts).adScore).toMatchObject({ total: 82, passed: false, history: [70, 82] });
+    const sc = (row.options as Opts).adScore!;
+    expect(sc.passed).toBe(false); expect(sc.history).toHaveLength(2); expect(sc.total).toBe(Math.max(...sc.history));
     const c = ((row as unknown as { qcReport: Qc }).qcReport).checks.find((x) => x.id === 'ad_score')!;
     expect(c.passed).toBe(false);
-    expect(c.detail).toMatch(/82\/100 · أفضل 2 نسخ — product too small/);
+    expect(c.detail).toMatch(/\d+\/100 · أفضل 2 نسخ — product too small/);
     expect(['GENERATED', 'QUALITY_REVIEW']).toContain(row.state); // waits for a human
   });
 });

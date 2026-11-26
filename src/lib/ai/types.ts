@@ -102,7 +102,7 @@ export interface AiProvider {
   /** Optional art-director: scores candidate images (JPEG) for the brief and returns the index of the best one. */
   judgeImages?(images: Buffer[], brief: string, model: string): Promise<{ best: number; scores: number[]; reason: string; usage: TextUsage; model: string }>;
   /** V10 rubric: the art director scores the FINISHED ad on the judged criteria (attention, creativity, image, clarity, share) */
-  scoreAd?(jpeg: Buffer, model: string, ctx: { product: string; idea: string; platform: string }): Promise<{ judged: Record<string, number>; weakness: string; fix: string; usage: TextUsage; model: string }>;
+  scoreAd?(jpeg: Buffer, model: string, ctx: { product: string; idea: string; platform: string }): Promise<{ judged: Record<string, number>; reasons?: Record<string, string>; weakness: string; fix: string; usage: TextUsage; model: string }>;
   /** background 'transparent' asks the image model for an alpha channel (stickers, DTF, labels); dropped automatically if the model rejects it */
   generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string; references?: Buffer[]; background?: 'transparent' | 'opaque' }): Promise<ImageResult>;
   /** Optional: one JSON answer for a system + user prompt (validated by the caller). Used by EDUCATION MASTER. */
