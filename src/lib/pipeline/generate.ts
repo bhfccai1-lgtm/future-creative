@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { fitToAlgorithm, type AlgoFit } from '../growth/algorithm';
-import { assessImage, retryHint, type ImageQuality } from '../creative/image-quality';
+import { assessImage, meaningfulText, retryHint, type ImageQuality } from '../creative/image-quality';
 import { applyProofIssues, PROOF_SYSTEM, type ProofCopy, type ProofIssue } from '../creative/ai-proofread';
 import { pickFromWeek, programContentTypes } from '../growth/program';
 import { findBanned, stripBanned } from '../creative/banned';
@@ -30,7 +30,7 @@ import { qualityFor, assertBudget, estimateAdCost, estimateImageCost, estimateTe
 import { findDuplicates, recentIdeas, storeFingerprints } from '../dedup';
 import { ideaFingerprint, normalizeText } from '../dedup/text';
 import { phash } from '../dedup/phash';
-import { buildBackground, composeAdvertisement, toJpeg } from '../render/compose';
+import { buildBackgroundParts, joinParts, composeAdvertisement, toJpeg } from '../render/compose';
 import { TEMPLATES, FORMAT_SIZE, productZone } from '../render/templates';
 import { aiPosterImageSize, aiPosterGeometry, headlinePct } from '../render/poster';
 import { loadReference, referencePrompt, slotsFor } from '../creative/references';
@@ -445,6 +445,32 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       });
       aiFull = false; textFallback = true;
     }
+    // ── HYBRID layout inspection: the text-free design must leave the system's areas free — the headline area calm,
+    // the product complete, nothing under the order button / phone panel. One corrective re-draw (budget allowing);
+    // the version with fewer issues is kept and what remains goes to QC (ai_layout). ──
+    let hybridLayout: string[] | null = null;
+    if (hybrid && aiFull && provider.inspectPoster && !provider.isDryRun && scene.model !== 'real-photo') {
+      const geo = aiPosterGeometry(FORMAT_SIZE[format].h, featureRowOn, d.logoPosition === 'bottom-center');
+      const topPct = geo.topPct + headlinePct(FORMAT_SIZE[format].h);
+      const inspect = async (png: Buffer) => {
+        await assertBudget(s, estimateTextCost(s, 1500, 260));
+        const r = await provider.inspectPoster!(await sharp(png).jpeg({ quality: 85 }).toBuffer(), s.ai.textModel, { bottomPct: geo.bottomPct, productHint: product.titleEn, topPct });
+        await recordUsage({ provider: provider.name, model: r.model, kind: 'text', inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: estimateTextCost(s, r.usage.inputTokens, r.usage.outputTokens) });
+        return [...(!r.layout.productVisible ? ['product not fully visible'] : []), ...(r.layout.topClear === false ? [`objects or highlights inside the top ${topPct}% headline area`] : []), ...(!r.layout.bottomClear ? [`objects or text inside the bottom ${geo.bottomPct}%`] : []), ...(meaningfulText(r.text) ? [`drawn text: ${meaningfulText(r.text)}`] : [])];
+      };
+      try {
+        let issues = await inspect(scene.png);
+        if (issues.length) {
+          await assertBudget(s, estimateImageCost(s, imgQuality));
+          const fix = `${lastScenePrompt}\nLAYOUT CORRECTION: the previous image had these problems: ${issues.join('; ')}. Keep the top ${topPct}% as calm background for the headline, show the hero product COMPLETE and sharp in the middle, and keep the bottom ${geo.bottomPct}% as plain background only (the order button and phone panel cover it). No text at all.`;
+          const again = await retrying(s.ai.maxRetries, () => provider.generateScene(fix, { model: s.ai.imageModel, quality: imgQuality, size: posterSize, seedHint: `${ad.id}-layout`, references }));
+          await recordUsage({ provider: provider.name, model: again.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
+          const issues2 = await inspect(again.png);
+          if (issues2.length < issues.length) { scene = again as Scene; issues = issues2; lastScenePrompt = fix; }
+        }
+        hybridLayout = issues;
+      } catch { /* budget reached / inspection unavailable → QC and the rubric still judge the design */ }
+    }
     // 🎞 studio retouch of the AI picture: clarity, the product's colour grade, a soft vignette (layered scenes only —
     // a full-AI poster is designed edge to edge); measured, the original is kept if it would clip or shift
     let photoFinish: FinishReport | null = null;
@@ -540,7 +566,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         return img;
       }));
     }
-    const extraBackgrounds = await Promise.all(extraScenes.map((x) => buildBackground(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme, features.length)));
+    // pro reel shots: the art only when the reel lays the fixed chrome on top (same template → same chrome)
+    const extraBackgrounds = await Promise.all(extraScenes.map(async (x) => { const p = await buildBackgroundParts(x.png, format, composed.templateKey, contactLines(business, lang).length, style?.theme, features.length); return composed.chrome ? p.art : joinParts(p); }));
     const jpeg = await toJpeg(composed.png);
 
     // ── Carousel: teaching slides + save/CTA slide (same theme, product backdrop, contacts on every slide) ──
@@ -721,7 +748,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
       productAllowed: productAllowed(account, product), duplicates: dups, dryRun: provider.isDryRun,
-      video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, voicePronunciation: (audioNote?.pronunciation as { accuracy: number | null; missed?: string[] } | undefined) ?? null, ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
+      video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, voicePronunciation: (audioNote?.pronunciation as { accuracy: number | null; missed?: string[] } | undefined) ?? null, ...(hybridLayout ? { aiLayoutIssues: hybridLayout } : {}), ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,
       aiVideo: engine === 'veo' ? { used: !!veo, model: veo?.model ?? null, note: aiVideoNote } : null,
       algorithm: { score: algoFit.after, grade: algoFit.grade, remaining: algoFit.remaining.map((r) => r.label) },

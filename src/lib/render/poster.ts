@@ -42,6 +42,10 @@ async function enhanceScene(scene: Buffer) {
 
 /** Scene + static vector decoration (shades, gold corner bands, product glow). Shared by stills and reel scenes. */
 export async function buildPosterBackground(sceneBuf: Buffer, features: number): Promise<Buffer> {
+  const p = await buildPosterParts(sceneBuf, features);
+  return sharp(p.art).composite([{ input: p.chrome }]).png().toBuffer();
+}
+export async function buildPosterParts(sceneBuf: Buffer, features: number): Promise<{ art: Buffer; chrome: Buffer }> {
   const scene = await enhanceScene(sceneBuf);
   void features;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
@@ -63,7 +67,7 @@ export async function buildPosterBackground(sceneBuf: Buffer, features: number):
     <path d="M${W / 2 - 330} ${L.sep + 10} Q ${W / 2} ${L.sep - 18} ${W / 2 + 330} ${L.sep + 10}" fill="none" stroke="url(#gl)" stroke-width="4" stroke-linecap="round"/>
     <rect x="${W / 2 - 1}" y="${L.label + 4}" width="2" height="132" fill="url(#gl)" opacity="0.75"/>
   </svg>`;
-  return sharp(scene).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
+  return { art: scene, chrome: await sharp(Buffer.from(svg)).png().toBuffer() };
 }
 
 function place(id: PlacedLayer['id'], png: Buffer, left: number, top: number, w: number, h: number, box: PlacedLayer['box'], r: Pick<RenderedText, 'fits' | 'missing' | 'fontSize'> | null, text?: string, color?: string, solid?: boolean): PlacedLayer & { solid?: boolean } {
@@ -87,7 +91,8 @@ const BH_PIN = '<defs><clipPath id="pc"><path d="M50 96 C50 96 14 60 14 38 A36 3
 
 export async function composePoster(input: ComposeInput & { badge?: string | null; features?: string[]; footer?: string | null }): Promise<ComposeResult> {
   const lang: Lang = input.lang;
-  const background = await buildPosterBackground(input.scene, 0);
+  const parts = await buildPosterParts(input.scene, 0);
+  const background = await sharp(parts.art).composite([{ input: parts.chrome }]).png().toBuffer();
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
 
   // logo — big, no frame (the brand leads, as in a printed flyer)
@@ -187,7 +192,7 @@ export async function composePoster(input: ComposeInput & { badge?: string | nul
     width: W, height: H, templateKey: POSTER_KEY, lang,
     layers: layers.map((l) => ({ id: l.id, text: l.text, rect: { left: l.left, top: l.top, width: l.width, height: l.height }, box: l.box, fits: l.fits, missing: l.missing, fontSize: l.fontSize, color: l.color, solid: l.solid })),
   };
-  return { width: W, height: H, templateKey: POSTER_KEY, themeKey: 'navy_gold', background, layers, png, manifest };
+  return { width: W, height: H, templateKey: POSTER_KEY, themeKey: 'navy_gold', background, art: parts.art, chrome: parts.chrome, layers, png, manifest };
 }
 
 export const AI_POSTER_KEY = 'ai-poster';
@@ -205,17 +210,30 @@ export function aiPosterGeometry(h: number, featureRow = true, logoBottom = fals
   // logo in the footer, between the two branches (owner's sketch): the design fills the top; the logo box sits centred,
   // rising a little above the glass panel
   // as tall as fits between the order button and the panel's bottom edge (never touching the button)
-  const lh = Math.min(Math.round(g.panel.h * 1.3), g.panel.y + g.panel.h - (g.cta.y + g.cta.h) - 10), lw = Math.round(lh * 1.25);
-  return { ...g, topBand: 0, topPct: h === 1350 ? 10 : g.topPct, logo: { w: lw, h: lh, y: g.panel.y + g.panel.h - lh } };
+  // a compact square emblem (on a light plate, see buildAiPosterBackground) so the two branches keep wide phone pills
+  if (h === 1920) {
+    // owner's reel sketch: ONE wide contact bar (navy + gold), branch name + big digits straight on the bar, a large logo
+    // centred and rising above the bar's top edge, «اطلب الآن» above it all. Bottom edge 1534 < IG_SAFE_1920.bottom.
+    const bar = { y: 1378, h: 156 }, cta = { w: 540, h: 90, y: 1196 };
+    const lgH = 200, lgW = 230; // the logo keeps its height; a narrower box leaves the digits more width
+    return { ...g, panel: bar, cta, bar: true, topBand: 0, topPct: 13, bottomPct: 42, logo: { w: lgW, h: lgH, y: bar.y + bar.h - lgH - 8 } };
+  }
+  const panel = g.panel;
+  const lh = Math.min(170, panel.y + panel.h - (g.cta.y + g.cta.h) - 10), lw = lh;
+  // stories/reels: with no logo band the design starts at the top edge, so the text must start below Instagram's own
+  // account bar and progress line (IG_SAFE_1920.top = 236 px ≈ 13 %) — at 3 % the headline sat under them
+  // bottomPct is a share of the ART: with no logo band the art is the full 1920 px, so 42 % keeps the product above
+  // y ≈ 1114 (the order button starts at 1222) and gives the hero more room than 48 % would
+  return { ...g, panel, topBand: 0, topPct: h === 1350 ? 10 : h === 1920 ? 13 : g.topPct, bottomPct: h === 1920 ? 42 : g.bottomPct, logo: { w: lw, h: lh, y: panel.y + panel.h - lh - 14 } };
 }
 function aiPosterGeometryBase(h: number) {
   // topBand: the logo's own zone (a soft extension of the art) — the AI design starts BELOW it, so the logo can never cover drawn text
   // Stories / Reels: everything Instagram must not cover sits inside IG_SAFE_1920 (logo below the account bar, order
   // button + phones above the caption/reply area, panel clear of the Reels side icons, all inside the 3:4 grid crop).
   // The AI art still fills the whole frame; below y≈1540 it is plain background under Instagram's own UI.
-  if (h === 1920) return { H: 1920, topBand: 400, topPct: 3, bottomPct: 48, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 78, padX: 120, logo: { w: 380, h: 150, y: 244 }, cta: { w: 580, h: 100, y: 1222 }, panel: { y: 1350, h: 176 } };
-  if (h === 1350) return { H: 1350, topBand: 150, topPct: 3, bottomPct: 40, features: { y: 922, icon: 76, label: 26 } as { y: number; icon: number; label: number } | null, safeWidthPct: 90, padX: 70, logo: { w: 320, h: 130, y: 16 }, cta: { w: 540, h: 90, y: 1058 }, panel: { y: 1162, h: 168 } };
-  return { H: h, topBand: 118, topPct: 4, bottomPct: 36, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 92, padX: 70, logo: { w: 230, h: 100, y: 16 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
+  if (h === 1920) return { bar: false, H: 1920, topBand: 400, topPct: 3, bottomPct: 48, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 78, padX: 120, logo: { w: 380, h: 150, y: 244 }, cta: { w: 580, h: 100, y: 1222 }, panel: { y: 1350, h: 176 } };
+  if (h === 1350) return { bar: false, H: 1350, topBand: 150, topPct: 3, bottomPct: 40, features: { y: 922, icon: 76, label: 26 } as { y: number; icon: number; label: number } | null, safeWidthPct: 90, padX: 70, logo: { w: 320, h: 130, y: 16 }, cta: { w: 540, h: 90, y: 1058 }, panel: { y: 1162, h: 168 } };
+  return { bar: false, H: h, topBand: 118, topPct: 4, bottomPct: 36, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 92, padX: 70, logo: { w: 230, h: 100, y: 16 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
 }
 /** HYBRID: share of the art height the text-free design keeps calm for the system's headline, badge and tagline. */
 export const headlinePct = (h: number) => (h === 1920 ? 18 : h === 1350 ? 22 : 24);
@@ -224,11 +242,41 @@ export function headlineZone(h: number, featureRow = true, logoBottom = false) {
   const g = aiPosterGeometry(h, featureRow, logoBottom), artH = g.H - g.topBand;
   return { x: 60, y: g.topBand + Math.round((artH * g.topPct) / 100) + 6, w: W - 120, h: Math.round((artH * headlinePct(g.H)) / 100) };
 }
+const relLum = (c: number[]) => { const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+const ratio = (a: number[], b: number[]) => { const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const NAVY_RGB = [0x0b, 0x17, 0x30], GOLD_TXT = [0xf6, 0xd7, 0x7a], WHITE_RGB = [255, 255, 255], VEIL_RGB = [0xff, 0xfa, 0xf0], DEEP_GOLD = [0x6b, 0x4a, 0x12];
+/** headline text colours per tone: white + gold on dark art, navy + deep gold on light art */
+export const HEADLINE_TONES = { dark: { head: WHITE, sup: '#f6d77a', shadow: '#050b18' }, light: { head: NAVY, sup: '#6b4a12', shadow: '#fffaf0' } } as const;
+/**
+ * the overlay opacity that gives the main text ≥ 4.5:1 and the tagline ≥ 3.5:1 over the WORST of 3 bands of an area
+ * (dark tone: a navy shade under white/gold; light tone: a warm white veil under navy/deep gold)
+ */
+async function shadeForContrast(img: Buffer, r: { x: number; y: number; w: number; h: number }, tone: 'dark' | 'light' = 'dark'): Promise<number> {
+  const over = tone === 'dark' ? NAVY_RGB : VEIL_RGB, main = tone === 'dark' ? WHITE_RGB : NAVY_RGB, sup = tone === 'dark' ? GOLD_TXT : DEEP_GOLD;
+  let need = 0;
+  for (let k = 0; k < 3; k++) {
+    const top = r.y + Math.floor((r.h * k) / 3), h = Math.max(2, Math.floor(r.h / 3));
+    const band = await sharp(img).extract({ left: r.x, top, width: r.w, height: h }).removeAlpha().png().toBuffer();
+    const st = await sharp(band).stats(), m = [st.channels[0].mean, st.channels[1].mean, st.channels[2].mean];
+    let a = 0;
+    for (; a < 0.94; a += 0.02) { const c = m.map((v, i) => v * (1 - a) + over[i] * a); if (ratio(main, c) >= 4.5 && ratio(sup, c) >= 3.5) break; }
+    need = Math.max(need, a);
+  }
+  return Math.min(0.94, need);
+}
+
+/** light or dark art under the headline area → which text colours read best (mean relative luminance of the area) */
+export async function headlineTone(img: Buffer, r: { x: number; y: number; w: number; h: number }): Promise<'dark' | 'light'> {
+  const reg = await sharp(img).extract({ left: r.x, top: r.y, width: r.w, height: r.h }).removeAlpha().png().toBuffer();
+  const st = await sharp(reg).stats();
+  return relLum([st.channels[0].mean, st.channels[1].mean, st.channels[2].mean]) > 0.42 ? 'light' : 'dark';
+}
+
 /** a soft dark shadow under a text layer (any design behind it stays readable); returns the padded image and its offset */
-async function withShadow(png: Buffer, pad = 14) {
+async function withShadow(png: Buffer, pad = 14, color = '#050b18') {
   const m = await sharp(png).metadata();
   const alpha = await sharp(png).ensureAlpha().extractChannel(3).blur(5).linear(0.75, 0).toBuffer();
-  const shadow = await sharp({ create: { width: m.width!, height: m.height!, channels: 3, background: '#050b18' } }).joinChannel(alpha).png().toBuffer();
+  const shadow = await sharp({ create: { width: m.width!, height: m.height!, channels: 3, background: color } }).joinChannel(alpha).png().toBuffer();
   const out = await sharp({ create: { width: m.width! + 2 * pad, height: m.height! + 2 * pad, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: shadow, left: pad + 2, top: pad + 4 }, { input: png, left: pad, top: pad }]).png().toBuffer();
   return { png: out, pad };
@@ -247,7 +295,12 @@ const ribbons = (H: number) => {
 };
 
 /** Background for the full-AI poster: the AI design full-bleed + soft legibility gradient + glass phone panel + ribbons. */
-export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true, logoBottom = false, headline: { y: number; h: number } | null = null): Promise<Buffer> {
+export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true, logoBottom = false, headline: { y: number; h: number; tone?: 'dark' | 'light' } | null = null): Promise<Buffer> {
+  const p = await buildAiPosterParts(poster, height, featureRow, logoBottom, headline);
+  return sharp(p.art).composite([{ input: p.chrome }]).png().toBuffer();
+}
+/** the AI poster background as the moving art (design + logo band) and the fixed chrome (shades, ribbons, panel, plate) */
+export async function buildAiPosterParts(poster: Buffer, height = 1920, featureRow = true, logoBottom = false, headline: { y: number; h: number; tone?: 'dark' | 'light' } | null = null): Promise<{ art: Buffer; chrome: Buffer }> {
   const g = aiPosterGeometry(height, featureRow, logoBottom), H = g.H, artH = H - g.topBand;
   // never crop the design when the aspect differs a lot (square output from a 1:1 image): fit it whole on a blurred fill
   // (a full-height 9:16 story — logo in the footer — is a normal cover crop of the 2:3 design: ~8 % per side)
@@ -279,6 +332,21 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
     // no logo band (logo in the footer): the design itself starts at the top edge — no blend, no dark seam
     .composite(g.topBand === 0 ? [{ input: art, left: 0, top: 0 }] : [{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
   const zone = (g.features?.y ?? g.cta.y) - 70, px = g.padX, pw = W - 2 * px;
+  const hzC = headline?.tone === 'light' ? '#fffaf0' : NAVY;
+  // the headline shade follows how busy the art is under the text: calm art → light shade, busy art → deeper shade,
+  // so the typeset headline never fights the picture (measured, no AI call; stats() needs the extracted pixels first)
+  let hzA = 0.5;
+  if (headline) {
+    const hy = Math.max(0, Math.min(H - 2, headline.y)), hh = Math.max(2, Math.min(headline.h, H - hy));
+    const region = await sharp(base).extract({ left: 0, top: hy, width: W, height: hh }).greyscale().png().toBuffer();
+    const sd = (await sharp(region).stats()).channels[0].stdev;
+    // light art: a gentle veil is enough (dark text reads on it); dark art: the navy shade, deeper when the art is busy
+    hzA = headline.tone === 'light' ? Math.max(0.15, Math.min(0.6, 0.15 + (sd - 25) / 120)) : Math.max(0.45, Math.min(0.82, 0.45 + (sd - 25) / 90));
+    // CONTRAST, not taste: the shade is as dark as the BRIGHTEST band under the text needs for white ≥ 4.5:1 and gold
+    // ≥ 3.5:1 (QC asks ≥ 3:1) — a light AI design (cream, white, sky) left the gold tagline at 1.2–2:1
+    hzA = Math.max(hzA, await shadeForContrast(base, { x: Math.round(W * 0.08), y: hy, w: Math.round(W * 0.84), h: hh }, headline.tone ?? 'dark'));
+    hzA = Math.round(hzA * 100) / 100;
+  }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
       <linearGradient id="unfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.92"/><stop offset="0.35" stop-color="${NAVY}" stop-opacity="0.25"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.15"/></linearGradient>
@@ -291,14 +359,14 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
       // Instagram draws its own caption and buttons) the design itself continues instead of an empty dark block
       ? `<rect x="0" y="${zone}" width="${W}" height="${g.panel.y + g.panel.h + 70 - zone}" fill="url(#fade)"/><rect x="0" y="${g.panel.y + g.panel.h + 70}" width="${W}" height="${H - (g.panel.y + g.panel.h + 70)}" fill="url(#unfade)"/>`
       : `<rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>`}
-    ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.5"/><stop offset="0.7" stop-color="${NAVY}" stop-opacity="0.3"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient><rect x="0" y="${Math.max(0, headline.y - 40)}" width="${W}" height="${headline.h + 110}" fill="url(#hz)"/>` : ''}
+    ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hzC}" stop-opacity="${Math.round(hzA * 70) / 100}"/><stop offset="${(40 / (headline.h + 110)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="${((headline.h + 40) / (headline.h + 110)).toFixed(3)}" stop-color="${hzC}" stop-opacity="${hzA}"/><stop offset="1" stop-color="${hzC}" stop-opacity="0"/></linearGradient><rect x="0" y="${Math.max(0, headline.y - 40)}" width="${W}" height="${headline.h + 110}" fill="url(#hz)"/>` : ''}
     ${ribbons(H)}
     ${g.features ? `<rect x="40" y="${g.features.y - 14}" width="${W - 80}" height="${Math.round(g.features.icon + g.features.label * 1.6 + 26)}" rx="28" fill="${NAVY}" fill-opacity="0.72" stroke="url(#gg)" stroke-opacity="0.55" stroke-width="2"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
     <rect x="${px + 24}" y="${g.panel.y + 6}" width="${pw - 48}" height="2" fill="#ffffff" opacity="0.18"/>
-    ${logoBottom ? '' : `<rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>`}
+    ${logoBottom && g.bar ? `<radialGradient id="halo" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff6dc" stop-opacity="0.55"/><stop offset="0.6" stop-color="#fff6dc" stop-opacity="0.18"/><stop offset="1" stop-color="#fff6dc" stop-opacity="0"/></radialGradient><ellipse cx="${W / 2}" cy="${g.logo.y + g.logo.h / 2}" rx="${g.logo.w * 0.62}" ry="${g.logo.h * 0.62}" fill="url(#halo)"/>` : logoBottom ? `<rect x="${(W - g.logo.w) / 2}" y="${g.logo.y}" width="${g.logo.w}" height="${g.logo.h}" rx="30" fill="#fffdf7" fill-opacity="0.97" stroke="url(#gg)" stroke-width="5"/>` : `<rect x="${W / 2 - 1}" y="${g.panel.y + 26}" width="2" height="${g.panel.h - 52}" fill="url(#gg)" opacity="0.7"/>`}
   </svg>`;
-  return sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer();
+  return { art: base, chrome: await sharp(Buffer.from(svg)).png().toBuffer() };
 }
 
 /**
@@ -310,9 +378,16 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const hasRow = ((input as ComposeInput & { features?: string[] }).features ?? []).length > 0; // the glass row is drawn only when it holds features
   const logoBottom = input.logoPosition === 'bottom-center';
   const g = aiPosterGeometry(FORMAT_SIZE[input.format].h, hasRow, logoBottom), H = g.H;
-  const hz = input.typeset ? headlineZone(H, hasRow, logoBottom) : null;
-  const background = await buildAiPosterBackground(input.scene, H, hasRow, logoBottom, hz);
-  const layers: (PlacedLayer & { solid?: boolean })[] = [];
+  const hz0 = input.typeset ? headlineZone(H, hasRow, logoBottom) : null;
+  // the headline's tone follows the art under it: measured on the background without the shade
+  const tone = hz0 ? await headlineTone(await buildAiPosterBackground(input.scene, H, hasRow, logoBottom), { x: Math.round(W * 0.08), y: hz0.y, w: Math.round(W * 0.84), h: hz0.h }) : 'dark';
+  const hz = hz0 ? { ...hz0, tone } : null;
+  const ink = HEADLINE_TONES[tone];
+  const parts = await buildAiPosterParts(input.scene, H, hasRow, logoBottom, hz);
+  const background = await sharp(parts.art).composite([{ input: parts.chrome }]).png().toBuffer();
+  // inset = transparent shadow margin around a typeset layer: composited with it, but the manifest (QC overlap, contrast,
+  // safe-zone checks) measures the real text box — the soft shadows of stacked lines touching is not an overlap
+  const layers: (PlacedLayer & { solid?: boolean; inset?: number })[] = [];
 
   // HYBRID (golden rule): the headline, the gold badge and the tagline are typeset by the system — verified spelling,
   // correct Arabic shaping — in the calm area the text-free design left for them
@@ -320,9 +395,9 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
     const t = input.typeset, hasBadge = !!t.badge?.trim(), hasSup = !!t.support?.trim();
     const hH = Math.round(hz.h * (hasBadge ? (hasSup ? 0.44 : 0.55) : hasSup ? 0.7 : 1)), bH = hasBadge ? Math.round(hz.h * (hasSup ? 0.34 : 0.42)) : 0, sH = hz.h - hH - bH;
     let y = hz.y;
-    const head = await renderText({ text: t.headline, lang, weight: 'extrabold', color: WHITE, maxSize: Math.min(110, Math.round(hH * 0.8)), minSize: 34, boxW: hz.w, boxH: hH, maxLines: 2 });
-    const hs = await withShadow(head.png);
-    layers.push(place('headline', hs.png, (W - head.width) / 2 - hs.pad, y + (hH - head.height) / 2 - hs.pad, head.width + 2 * hs.pad, head.height + 2 * hs.pad, { x: hz.x, y, w: hz.w, h: hH }, head, t.headline, WHITE));
+    const head = await renderText({ text: t.headline, lang, weight: 'extrabold', color: ink.head, maxSize: Math.min(110, Math.round(hH * 0.8)), minSize: 34, boxW: hz.w, boxH: hH, maxLines: 2 });
+    const hs = await withShadow(head.png, 14, ink.shadow);
+    layers.push({ ...place('headline', hs.png, (W - head.width) / 2 - hs.pad, y + (hH - head.height) / 2 - hs.pad, head.width + 2 * hs.pad, head.height + 2 * hs.pad, { x: hz.x, y, w: hz.w, h: hH }, head, t.headline, ink.head), inset: hs.pad });
     y += hH;
     if (hasBadge) {
       const pillH = Math.round(bH * 0.86);
@@ -331,13 +406,13 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
       const pill = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${pillH}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${pillH - 4}" rx="${(pillH - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="4"/><rect x="14" y="7" width="${pw - 28}" height="${pillH * 0.34}" rx="${pillH * 0.17}" fill="#fff" opacity="0.3"/></svg>`;
       const bpng = await sharp(await svgPng(pill)).composite([{ input: bt.png, left: Math.round((pw - bt.width) / 2), top: Math.round((pillH - bt.height) / 2) }]).png().toBuffer();
       const bs = await withShadow(bpng, 12);
-      layers.push(place('badge' as PlacedLayer['id'], bs.png, (W - pw) / 2 - bs.pad, y + (bH - pillH) / 2 - bs.pad, pw + 2 * bs.pad, pillH + 2 * bs.pad, { x: hz.x, y, w: hz.w, h: bH }, { ...bt, fits: bt.fits && pw <= hz.w }, t.badge!.trim(), NAVY, true));
+      layers.push({ ...place('badge' as PlacedLayer['id'], bs.png, (W - pw) / 2 - bs.pad, y + (bH - pillH) / 2 - bs.pad, pw + 2 * bs.pad, pillH + 2 * bs.pad, { x: hz.x, y, w: hz.w, h: bH }, { ...bt, fits: bt.fits && pw <= hz.w }, t.badge!.trim(), NAVY, true), inset: bs.pad });
       y += bH;
     }
     if (hasSup) {
-      const st = await renderText({ text: t.support!.trim(), lang, weight: 'bold', color: '#f6d77a', maxSize: Math.min(56, Math.round(sH * 0.78)), minSize: 24, boxW: hz.w, boxH: sH, maxLines: 1 });
-      const ss = await withShadow(st.png, 10);
-      layers.push(place('support', ss.png, (W - st.width) / 2 - ss.pad, y + (sH - st.height) / 2 - ss.pad, st.width + 2 * ss.pad, st.height + 2 * ss.pad, { x: hz.x, y, w: hz.w, h: sH }, st, t.support!.trim(), '#f6d77a'));
+      const st = await renderText({ text: t.support!.trim(), lang, weight: 'bold', color: ink.sup, maxSize: Math.min(56, Math.round(sH * 0.78)), minSize: 24, boxW: hz.w, boxH: sH, maxLines: 1 });
+      const ss = await withShadow(st.png, 10, ink.shadow);
+      layers.push({ ...place('support', ss.png, (W - st.width) / 2 - ss.pad, y + (sH - st.height) / 2 - ss.pad, st.width + 2 * ss.pad, st.height + 2 * ss.pad, { x: hz.x, y, w: hz.w, h: sH }, st, t.support!.trim(), ink.sup), inset: ss.pad });
     }
   }
 
@@ -349,7 +424,7 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const lw = corner ? Math.round(g.logo.w * 0.72) : g.logo.w;
   const lh = corner ? Math.round(g.logo.h * 0.72) : withName ? Math.round(g.logo.h * 0.66) : g.logo.h;
   const lx = pos === 'top-right' ? W - g.padX - lw : pos === 'top-left' ? g.padX : Math.round((W - lw) / 2); // centred also for bottom-center
-  const lb = { x: lx, y: g.logo.y, w: lw, h: lh };
+  const lb = logoBottom && !g.bar ? { x: lx + 10, y: g.logo.y + 10, w: lw - 20, h: lh - 20 } : { x: lx, y: g.logo.y, w: lw, h: lh };
   const logoPng = await sharp(input.logo).resize(lb.w, lb.h, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer();
   const lm = await sharp(logoPng).metadata();
   const logoX = pos === 'top-right' ? lb.x + lb.w - lm.width! : pos === 'top-left' ? lb.x : lb.x + (lb.w - lm.width!) / 2;
@@ -400,24 +475,36 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const gap = logoBottom ? g.logo.w + 24 : 0; // the logo stands between the two branches
   const inner = W - 2 * g.padX - gap, col = inner / Math.max(1, order.length);
   const labelH = Math.round(g.panel.h * 0.3), pillH = Math.round(g.panel.h * 0.44);
+  if (g.bar) {
+    const lH = Math.round(g.panel.h * 0.27), nH = Math.round(g.panel.h * 0.5), lY = g.panel.y + Math.round(g.panel.h * 0.09), nY = lY + lH + Math.round(g.panel.h * 0.04);
+    for (let i = 0; i < order.length; i++) {
+      const c = order[i]; const cx = g.padX + col * i + col / 2 + (i >= order.length / 2 ? gap : 0);
+      const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: '#f6d77a', maxSize: Math.round(lH * 0.85), minSize: 24, boxW: Math.round(col - 24), boxH: lH, maxLines: 1 });
+      layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, lY + (lH - lt.height) / 2, lt.width, lt.height, { x: Math.round(cx - col / 2 + 12), y: lY, w: Math.round(col - 24), h: lH }, lt, c.label, '#f6d77a'));
+      const nt = await renderText({ text: c.phone, lang: lang === 'ml' || lang === 'hi' ? 'en' : lang, weight: 'extrabold', color: WHITE, maxSize: Math.round(nH * 0.95), minSize: 40, boxW: Math.round(col - 56), boxH: nH, maxLines: 1, ltr: true }); // ≥ 28 px from the bar's rounded edge
+      layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], nt.png, cx - nt.width / 2, nY + (nH - nt.height) / 2, nt.width, nt.height, { x: Math.round(cx - col / 2 + 28), y: nY, w: Math.round(col - 56), h: nH }, nt, c.phone, WHITE));
+    }
+  }
   const labelY = g.panel.y + Math.round(g.panel.h * 0.08), pillY = g.panel.y + g.panel.h - pillH - Math.round(g.panel.h * 0.1);
-  for (let i = 0; i < order.length; i++) {
+  for (let i = 0; i < (g.bar ? 0 : order.length); i++) {
     const c = order[i]; const cx = g.padX + col * i + col / 2 + (logoBottom && i >= order.length / 2 ? gap : 0);
     const lt = await renderText({ text: c.label, lang, weight: 'extrabold', color: '#f6d77a', maxSize: Math.round(labelH * 0.78), minSize: 24, boxW: Math.round(col - 60), boxH: labelH, maxLines: 1 });
     layers.push(place(`contact:${c.key}:label` as PlacedLayer['id'], lt.png, cx - lt.width / 2, labelY + (labelH - lt.height) / 2, lt.width, lt.height, { x: Math.round(cx - col / 2 + 30), y: labelY, w: Math.round(col - 60), h: labelH }, lt, c.label, '#f6d77a'));
-    const nt = await renderText({ text: c.phone, lang: lang === 'ml' || lang === 'hi' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 150), boxH: pillH - 8, maxLines: 1, ltr: true });
-    const iconD = Math.round(pillH * 0.62), pw = Math.min(Math.round(col - 30), nt.width + iconD + 70);
+    const iconD = Math.round(pillH * 0.62);
+    // the digits get every pixel the column allows: icon + 54 px of padding (was a fixed 150 px reserve)
+    const nt = await renderText({ text: c.phone, lang: lang === 'ml' || lang === 'hi' ? 'en' : lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.72), minSize: 36, boxW: Math.round(col - 30 - iconD - 54), boxH: pillH - 8, maxLines: 1, ltr: true });
+    const pw = Math.min(Math.round(col - 30), nt.width + iconD + 54);
     const psvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${pillH}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${pillH - 4}" rx="${(pillH - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="3"/>
       <rect x="12" y="6" width="${pw - 24}" height="${pillH * 0.34}" rx="${pillH * 0.17}" fill="#fff" opacity="0.28"/>
-      <g transform="translate(24 ${(pillH - iconD) / 2}) scale(${iconD / 100})" fill="${NAVY}">${PHONE}</g></svg>`;
-    const ppng = await sharp(await svgPng(psvg)).composite([{ input: nt.png, left: Math.round(24 + iconD + (pw - 24 - iconD - nt.width) / 2 - 6), top: Math.round((pillH - nt.height) / 2) }]).png().toBuffer();
+      <g transform="translate(18 ${(pillH - iconD) / 2}) scale(${iconD / 100})" fill="${NAVY}">${PHONE}</g></svg>`;
+    const ppng = await sharp(await svgPng(psvg)).composite([{ input: nt.png, left: Math.round(20 + iconD + (pw - 20 - iconD - nt.width) / 2 - 4), top: Math.round((pillH - nt.height) / 2) }]).png().toBuffer();
     layers.push(place(`contact:${c.key}:phone` as PlacedLayer['id'], ppng, cx - pw / 2, pillY, pw, pillH, { x: Math.round(cx - col / 2 + 15), y: pillY, w: Math.round(col - 30), h: pillH }, { ...nt, fits: nt.fits && pw <= col - 20 }, c.phone, NAVY, true));
   }
 
   const png = await sharp(background).composite(layers.map((l) => ({ input: l.png, left: l.left, top: l.top }))).png().toBuffer();
   const manifest: LayerManifest = {
     width: W, height: H, templateKey: AI_POSTER_KEY, lang,
-    layers: layers.map((l) => ({ id: l.id, text: l.text, rect: { left: l.left, top: l.top, width: l.width, height: l.height }, box: l.box, fits: l.fits, missing: l.missing, fontSize: l.fontSize, color: l.color, solid: l.solid })),
+    layers: layers.map((l) => { const i = l.inset ?? 0; return { id: l.id, text: l.text, rect: { left: l.left + i, top: l.top + i, width: l.width - 2 * i, height: l.height - 2 * i }, box: l.box, fits: l.fits, missing: l.missing, fontSize: l.fontSize, color: l.color, solid: l.solid }; }),
   };
-  return { width: W, height: H, templateKey: AI_POSTER_KEY, themeKey: 'navy_gold', background, layers, png, manifest };
+  return { width: W, height: H, templateKey: AI_POSTER_KEY, themeKey: 'navy_gold', background, art: parts.art, chrome: parts.chrome, layers, png, manifest };
 }

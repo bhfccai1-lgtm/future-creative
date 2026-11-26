@@ -158,7 +158,7 @@ export class OpenAiProvider implements AiProvider {
     return { text: res.choices[0]?.message?.content ?? '', model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
-  async inspectPoster(png: Buffer, model: string, zones: { bottomPct: number; productHint: string }) {
+  async inspectPoster(png: Buffer, model: string, zones: { bottomPct: number; productHint: string; topPct?: number }) {
     let res;
     try {
       res = await callWithParamFallback({
@@ -170,16 +170,17 @@ export class OpenAiProvider implements AiProvider {
             '{"text": "<ALL visible text exactly as written, any language, one item per line; do not translate or correct; append [?] to malformed or illegible words>",',
             ` "productVisible": <true if the hero product (${zones.productHint}) is clearly shown, sharp and complete — not cut off by the frame edges, not distorted>,`,
             ` "bottomClear": <true if the bottom ${zones.bottomPct}% of the image contains ONLY background/surface/decoration — no product, no text, no icons, no badges>,`,
+            ...(zones.topPct ? [` "topClear": <true if the top ${zones.topPct}% of the image is calm background only (soft gradient/bokeh) — no product, no objects, no bright highlights, no text — so a headline can be typeset over it>,`] : []),
             ' "issues": ["<short concrete problems: e.g. product cut off at the left edge, icons in the bottom zone, warped letters, extra stray text>"]}',
           ].join('\n') },
           { type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${png.toString('base64')}` } },
         ] }],
       }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('inspect-poster'));
     } catch (e) { throw mapError(e); }
-    let j: { text?: unknown; productVisible?: unknown; bottomClear?: unknown; issues?: unknown };
+    let j: { text?: unknown; productVisible?: unknown; bottomClear?: unknown; topClear?: unknown; issues?: unknown };
     try { j = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
     const issues = Array.isArray(j.issues) ? j.issues.map(String).filter((x) => x.trim()).slice(0, 6) : [];
-    return { text: String(j.text ?? ''), layout: { productVisible: j.productVisible !== false, bottomClear: j.bottomClear !== false, issues }, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+    return { text: String(j.text ?? ''), layout: { productVisible: j.productVisible !== false, bottomClear: j.bottomClear !== false, ...(zones.topPct ? { topClear: j.topClear !== false } : {}), issues }, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
   async analyzeComments(req: CommentAnalysisRequest, model: string) {

@@ -145,7 +145,7 @@ export function fullPosterPrompt(p: {
     ]),
     !p.textless && p.features.length ? `  • these ${p.features.length} short benefits, woven into the design where they suit THIS idea (e.g. a small checklist with gold ticks beside the product, elegant icon badges, or a ribbon) — never a generic row above the bottom, never covering the product: ${p.features.map((f) => `"${f}"`).join(', ')}` : '',
     p.signature ?? '',
-    `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail.`,
+    `Decoration: ${p.decor ?? 'elegant flowing gold ribbon swooshes, soft golden bokeh, rich deep royal navy background'}, high-end retouching, crisp print-quality detail. Restraint like a top agency: at most 2–3 decorative motifs, kept toward the edges and corners — never crossing the hero product, never in the text areas, never cluttering; generous breathing space around the product.`,
     'MANDATORY reserved areas:',
     `  • Keep a calm margin of ${p.topPct ?? 5}% at the very top edge (no text touching the edge); do NOT draw any logo or brand name — the official logo is placed in its own band above the poster.`,
     `  • The BOTTOM ${p.bottomPct ?? 20}% is covered later by the order button and phone panel: draw there ONLY plain surface/background (table top, soft bokeh, gold ribbon swooshes from the corners). Do NOT draw a row of feature/benefit icons anywhere (the system adds it). The product and every object, text and icon must END ABOVE this zone — place the product in the middle of the poster, never touching the bottom part.`,
