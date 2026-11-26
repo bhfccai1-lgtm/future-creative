@@ -7,6 +7,23 @@ import { engagementRate } from './score';
 import { log } from '../ops/log';
 
 const MATCH_WINDOW_MS = 20 * 60_000;
+
+/**
+ * «15 خطأ» told the owner nothing: errors («brand/kind: message») are grouped by cause, most frequent first, with an
+ * Arabic explanation of what to do for the common HTTP causes.
+ */
+export function summarizeErrors(errors: string[]): { cause: string; count: number; hint: string }[] {
+  const groups = new Map<string, number>();
+  for (const e of errors) { const cause = e.replace(/^[^:]*:\s*/, '').trim() || e; groups.set(cause, (groups.get(cause) ?? 0) + 1); }
+  const hint = (c: string) => /timeout|مهلة/i.test(c) ? 'Metricool بطيء في الرد — أُعيدت المحاولة تلقائيًا؛ جرّب مجددًا بعد دقائق'
+    : /\b40[13]\b|رفض الوصول/.test(c) ? 'تحقق من رمز Metricool ورقم المستخدم وأن خطتك تتيح API التحليلات'
+    : /\b429\b/.test(c) ? 'تجاوزنا حد الطلبات — يُعاد تلقائيًا في الدورة القادمة'
+    : /\b5\d\d\b/.test(c) ? 'عطل مؤقت لدى Metricool — يُعاد تلقائيًا'
+    : /\b(400|404|405|422)\b/.test(c) ? 'Metricool رفض صيغة الطلب — أرسل هذه الرسالة للدعم الفني'
+    : /network|fetch failed|ENOTFOUND|ECONN/i.test(c) ? 'تعذر الاتصال بـ Metricool من الخادم — افحص الإنترنت/DNS على الخادم'
+    : 'راجع «تشخيص النظام» لاتصال Metricool';
+  return [...groups].sort((a, b) => b[1] - a[1]).map(([cause, count]) => ({ cause, count, hint: hint(cause) }));
+}
 const kindOf = (format: string): ProviderPostMetrics['kind'] => (format === 'REEL_VIDEO' ? 'reels' : format === 'IMAGE_STORY' ? 'stories' : 'posts');
 const normUrl = (u?: string | null) => (u ? u.split('?')[0].replace(/\/+$/, '').replace(/^https?:\/\/(www\.)?/i, '').toLowerCase() : null);
 
