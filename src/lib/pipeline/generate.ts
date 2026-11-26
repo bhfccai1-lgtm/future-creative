@@ -53,6 +53,8 @@ import type { Lang } from '../render/fonts';
 import { combineScore, type AdScore } from '../creative/ad-score';
 import { adStyleFor, adStylePrompt } from '../creative/ad-styles';
 import { CONCEPTS, paletteFor, signaturePoster, DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
+import { recipeFor, recipePrompt } from '../creative/photo-recipes';
+import { finishPhoto, type FinishReport } from '../creative/photo-finish';
 
 export interface GenerateParams { accountId: string; productId?: string; format?: MediaFormat; language?: Lang; direction?: Direction; createdBy: string; scheduleId?: string; actorId?: string | null; revisionOf?: string }
 export interface GenerateOutcome { advertisement: Advertisement; qc: QcReport | null; queued: boolean }
@@ -188,7 +190,11 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
   const sceneCount = format === 'REEL_VIDEO' && d.reelStyle === 'pro' && !aiFull ? proSceneCount(reelDuration) : 1;
   // Art direction: rotate composition / lighting / lens / poster layout per account so designs stay varied but professional.
   const formal = /business|corporate|b2b|شركات/i.test(`${account.name} ${account.handle ?? ''} ${account.businessCategory ?? ''}`);
-  const art = await pickArt(account.id, { aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined, concept: d.concept, concepts: s.ai.creativeConcepts, formal, blockedConcepts: taste.blocked.concept, prefer: brain.art });
+  // 📷 the PRODUCT decides the shot: camera, light set-up, set and material of a specialist product photographer
+  const categorySlug = (await prisma.productCategory.findUnique({ where: { id: product.categoryId }, select: { slug: true } }))?.slug ?? null;
+  const recipe = s.ai.shotRecipes ? recipeFor({ slug: product.slug, categorySlug }) : null;
+  const recipeP = recipe ? recipePrompt(recipe) : undefined;
+  const art = await pickArt(account.id, { lenses: recipe?.lenses, aiFull, composition: d.designType, light: style?.theme === 'white_minimal' ? true : style?.theme === 'black_gold' ? false : undefined, concept: d.concept, concepts: s.ai.creativeConcepts, formal, blockedConcepts: taste.blocked.concept, prefer: brain.art });
   if (!dtype) dtype = designTypeOf(art.composition);
   const lightingP = LIGHTING.find((x) => x.value === art.lighting)?.prompt, lensP = LENSES.find((x) => x.value === art.lens)?.prompt;
   const conceptP = CONCEPTS.find((x) => x.value === art.concept)?.prompt;
@@ -399,7 +405,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           const layout = [...new Set(checks.flatMap((c) => c?.layoutIssues ?? []))].slice(0, 5);
           const textBad = checks.some((c) => c && !c.textOk);
           const fix = [prompt,
-            textBad ? `SPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.${extra.length ? ` REMOVE this text completely — it does not belong to this advertisement (not on the product, not anywhere): ${extra.map((w) => `«${w}»`).join(', ')}.` : ''}` : '',
+            textBad ? `SPELLING CORRECTION (attempt ${r + 2}): the previous image drew ${wrong.length ? `these texts wrongly or not at all: ${wrong.map((w) => `«${w}»`).join(', ')}` : 'illegible letters'}. Draw EXACTLY these texts, letter by letter, in correct ${lang === 'ar' ? 'Arabic' : lang === 'ml' ? 'Malayalam' : lang === 'hi' ? 'Hindi (Devanagari)' : 'English'} spelling, large and clear: ${expected.map((e) => `«${e}»`).join(' · ')}. Fewer, bigger words are better than small text.${extra.length ? ` REMOVE this text completely — it does not belong to this advertisement (not on the product, not anywhere): ${extra.map((w) => `«${w}»`).join(', ')}.` : ''}` : '',
             layout.length ? `LAYOUT CORRECTION (attempt ${r + 2}): the previous image had these problems: ${layout.join('; ')}. Show the hero product COMPLETE and sharp in the middle of the poster, fully inside the frame, and keep the bottom ${zoneBottom}% as plain background only (the order button and phone panel cover it).` : '',
           ].filter(Boolean).join('\n');
           const img = await retrying(s.ai.maxRetries, () => provider.generateScene(fix, { model: s.ai.imageModel, quality: imgQuality, size: posterSize, seedHint: `${ad.id}-fix${r}`, references }));
@@ -433,7 +439,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     if (aiFull && (textCheck as { textPassed?: boolean } | null)?.textPassed === false && s.ai.aiTextFallback === 'template') {
       await assertBudget(s, estimateImageCost(s, imgQuality));
       scene = await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP }, zone) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
+        const img = await retrying(s.ai.maxRetries, () => provider.generateScene(scenePrompt(brief!.sceneDescription + (dtype ? ` Composition: ${dtype.prompt}.` : ''), creativeStyle, { lighting: lightingP, lens: lensP, concept: conceptP, recipe: recipeP }, zone) + (refPrompt ? `\n${refPrompt}` : ''), { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-verified`, references }));
         await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         return img;
       });
@@ -507,7 +513,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     for (let i = 1; i < sceneCount; i++) {
       await assertBudget(s, estimateImageCost(s, imgQuality));
       extraScenes.push(await withAiJob(ad.id, 'IMAGE', provider, s.ai.imageModel, async (jobId) => {
-        const shotPrompt = scenePrompt(`${shotFor(i)}`, creativeStyle, { lighting: lightingP, concept: conceptP });
+        const shotPrompt = scenePrompt(`${shotFor(i)}`, creativeStyle, { lighting: lightingP, concept: conceptP, recipe: recipeP });
         let img = await retrying(s.ai.maxRetries, () => provider.generateScene(shotPrompt, { model: s.ai.imageModel, quality: imgQuality, size: '1024x1536', seedHint: `${ad.id}-${i}` }));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: img.model, kind: 'image', images: 1, costUsd: estimateImageCost(s, imgQuality) });
         if (gateOn) {
@@ -523,6 +529,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           }
           shotQualities.push(q);
         }
+        if (s.ai.photoFinish) img = { ...img, png: (await finishPhoto(img.png, recipe?.grade ?? 'neutral')).png };
         return img;
       }));
     }
@@ -788,17 +795,23 @@ export function pickLeastRecent(options: string[], recent: (string | null)[]) {
 }
 
 /** Least-recently-used art recipe for this account (last 12 designs). A user-chosen composition is kept. */
-export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[]; prefer?: { concept?: string; lighting?: string; composition?: string } }): Promise<Art> {
+export async function pickArt(accountId: string, o: { aiFull: boolean; composition?: string; light?: boolean; concept?: string; concepts?: boolean; formal?: boolean; blockedConcepts?: string[]; prefer?: { concept?: string; lighting?: string; composition?: string }; lenses?: string[] }): Promise<Art> {
   // 🎨 visual memory: a winner the account brain learnt is used when it is allowed here; otherwise least-recently-used
   const pref = (pool: readonly string[], v?: string) => (v && pool.includes(v) ? v : undefined);
   const recent = await prisma.advertisement.findMany({ where: { accountId }, orderBy: { createdAt: 'desc' }, take: 12, select: { options: true } });
   const prev = recent.map((r) => ((r.options ?? {}) as { direction?: { art?: Art } | null }).direction?.art ?? {});
-  const comps = o.aiFull ? DESIGN_TYPES.map((x) => x.value) : LAYERED_COMPOSITIONS;
+  const lensesFor = (c: string) => (c === 'flat_lay' ? ['overhead'] : c === 'macro_detail' ? ['85mm', '50mm'] : null); // null = any lens
+  // a composition whose lenses the product's recipe excludes is not rotated in (no flat-lay mug, no macro roll-up);
+  // the owner's explicit choice (o.composition) is always kept
+  const comps = (o.aiFull ? DESIGN_TYPES.map((x) => x.value) : LAYERED_COMPOSITIONS).filter((c) => { const l = lensesFor(c); return !o.lenses?.length || !l || l.some((x) => o.lenses!.includes(x)); });
   const lights = LIGHTING.filter((x) => o.light === undefined || x.light === o.light).map((x) => x.value);
   let lenses = LENSES.map((x) => x.value) as string[];
   const composition = o.composition ?? pref(comps, o.prefer?.composition) ?? pickLeastRecent(comps, prev.map((a) => a.composition ?? null));
   if (composition === 'flat_lay') lenses = ['overhead'];
   else lenses = lenses.filter((l) => l !== 'overhead' && (composition !== 'macro_detail' || l === '85mm' || l === '50mm'));
+  // the product's shot recipe narrows the lenses (a mug is never shot top-down, a roll-up never with a portrait lens);
+  // a composition the owner chose explicitly still wins when nothing in the recipe fits it
+  if (o.lenses?.length) { const fit = lenses.filter((l) => o.lenses!.includes(l)); if (fit.length) lenses = fit; }
   return {
     composition,
     lighting: pref(lights, o.prefer?.lighting) ?? pickLeastRecent(lights, prev.map((a) => a.lighting ?? null)),
