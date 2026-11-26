@@ -279,6 +279,15 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
     // no logo band (logo in the footer): the design itself starts at the top edge — no blend, no dark seam
     .composite(g.topBand === 0 ? [{ input: art, left: 0, top: 0 }] : [{ input: edge, left: 0, top: 0 }, { input: artFeathered, left: 0, top: g.topBand }]).png().toBuffer();
   const zone = (g.features?.y ?? g.cta.y) - 70, px = g.padX, pw = W - 2 * px;
+  // the headline shade follows how busy the art is under the text: calm art → light shade, busy art → deeper shade,
+  // so the typeset headline never fights the picture (measured, no AI call; stats() needs the extracted pixels first)
+  let hzA = 0.5;
+  if (headline) {
+    const hy = Math.max(0, Math.min(H - 2, headline.y)), hh = Math.max(2, Math.min(headline.h, H - hy));
+    const region = await sharp(base).extract({ left: 0, top: hy, width: W, height: hh }).greyscale().png().toBuffer();
+    const sd = (await sharp(region).stats()).channels[0].stdev;
+    hzA = Math.round(Math.max(0.45, Math.min(0.82, 0.45 + (sd - 25) / 90)) * 100) / 100;
+  }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${goldGrad('gg')}${goldLine('gl')}
       <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0"/><stop offset="0.45" stop-color="${NAVY}" stop-opacity="0.55"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.92"/></linearGradient>
       <linearGradient id="unfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.92"/><stop offset="0.35" stop-color="${NAVY}" stop-opacity="0.25"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.15"/></linearGradient>
@@ -291,7 +300,7 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
       // Instagram draws its own caption and buttons) the design itself continues instead of an empty dark block
       ? `<rect x="0" y="${zone}" width="${W}" height="${g.panel.y + g.panel.h + 70 - zone}" fill="url(#fade)"/><rect x="0" y="${g.panel.y + g.panel.h + 70}" width="${W}" height="${H - (g.panel.y + g.panel.h + 70)}" fill="url(#unfade)"/>`
       : `<rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>`}
-    ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.5"/><stop offset="0.7" stop-color="${NAVY}" stop-opacity="0.3"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient><rect x="0" y="${Math.max(0, headline.y - 40)}" width="${W}" height="${headline.h + 110}" fill="url(#hz)"/>` : ''}
+    ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="${hzA}"/><stop offset="0.7" stop-color="${NAVY}" stop-opacity="${Math.round(hzA * 60) / 100}"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient><rect x="0" y="${Math.max(0, headline.y - 40)}" width="${W}" height="${headline.h + 110}" fill="url(#hz)"/>` : ''}
     ${ribbons(H)}
     ${g.features ? `<rect x="40" y="${g.features.y - 14}" width="${W - 80}" height="${Math.round(g.features.icon + g.features.label * 1.6 + 26)}" rx="28" fill="${NAVY}" fill-opacity="0.72" stroke="url(#gg)" stroke-opacity="0.55" stroke-width="2"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
@@ -312,7 +321,9 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const g = aiPosterGeometry(FORMAT_SIZE[input.format].h, hasRow, logoBottom), H = g.H;
   const hz = input.typeset ? headlineZone(H, hasRow, logoBottom) : null;
   const background = await buildAiPosterBackground(input.scene, H, hasRow, logoBottom, hz);
-  const layers: (PlacedLayer & { solid?: boolean })[] = [];
+  // inset = transparent shadow margin around a typeset layer: composited with it, but the manifest (QC overlap, contrast,
+  // safe-zone checks) measures the real text box — the soft shadows of stacked lines touching is not an overlap
+  const layers: (PlacedLayer & { solid?: boolean; inset?: number })[] = [];
 
   // HYBRID (golden rule): the headline, the gold badge and the tagline are typeset by the system — verified spelling,
   // correct Arabic shaping — in the calm area the text-free design left for them
@@ -322,7 +333,7 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
     let y = hz.y;
     const head = await renderText({ text: t.headline, lang, weight: 'extrabold', color: WHITE, maxSize: Math.min(110, Math.round(hH * 0.8)), minSize: 34, boxW: hz.w, boxH: hH, maxLines: 2 });
     const hs = await withShadow(head.png);
-    layers.push(place('headline', hs.png, (W - head.width) / 2 - hs.pad, y + (hH - head.height) / 2 - hs.pad, head.width + 2 * hs.pad, head.height + 2 * hs.pad, { x: hz.x, y, w: hz.w, h: hH }, head, t.headline, WHITE));
+    layers.push({ ...place('headline', hs.png, (W - head.width) / 2 - hs.pad, y + (hH - head.height) / 2 - hs.pad, head.width + 2 * hs.pad, head.height + 2 * hs.pad, { x: hz.x, y, w: hz.w, h: hH }, head, t.headline, WHITE), inset: hs.pad });
     y += hH;
     if (hasBadge) {
       const pillH = Math.round(bH * 0.86);
@@ -331,13 +342,13 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
       const pill = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${pillH}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${pillH - 4}" rx="${(pillH - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="4"/><rect x="14" y="7" width="${pw - 28}" height="${pillH * 0.34}" rx="${pillH * 0.17}" fill="#fff" opacity="0.3"/></svg>`;
       const bpng = await sharp(await svgPng(pill)).composite([{ input: bt.png, left: Math.round((pw - bt.width) / 2), top: Math.round((pillH - bt.height) / 2) }]).png().toBuffer();
       const bs = await withShadow(bpng, 12);
-      layers.push(place('badge' as PlacedLayer['id'], bs.png, (W - pw) / 2 - bs.pad, y + (bH - pillH) / 2 - bs.pad, pw + 2 * bs.pad, pillH + 2 * bs.pad, { x: hz.x, y, w: hz.w, h: bH }, { ...bt, fits: bt.fits && pw <= hz.w }, t.badge!.trim(), NAVY, true));
+      layers.push({ ...place('badge' as PlacedLayer['id'], bs.png, (W - pw) / 2 - bs.pad, y + (bH - pillH) / 2 - bs.pad, pw + 2 * bs.pad, pillH + 2 * bs.pad, { x: hz.x, y, w: hz.w, h: bH }, { ...bt, fits: bt.fits && pw <= hz.w }, t.badge!.trim(), NAVY, true), inset: bs.pad });
       y += bH;
     }
     if (hasSup) {
       const st = await renderText({ text: t.support!.trim(), lang, weight: 'bold', color: '#f6d77a', maxSize: Math.min(56, Math.round(sH * 0.78)), minSize: 24, boxW: hz.w, boxH: sH, maxLines: 1 });
       const ss = await withShadow(st.png, 10);
-      layers.push(place('support', ss.png, (W - st.width) / 2 - ss.pad, y + (sH - st.height) / 2 - ss.pad, st.width + 2 * ss.pad, st.height + 2 * ss.pad, { x: hz.x, y, w: hz.w, h: sH }, st, t.support!.trim(), '#f6d77a'));
+      layers.push({ ...place('support', ss.png, (W - st.width) / 2 - ss.pad, y + (sH - st.height) / 2 - ss.pad, st.width + 2 * ss.pad, st.height + 2 * ss.pad, { x: hz.x, y, w: hz.w, h: sH }, st, t.support!.trim(), '#f6d77a'), inset: ss.pad });
     }
   }
 
@@ -417,7 +428,7 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const png = await sharp(background).composite(layers.map((l) => ({ input: l.png, left: l.left, top: l.top }))).png().toBuffer();
   const manifest: LayerManifest = {
     width: W, height: H, templateKey: AI_POSTER_KEY, lang,
-    layers: layers.map((l) => ({ id: l.id, text: l.text, rect: { left: l.left, top: l.top, width: l.width, height: l.height }, box: l.box, fits: l.fits, missing: l.missing, fontSize: l.fontSize, color: l.color, solid: l.solid })),
+    layers: layers.map((l) => { const i = l.inset ?? 0; return { id: l.id, text: l.text, rect: { left: l.left + i, top: l.top + i, width: l.width - 2 * i, height: l.height - 2 * i }, box: l.box, fits: l.fits, missing: l.missing, fontSize: l.fontSize, color: l.color, solid: l.solid }; }),
   };
   return { width: W, height: H, templateKey: AI_POSTER_KEY, themeKey: 'navy_gold', background, layers, png, manifest };
 }

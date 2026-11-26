@@ -91,7 +91,7 @@ export interface AiProvider {
   /** Optional vision transcription of text drawn in an image (used to review full-AI posters). */
   readText?(png: Buffer, model: string): Promise<{ text: string; usage: TextUsage; model: string }>;
   /** one vision pass over a drawn poster: the exact text it shows + a layout inspection against the reserved zones */
-  inspectPoster?(png: Buffer, model: string, zones: { bottomPct: number; productHint: string }): Promise<{ text: string; layout: { productVisible: boolean; bottomClear: boolean; issues: string[] }; usage: TextUsage; model: string }>;
+  inspectPoster?(png: Buffer, model: string, zones: { bottomPct: number; productHint: string; topPct?: number }): Promise<{ text: string; layout: { productVisible: boolean; bottomClear: boolean; topClear?: boolean; issues: string[] }; usage: TextUsage; model: string }>;
   /** comment triage + reply drafts (one call per batch); replies are validated by the system before anyone can send them */
   analyzeComments?(req: CommentAnalysisRequest, model: string): Promise<{ items: CommentAnalysis[]; usage: TextUsage; model: string }>;
   /** the visual STYLE of a reference design as words (no texts, products, people or brands) */
