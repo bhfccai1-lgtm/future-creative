@@ -217,6 +217,23 @@ function aiPosterGeometryBase(h: number) {
   if (h === 1350) return { H: 1350, topBand: 150, topPct: 3, bottomPct: 40, features: { y: 922, icon: 76, label: 26 } as { y: number; icon: number; label: number } | null, safeWidthPct: 90, padX: 70, logo: { w: 320, h: 130, y: 16 }, cta: { w: 540, h: 90, y: 1058 }, panel: { y: 1162, h: 168 } };
   return { H: h, topBand: 118, topPct: 4, bottomPct: 36, features: null as { y: number; icon: number; label: number } | null, safeWidthPct: 92, padX: 70, logo: { w: 230, h: 100, y: 16 }, cta: { w: 500, h: 82, y: h - 276 }, panel: { y: h - 180, h: 164 } };
 }
+/** HYBRID: share of the art height the text-free design keeps calm for the system's headline, badge and tagline. */
+export const headlinePct = (h: number) => (h === 1920 ? 18 : h === 1350 ? 22 : 24);
+/** The headline area in output pixels (inside the art, under the top margin). */
+export function headlineZone(h: number, featureRow = true, logoBottom = false) {
+  const g = aiPosterGeometry(h, featureRow, logoBottom), artH = g.H - g.topBand;
+  return { x: 60, y: g.topBand + Math.round((artH * g.topPct) / 100) + 6, w: W - 120, h: Math.round((artH * headlinePct(g.H)) / 100) };
+}
+/** a soft dark shadow under a text layer (any design behind it stays readable); returns the padded image and its offset */
+async function withShadow(png: Buffer, pad = 14) {
+  const m = await sharp(png).metadata();
+  const alpha = await sharp(png).ensureAlpha().extractChannel(3).blur(5).linear(0.75, 0).toBuffer();
+  const shadow = await sharp({ create: { width: m.width!, height: m.height!, channels: 3, background: '#050b18' } }).joinChannel(alpha).png().toBuffer();
+  const out = await sharp({ create: { width: m.width! + 2 * pad, height: m.height! + 2 * pad, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: shadow, left: pad + 2, top: pad + 4 }, { input: png, left: pad, top: pad }]).png().toBuffer();
+  return { png: out, pad };
+}
+
 /** The image size to request from the model for a full-AI poster of this format height. */
 export const aiPosterImageSize = (h: number, logoBottom = false): '1024x1536' | '1024x1024' =>
   (h === 1920 || (h === 1350 && logoBottom) ? '1024x1536' : '1024x1024'); // feed with the logo in the footer: no top band → a portrait design fills it
@@ -230,7 +247,7 @@ const ribbons = (H: number) => {
 };
 
 /** Background for the full-AI poster: the AI design full-bleed + soft legibility gradient + glass phone panel + ribbons. */
-export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true, logoBottom = false): Promise<Buffer> {
+export async function buildAiPosterBackground(poster: Buffer, height = 1920, featureRow = true, logoBottom = false, headline: { y: number; h: number } | null = null): Promise<Buffer> {
   const g = aiPosterGeometry(height, featureRow, logoBottom), H = g.H, artH = H - g.topBand;
   // never crop the design when the aspect differs a lot (square output from a 1:1 image): fit it whole on a blurred fill
   // (a full-height 9:16 story — logo in the footer — is a normal cover crop of the 2:3 design: ~8 % per side)
@@ -274,6 +291,7 @@ export async function buildAiPosterBackground(poster: Buffer, height = 1920, fea
       // Instagram draws its own caption and buttons) the design itself continues instead of an empty dark block
       ? `<rect x="0" y="${zone}" width="${W}" height="${g.panel.y + g.panel.h + 70 - zone}" fill="url(#fade)"/><rect x="0" y="${g.panel.y + g.panel.h + 70}" width="${W}" height="${H - (g.panel.y + g.panel.h + 70)}" fill="url(#unfade)"/>`
       : `<rect x="0" y="${zone}" width="${W}" height="${H - zone}" fill="url(#fade)"/>`}
+    ${headline ? `<linearGradient id="hz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.5"/><stop offset="0.7" stop-color="${NAVY}" stop-opacity="0.3"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient><rect x="0" y="${Math.max(0, headline.y - 40)}" width="${W}" height="${headline.h + 110}" fill="url(#hz)"/>` : ''}
     ${ribbons(H)}
     ${g.features ? `<rect x="40" y="${g.features.y - 14}" width="${W - 80}" height="${Math.round(g.features.icon + g.features.label * 1.6 + 26)}" rx="28" fill="${NAVY}" fill-opacity="0.72" stroke="url(#gg)" stroke-opacity="0.55" stroke-width="2"/>` : ''}
     <rect x="${px}" y="${g.panel.y}" width="${pw}" height="${g.panel.h}" rx="40" fill="url(#glass)" stroke="url(#gg)" stroke-width="4"/>
@@ -292,8 +310,36 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   const hasRow = ((input as ComposeInput & { features?: string[] }).features ?? []).length > 0; // the glass row is drawn only when it holds features
   const logoBottom = input.logoPosition === 'bottom-center';
   const g = aiPosterGeometry(FORMAT_SIZE[input.format].h, hasRow, logoBottom), H = g.H;
-  const background = await buildAiPosterBackground(input.scene, H, hasRow, logoBottom);
+  const hz = input.typeset ? headlineZone(H, hasRow, logoBottom) : null;
+  const background = await buildAiPosterBackground(input.scene, H, hasRow, logoBottom, hz);
   const layers: (PlacedLayer & { solid?: boolean })[] = [];
+
+  // HYBRID (golden rule): the headline, the gold badge and the tagline are typeset by the system — verified spelling,
+  // correct Arabic shaping — in the calm area the text-free design left for them
+  if (input.typeset && hz) {
+    const t = input.typeset, hasBadge = !!t.badge?.trim(), hasSup = !!t.support?.trim();
+    const hH = Math.round(hz.h * (hasBadge ? (hasSup ? 0.44 : 0.55) : hasSup ? 0.7 : 1)), bH = hasBadge ? Math.round(hz.h * (hasSup ? 0.34 : 0.42)) : 0, sH = hz.h - hH - bH;
+    let y = hz.y;
+    const head = await renderText({ text: t.headline, lang, weight: 'extrabold', color: WHITE, maxSize: Math.min(110, Math.round(hH * 0.8)), minSize: 34, boxW: hz.w, boxH: hH, maxLines: 2 });
+    const hs = await withShadow(head.png);
+    layers.push(place('headline', hs.png, (W - head.width) / 2 - hs.pad, y + (hH - head.height) / 2 - hs.pad, head.width + 2 * hs.pad, head.height + 2 * hs.pad, { x: hz.x, y, w: hz.w, h: hH }, head, t.headline, WHITE));
+    y += hH;
+    if (hasBadge) {
+      const pillH = Math.round(bH * 0.86);
+      const bt = await renderText({ text: t.badge!.trim(), lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(pillH * 0.66), minSize: 30, boxW: hz.w - 140, boxH: pillH - 16, maxLines: 1 });
+      const pw = Math.min(hz.w, bt.width + 110);
+      const pill = `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${pillH}"><defs>${goldGrad('g')}</defs><rect x="2" y="2" width="${pw - 4}" height="${pillH - 4}" rx="${(pillH - 4) / 2}" fill="url(#g)" stroke="#fff1b8" stroke-width="4"/><rect x="14" y="7" width="${pw - 28}" height="${pillH * 0.34}" rx="${pillH * 0.17}" fill="#fff" opacity="0.3"/></svg>`;
+      const bpng = await sharp(await svgPng(pill)).composite([{ input: bt.png, left: Math.round((pw - bt.width) / 2), top: Math.round((pillH - bt.height) / 2) }]).png().toBuffer();
+      const bs = await withShadow(bpng, 12);
+      layers.push(place('badge' as PlacedLayer['id'], bs.png, (W - pw) / 2 - bs.pad, y + (bH - pillH) / 2 - bs.pad, pw + 2 * bs.pad, pillH + 2 * bs.pad, { x: hz.x, y, w: hz.w, h: bH }, { ...bt, fits: bt.fits && pw <= hz.w }, t.badge!.trim(), NAVY, true));
+      y += bH;
+    }
+    if (hasSup) {
+      const st = await renderText({ text: t.support!.trim(), lang, weight: 'bold', color: '#f6d77a', maxSize: Math.min(56, Math.round(sH * 0.78)), minSize: 24, boxW: hz.w, boxH: sH, maxLines: 1 });
+      const ss = await withShadow(st.png, 10);
+      layers.push(place('support', ss.png, (W - st.width) / 2 - ss.pad, y + (sH - st.height) / 2 - ss.pad, st.width + 2 * ss.pad, st.height + 2 * ss.pad, { x: hz.x, y, w: hz.w, h: sH }, st, t.support!.trim(), '#f6d77a'));
+    }
+  }
 
   // the ORIGINAL logo (the supplied file, only scaled) in the empty top zone, where the design needs it:
   // centred (default), in a corner (smaller, leaves the stage to the design), or centred with the centre's name under it

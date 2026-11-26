@@ -183,11 +183,14 @@ export const THEME_DECOR: Record<string, string> = {
   festive_red: 'festive deep red and gold ornaments, soft sparkles and warm glowing lights',
 };
 /** The owner's signature poster language (extracted from their own designs — style only, nothing copied). */
-export function signaturePoster(o: { bahrain: boolean }) {
+export function signaturePoster(o: { bahrain: boolean; textless?: boolean }) {
   return [
     'Signature poster language:',
-    '  • a huge bold headline in glossy 3D metallic gold with a bevel and soft glow; a gold ribbon banner directly under it carries the tagline;',
-    '  • the benefits as a row of deep-navy circular badges with thin gold rings and gold line icons, labels under each;',
+    // hybrid: the headline, tagline and benefit row are typeset by the system — only the visual signature is drawn
+    ...(o.textless ? [] : [
+      '  • a huge bold headline in glossy 3D metallic gold with a bevel and soft glow; a gold ribbon banner directly under it carries the tagline;',
+      '  • the benefits as a row of deep-navy circular badges with thin gold rings and gold line icons, labels under each;',
+    ]),
     '  • flowing gold ribbon swooshes sweeping in from the corners, golden bokeh and tiny sparkles;',
     o.bahrain ? '  • at the very bottom a glowing Bahrain skyline silhouette (Bahrain World Trade Center towers) with golden city lights, and a Bahrain flag ribbon waving in one lower corner.' : '  • at the very bottom a softly glowing city skyline silhouette with golden lights.',
   ].join('\n');
@@ -278,6 +281,7 @@ export const AUDIO_TYPES = [
 export type AudioType = (typeof AUDIO_TYPES)[number]['value'];
 
 export const RENDER_MODES = [
+  { value: 'hybrid', ar: 'هجين: تصميم ذكي + نص مضمون من النظام (موصى به)' },
   { value: 'ai_full', ar: 'تصميم كامل بالذكاء الاصطناعي (مثل ChatGPT)' },
   { value: 'layered', ar: 'قالب بطبقات ثابتة (نص مضمون 100%)' },
 ] as const;
@@ -302,7 +306,7 @@ export interface Direction {
   contentType?: string; market?: string; segment?: string; occasion?: string; idea?: string;
   designType?: string; designStyle?: string; layout?: 'gold-poster' | 'navy-gold-classic' | 'gold-frame-lower';
   /** layered = deterministic text layers (100% verified); ai_full = the image model designs the whole poster like ChatGPT. */
-  renderMode?: 'layered' | 'ai_full' | 'auto'; customPrompt?: string; autoFormat?: boolean;
+  renderMode?: 'layered' | 'ai_full' | 'hybrid' | 'auto'; customPrompt?: string; autoFormat?: boolean;
   /** full-AI poster: where the ORIGINAL logo goes (auto = centred; «name» adds the centre's name under it) */
   logoPosition?: LogoPosition;
   /** campaign: auto-pick products only from this category */

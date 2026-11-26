@@ -5,7 +5,7 @@ import { apiCall } from '@/lib/client/api';
 import { Button } from './ui';
 import { ReferenceUpload } from './reference-upload';
 
-type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; imageQualityGate?: boolean; styleRefImage?: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; bannedPhrases?: string[]; aiFullTextRetries?: number; aiTextFallback?: 'review' | 'template'; featuresRow?: 'ai' | 'system' | 'off'; captionMentions?: string[]; styleReferenceKey?: string | null; styleReferenceBrief?: string; styleRefsByFormat?: Partial<Record<'vertical' | 'feed' | 'square' | 'carousel', { key: string | null; brief: string }>>; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> };
+type Ai = { dryRun: boolean; textModel: string; imageModel: string; imageQuality: 'low' | 'medium' | 'high'; monthlyBudgetUsd: number; alertThresholdPct: number; maxDailyAds: number; maxRetries: number; creativeStyle: string; languages: string[]; useAiReview: boolean; imageQualityGate?: boolean; styleRefImage?: boolean; aiFullRequiresApproval: boolean; autoRenderMode?: string; autoDesignStyle?: string; creativeConcepts?: boolean; bestOf?: number; ownerGuidance?: string; bannedPhrases?: string[]; aiFullTextRetries?: number; aiTextFallback?: 'review' | 'template'; featuresRow?: 'ai' | 'system' | 'off'; captionMentions?: string[]; styleReferenceKey?: string | null; styleReferenceBrief?: string; styleRefsByFormat?: Partial<Record<'vertical' | 'feed' | 'square' | 'carousel', { key: string | null; brief: string }>>; useReferences?: boolean; pricing: Record<string, number>; qualityByFormat: Record<string, '' | 'low' | 'medium' | 'high'> ; adScore?: { enabled: boolean; threshold: number; maxRedraws: number } };
 const FORMATS: [string, string][] = [['IMAGE_STORY', 'ستوري 1080×1920'], ['IMAGE_FEED', 'منشور 1080×1350'], ['IMAGE_SQUARE', 'مربع'], ['IMAGE_CAROUSEL', 'كاروسيل'], ['REEL_VIDEO', 'ريلز']];
 
 export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configured: boolean; last4: string | null } }) {
@@ -31,8 +31,9 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
         <div className="grid gap-3 rounded-lg border p-3 md:col-span-3 md:grid-cols-2">
           <div className="md:col-span-2 text-sm font-extrabold text-navy-800">تصاميم النشر الآلي (الجدولة، الحملات، n8n)</div>
           <div><label className="label">طريقة التصميم</label><select className="input" value={v.autoRenderMode ?? 'auto'} onChange={(e) => setV({ ...v, autoRenderMode: e.target.value })}>
-            <option value="auto">تلقائي (موصى به) — ملصق كامل بالذكاء الاصطناعي لكل الصيغ مع تدقيق إملائي وإعادة رسم تلقائية (ريلز Veo بطبقات)</option>
-            <option value="ai_full">ملصق كامل بالذكاء الاصطناعي دائمًا</option>
+            <option value="auto">تلقائي (موصى به) — هجين: الذكاء الاصطناعي يصمم الإعلان كاملًا بلا نص، والنظام يكتب العنوان والشعار والأرقام بدقة 100٪ (ريلز Veo بطبقات)</option>
+            <option value="hybrid">هجين دائمًا — تصميم ذكي حسب الفكرة + نص مضمون من النظام</option>
+            <option value="ai_full">ملصق كامل بالذكاء الاصطناعي دائمًا (يرسم النص بنفسه، مع تصحيح إملائي)</option>
             <option value="layered">قالب بطبقات ونص مضمون 100% دائمًا</option></select></div>
           <div><label className="label">أسلوب التصميم</label><select className="input" value={v.autoDesignStyle ?? 'fc_signature'} onChange={(e) => setV({ ...v, autoDesignStyle: e.target.value })}>
             <option value="fc_signature">توقيع المطبعة الإعلاني (من نماذجك) — ألوان الخلفية تتغير حسب المناسبة والجمهور والمنتج</option>
@@ -77,6 +78,13 @@ export function AiSettingsForm({ ai, keyStatus }: { ai: Ai; keyStatus: { configu
                 <option value={1}>صورة واحدة (الأوفر)</option><option value={2}>صورتان ويُختار الأفضل (موصى به)</option><option value={3}>3 صور ويُختار الأفضل</option>
               </select></div>
             <p className="text-xs text-slate-500">يقيّم الذكاء الاصطناعي كل صورة كمخرج فني (دقة شكل المنتج، الجمال، قوة التكوين، خلوها من الحروف) ويحتفظ بالأقوى. كل صورة إضافية = تكلفة صورة.</p>
+          </div>
+          <div className="mt-3 rounded-lg border border-gold-300 bg-gold-300/10 p-3">
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={v.adScore?.enabled ?? true} onChange={(e) => setV({ ...v, adScore: { threshold: 95, maxRedraws: 1, ...v.adScore, enabled: e.target.checked } })} /><span><b>🏆 تقييم الجودة الداخلي من 100</b> — المخرج الفني يقيّم الإعلان النهائي: جذب الانتباه 20، الإبداع 20، جودة الصورة 15، وضوح الرسالة 15، قابلية المشاركة 10، والهوية 10 والنصوص 10 تُقاس آليًا. تحت المعيار يُعاد الرسم بملاحظة المخرج، وإن لم يبلغه يُرسل لموافقتك ولا يُنشر تلقائيًا. التكلفة: فحص بصري صغير (≈ $0.002) لكل نسخة + صورة لكل إعادة رسم. معيار جودة، وليس ضمانًا للانتشار.</span></label>
+            {(v.adScore?.enabled ?? true) && <div className="mt-2 flex flex-wrap items-end gap-3 pr-6">
+              <div><label className="label">المعيار (من 100)</label><input type="number" min={50} max={100} className="input" style={{ width: '7rem' }} value={v.adScore?.threshold ?? 95} onChange={(e) => setV({ ...v, adScore: { enabled: true, maxRedraws: 1, ...v.adScore, threshold: Number(e.target.value) } })} /></div>
+              <div><label className="label">أقصى إعادة رسم لبلوغ المعيار</label><select className="input" style={{ width: '12rem' }} value={v.adScore?.maxRedraws ?? 1} onChange={(e) => setV({ ...v, adScore: { enabled: true, threshold: 95, ...v.adScore, maxRedraws: Number(e.target.value) } })}><option value={0}>بدون (تقييم فقط)</option><option value={1}>مرة واحدة (موصى به)</option><option value={2}>مرتان</option><option value={3}>3 مرات</option></select></div>
+            </div>}
           </div>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div><label className="label">✍️ تصحيح إملاء التصميم الكامل بالذكاء الاصطناعي</label>
