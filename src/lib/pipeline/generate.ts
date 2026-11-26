@@ -12,6 +12,7 @@ import { prisma } from '../db';
 import { getSecret, getSettings, updateSettings, type Settings } from '../settings';
 import { pickTrack, MOOD_FOR_STYLE } from '../audio/library';
 import { fakeSpeech, openaiSpeak, openaiTranscribe, estimateSttCost, sanitizeScript, voiceScript, estimateTtsCost, voiceMood } from '../audio/tts';
+import { autoEmotion, autoStyle, breathe, checkPerformance, writerDirection, type PerfLine } from '../audio/performance';
 import { missedWords, prepareSpoken, speakVerified } from '../audio/pronounce';
 import { recordMissed, vocaliseFix } from '../audio/pron-learn';
 
@@ -623,12 +624,20 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           const maxWords = wordsFor(seconds, persona);
           let script = voiceScript({ headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta });
           let pronunciation: { accuracy: number | null; takes: number; pace: string; missed?: string[] } | null = null;
+          // the voice director: the owner's emotion / style, or chosen from the occasion, the product and the persona
+          const emotion = s.ai.audio.emotion !== 'auto' ? s.ai.audio.emotion : autoEmotion({ category, occasion: p.direction?.occasion ?? null });
+          const style = s.ai.audio.style !== 'auto' ? s.ai.audio.style : autoStyle(persona.group, category);
+          let lines: PerfLine[] | null = null;
           try {
             if (provider.writeVoiceover) {
-              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr }, brand: lang === 'ar' ? business.nameAr : business.nameEn }, s.ai.textModel);
+              const w = await provider.writeVoiceover({ language: vlang.prompt, persona: persona.acting, seconds, maxWords, storyboard: (brief.storyboard ?? []).map((x) => `${x.beat}: ${x.scene.slice(0, 160)}`), copy: { headline: brief.headline, badge: brief.badge, support: brief.supportingCopy, cta, caption: brief.caption }, product: { titleEn: product.titleEn, titleAr: product.titleAr }, brand: lang === 'ar' ? business.nameAr : business.nameEn, ...writerDirection({ emotion, style }) }, s.ai.textModel);
               if (!provider.isDryRun) await recordUsage({ provider: provider.name, model: w.model, kind: 'text', inputTokens: w.usage.inputTokens, outputTokens: w.usage.outputTokens, costUsd: estimateTextCost(s, w.usage.inputTokens, w.usage.outputTokens) });
-              script = sanitizeScript(w.script, maxWords) ?? script; // rule-breaking script → verified copy instead
+              const clean = sanitizeScript(w.script, maxWords);
+              script = clean ?? script; // rule-breaking script → verified copy instead
+              // per-line direction only when it matches the final script word for word (direction never edits the text)
+              lines = clean ? checkPerformance(clean, w.lines) : null;
             }
+            script = breathe(script); // commas at natural breath points (no word changes): better rhythm and caption chunks
             if (provider.isDryRun) { voice = fakeSpeech(script); displayScript = script; }
             else {
               const key = await getSecret('OPENAI_API_KEY');
@@ -638,12 +647,14 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
               const spoken = prepareSpoken(script, s.ai.audio.lexicon, vlang.id);
               // the feeling of the read (occasion → category) and the word to stress (the product, when the script says it)
               const mood = voiceMood({ category, occasion: p.direction?.occasion ?? null });
+              // the performance map uses the same re-spelt words the voice reads
+              const direction = { emotion, style, intensity: s.ai.audio.intensity, lines: lines?.map((l) => ({ ...l, text: prepareSpoken(l.text, s.ai.audio.lexicon, vlang.id) })) ?? null };
               const title = lang === 'en' || lang === 'hi' ? product.titleEn : lang === 'ml' ? product.titleMl : product.titleAr;
               const emphasisWord = title && spoken.includes(title) ? title : undefined;
               const r = await speakVerified(spoken, {
                 pace: s.ai.audio.pace === 'slow' ? 'slow' : 'normal',
                 speak: async (text, pace, note) => {
-                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note, mood, emphasis: emphasisWord, brand: script.includes(business.nameAr) ? business.nameAr : script.includes(business.nameEn) ? business.nameEn : undefined }); // the original script (the lexicon re-spells it for the voice)
+                  const v = await openaiSpeak(key, text, { persona, lang: vlang, pace: pace === 'slow' ? 'slow' : s.ai.audio.pace, note, mood, direction, emphasis: emphasisWord, brand: script.includes(business.nameAr) ? business.nameAr : script.includes(business.nameEn) ? business.nameEn : undefined }); // the original script (the lexicon re-spells it for the voice)
                   await recordUsage({ provider: 'openai', model: v.model, kind: 'audio', costUsd: estimateTtsCost(v.chars) });
                   return v.audio;
                 },
@@ -661,7 +672,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
               if (firstMissed.length) await recordMissed(firstMissed, spoken, r.takes[1]?.text !== spoken ? r.takes[1]?.text ?? null : null).catch(() => undefined);
               script = r.best.text;
             }
-            audioNote = { voiceScript: script, persona: persona.id, voiceLang: vlang.id, ...(pronunciation ? { pronunciation } : {}) };
+            audioNote = { voiceScript: script, persona: persona.id, voiceLang: vlang.id, emotion, style, intensity: s.ai.audio.intensity, ...(lines ? { performance: lines.map((l) => ({ text: l.text, emotion: l.emotion, delivery: l.delivery, stress: l.stress })) } : {}), ...(pronunciation ? { pronunciation } : {}) };
           } catch (e) {
             await notify('WARNING', 'VOICEOVER_FAILED', 'تعذر إنشاء التعليق الصوتي', `أُنتج الريلز بالموسيقى فقط: ${(e as Error).message}`, account.id);
             audioNote = { voiceError: (e as Error).message };
