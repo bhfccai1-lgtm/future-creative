@@ -37,8 +37,10 @@ async function fail(jobId: string, adId: string, reason: string, accountId: stri
   await emitEvent('publication.failed', { jobId, adId, accountId, reason });
 }
 
-export function contactFooter(lang: string, locs: { nameAr: string; nameEn: string; nameMl?: string; nameHi?: string; phone: string }[]) {
-  return '📞 ' + locs.map((l) => `${lang === 'ar' ? l.nameAr : lang === 'ml' ? l.nameMl ?? l.nameEn : lang === 'hi' ? l.nameHi ?? l.nameEn : l.nameEn} ${l.phone}`).join(' | ');
+const DELIVERY_LABEL: Record<string, string> = { ar: 'التوصيل', en: 'Delivery', ml: 'ഡെലിവറി', hi: 'डिलीवरी' };
+export function contactFooter(lang: string, locs: { nameAr: string; nameEn: string; nameMl?: string; nameHi?: string; phone: string }[], deliveryPhone?: string | null) {
+  const branches = locs.map((l) => `${lang === 'ar' ? l.nameAr : lang === 'ml' ? l.nameMl ?? l.nameEn : lang === 'hi' ? l.nameHi ?? l.nameEn : l.nameEn} ${l.phone}`);
+  return '📞 ' + branches.join(' | ') + (deliveryPhone ? ` | 🚚 ${DELIVERY_LABEL[lang] ?? DELIVERY_LABEL.en} ${deliveryPhone}` : '');
 }
 
 /** Text that fits every chosen network; optionally moves hashtags to the first comment (Instagram/Facebook only). */
@@ -82,6 +84,7 @@ export async function buildPublishRequest(jobId: string): Promise<PublishRequest
   // Google Business Profile: one image (cover) for an update, or the video for the gallery
   const list = gbpOnly ? all.slice(0, 1) : all;
   const locs = locationsOf(business);
+  const settings = await getSettings();
   const localLine = '📍 ' + (ad.language === 'ar' ? `${business.nameAr} — ${locs.map((l) => `فرع ${l.nameAr}`).join(' و')}، البحرين` : `${business.nameEn} — ${locs.map((l) => l.nameEn).join(' & ')}, Bahrain`);
   return {
     idempotencyKey: job.idempotencyKey,
@@ -91,7 +94,7 @@ export async function buildPublishRequest(jobId: string): Promise<PublishRequest
     format: ad.format,
     publishAt: job.scheduledFor,
     timezone: job.account.timezone,
-    ...(gbpOnly ? { text: gbpText(ad.caption ?? '', localLine) } : captionFor(ad.caption ?? '', contactFooter(ad.language, locs), networks, (await getSettings()).metricool.hashtagsInFirstComment)),
+    ...(gbpOnly ? { text: gbpText(ad.caption ?? '', localLine) } : captionFor(ad.caption ?? '', contactFooter(ad.language, locs, settings.publishing.delivery.enabled ? settings.publishing.delivery.phone : null), networks, settings.metricool.hashtagsInFirstComment)),
     tags: splitCaption(ad.caption ?? '').hashtags.map((h) => h.replace(/^#/, '').replace(/_/g, ' ')),
     altText: [ad.headline, ad.product?.titleAr && ad.language === 'ar' ? ad.product.titleAr : ad.product?.titleEn, 'مطبعة إبداع المستقبل — Future Creative Printing'].filter(Boolean).join(' — '),
     mediaUrls: list.map((m) => signedMediaUrl(m.storageKey)),

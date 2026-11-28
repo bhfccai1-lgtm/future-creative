@@ -8,7 +8,7 @@ export function briefSystemPrompt() {
     'You design ONE social media advertisement concept at a time for ONE printing product.',
     'METHOD (Future Creative Viral Design Engine V10 — think it through before writing; output only the final concept):',
     '  PHASE 1 — ANALYSIS: product type, target audience, account language, occasion and season, the customer need, the marketing goal and the platform/format given.',
-    '  PHASE 2 — CONCEPT: privately invent 3 clearly different ad ideas, score each on attention, clarity in 2 seconds and originality, and execute only the strongest. It must be unconventional, understood instantly, tied directly to the product, spark curiosity or emotion, be worth sending/remembering, and differ from previous designs (avoid list).',
+    '  PHASE 2 — IDEAS (Creative Design Playbook V10.0 §2): first name the customer need or problem this product solves. Then privately invent 10 GENUINELY different ideas, spread across these approaches: visual story · comic situation · an ORIGINAL cartoon character (never an existing one) · visual surprise · artistic metaphor · cinematic photography · luxury minimalism · real-life scene · creative fantasy · emotional moment. Changing only the colours or the background is NOT a new idea. Score each 1–10 on originality, appeal (stops the scroll, understood in 2 seconds) and marketing value (a real reason to buy, save or share); keep the top 3; develop the single best into the full concept. It must be tied directly to the product and differ from previous designs (avoid list).',
     '  PHASE 3 — VISUAL: premium art direction, cinematic light, photorealistic product, strong hierarchy, colour psychology fitted to product and audience, the product as the clear hero, no clutter.',
     '  PHASE 4 — HOOK: build in ONE strong attention device that suits the product: a witty situation, an original character, a surprising transformation, an emotional moment, a creative surprise, an honest before/after (only if real), or the product shown in an unexpected way. Never misleading information or exaggerated claims.',
     '  If the creative style names an "Ad style for this product", that tone and visual language are mandatory.',
@@ -94,6 +94,12 @@ export function ideasSystemPrompt() {
  */
 export const REALISM_RULES = 'Photographic realism: physically correct light — one consistent key-light direction, a soft contact shadow where the product touches the surface, natural reflections that match the environment; real material texture (paper grain, ceramic glaze, fabric weave, acrylic edges). If people or hands appear: natural anatomy, five fingers, relaxed realistic hands and faces, real skin texture — never waxy or plastic. No AI artefacts: nothing melted, warped, duplicated or floating, no extra limbs, no impossible geometry, no over-saturated colours, no HDR halos, no generic stock-photo look.';
 
+/**
+ * NEGATIVE PROMPT (Creative Design Playbook V10.0 §6): what the image must NOT contain, in one place for every image
+ * prompt — the model follows a single explicit «avoid» list better than scattered prohibitions.
+ */
+export const NEGATIVE_PROMPT = 'AVOID (negative prompt): distorted or melted product shapes, wrong product proportions or impossible use, extra or missing handles/parts, warped printing, AI artefacts, plastic-looking skin or materials, oversaturated colours, cluttered or crowded composition, random decorative objects that do not serve the idea, watermarks, signatures, fake logos or brand marks, copies of existing characters or brands, misleading claims, blurry or low-resolution areas.';
+
 export function scenePrompt(sceneDescription: string, style: string, art?: { lighting?: string; lens?: string; concept?: string; recipe?: string }, zone?: { top: number; bottom: number } | null) {
   return [
     sceneDescription,
@@ -104,6 +110,7 @@ export function scenePrompt(sceneDescription: string, style: string, art?: { lig
     art?.recipe ?? '',
     'Award-winning commercial product photography: accurate product shape and proportions, realistic materials and print finish, clean edges, no warping, no extra objects merging into the product.',
     REALISM_RULES,
+    NEGATIVE_PROMPT,
     'Vertical 9:16 premium advertising product photograph, photorealistic, ultra sharp focus on the product, high dynamic range, rich true-to-life colours, professional retouching.',
     zone
       ? `Composition: the WHOLE hero product (top of it to its base) stands between ${Math.round(zone.top * 100)}% and ${Math.round(zone.bottom * 100)}% of the image height, horizontally centred, as large as fits there; text will be laid over the rest of the image, so above ${Math.round(zone.top * 100)}% and below ${Math.round(zone.bottom * 100)}% keep only a calm, softly blurred background or surface — no part of the product, no important detail.`
@@ -138,6 +145,7 @@ export function fullPosterPrompt(p: {
     p.concept ? `Creative concept for the product scene (striking, scroll-stopping, product stays the accurate hero): ${p.concept}.` : '',
     `Hero product photo: ${p.sceneDescription}`,
     REALISM_RULES,
+    NEGATIVE_PROMPT,
     p.lighting || p.lens ? `Photography: ${[p.lighting, p.lens].filter(Boolean).join('; ')}.` : '',
     p.recipe ?? '',
     ...(p.textless ? [
