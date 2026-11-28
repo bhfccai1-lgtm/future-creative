@@ -8,6 +8,7 @@ import type { DupFinding } from '../dedup';
 import type { VideoProbe } from '../video/probe';
 import { FORMAT_SIZE } from '../render/templates';
 import { normalizeText } from '../dedup/text';
+import { COPY_DISTANCE } from '../creative/inspiration';
 import type { MediaFormat } from '@prisma/client';
 
 export interface QcInput {
@@ -16,6 +17,8 @@ export interface QcInput {
   manifest: LayerManifest; background: Buffer; finalImage: Buffer; logoPng: Buffer;
   usedLogoSha: string; approvedLogoSha: string;
   approvedPhones: { key: string; phone: string }[];
+  /** the reference (Freepik) nearest to the AI scene, by perceptual hash — a near copy blocks approval */
+  inspirationNearest?: { id: string; distance: number } | null;
   productAllowed: boolean; duplicates: DupFinding[]; dryRun: boolean;
   video?: VideoProbe | null; videoError?: string | null;
   /** Full-AI posters: text drawn by the image model + (optional) vision transcription of it. */
@@ -57,6 +60,9 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
 
   const allCopy = [q.headline, q.badge ?? '', q.supportingCopy ?? '', q.cta, q.caption];
   const wrong = allCopy.flatMap((t) => findWrongPhones(t, q.approvedPhones.map((p) => p.phone)));
+  if (q.inspirationNearest) {
+    checks.push({ id: 'inspiration_original', label: 'التصميم أصلي وليس نسخة من مراجع الإلهام', passed: q.inspirationNearest.distance > COPY_DISTANCE, severity: 'BLOCKER', detail: `أقرب مرجع ${q.inspirationNearest.id}: فرق ${q.inspirationNearest.distance}/64` });
+  }
   checks.push({ id: 'no_wrong_numbers', label: 'لا توجد أرقام هواتف غير معتمدة في النص', passed: wrong.length === 0, severity: 'BLOCKER', detail: wrong.join(', ') || undefined });
 
   checks.push(checkLanguage([q.headline, q.badge ?? '', q.supportingCopy ?? '', q.cta], q.lang));

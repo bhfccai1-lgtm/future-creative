@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Ban, ChevronDown, Eye, ImageIcon, PenLine, Send, Sparkles, Trophy, Type, Wand2 } from 'lucide-react';
+import { Ban, ChevronDown, Search, Eye, ImageIcon, PenLine, Send, Sparkles, Trophy, Type, Wand2 } from 'lucide-react';
 import { ReferenceUpload } from './reference-upload';
+import { InspirationSettings } from './inspiration-settings';
 import { studioReadiness, type StudioValues } from '@/lib/creative/studio-readiness';
 
 export type { StudioValues };
@@ -126,6 +127,10 @@ export function CreativeStudio<T extends StudioValues>({ v, setV }: { v: T; setV
             <Check checked={v.useReferences ?? true} onChange={(b) => set({ useReferences: b })}>استخدام الصور المرجعية عند التوليد (صورة المنتج + التصميم المرجعي)</Check>
             <Check disabled={v.useReferences === false} checked={v.styleRefImage ?? true} onChange={(b) => set({ styleRefImage: b })}>إرسال صورة المرجع نفسها لنموذج الصور (أدق في مطابقة الأسلوب، تكلفة صورة صغيرة). أطفئه إن ظهرت عناصر منها في تصاميمك.</Check>
           </div>
+
+          <Section icon={<Search size={18} />} title="الإلهام من Freepik" summary="بحث بصري قبل كل تصميم — مبادئ لا نسخ">
+            <InspirationSettings />
+          </Section>
 
           <Section icon={<Wand2 size={18} />} title="جودة الصور" summary={[(v.bestOf ?? 1) > 1 ? `${v.bestOf} صور ويُختار الأفضل` : 'صورة واحدة', (v.shotRecipes ?? true) && 'تصوير احترافي', (v.photoFinish ?? true) && 'تنقيح'].filter(Boolean).join(' · ')}>
             <Check checked={v.creativeConcepts ?? true} onChange={(b) => set({ creativeConcepts: b })}><b>فكرة بصرية مميزة لكل تصميم</b> — 10 أفكار تتناوب: طبيعة صامتة فاخرة، المنتج يطفو، لحظة مجمّدة، عالم مصغّر، تراث خليجي، لقطة سينمائية… (حسابات الشركات تأخذ الرسمية فقط)</Check>

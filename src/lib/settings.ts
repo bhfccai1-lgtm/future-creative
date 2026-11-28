@@ -121,6 +121,9 @@ export const SettingsSchema = z.object({
     /** measured studio retouch after generation (clarity, product colour grade, soft vignette) — free, no AI call */
     photoFinish: z.boolean().default(true),
     /** V10 quality rubric on the finished ad (one small vision call ≈ $0.002; each re-draw = one image) */
+    /** visual research before each design (owner's rule): Freepik references → principles → an original idea. Off until the
+     *  owner saves a Freepik API key and switches it on (the key may be a paid service — the owner's decision). */
+    inspiration: z.object({ enabled: z.boolean().default(false), count: z.number().int().min(5).max(10).default(8), freeOnly: z.boolean().default(false) }).prefault({}),
     adScore: z.object({ enabled: z.boolean().default(true), threshold: z.number().int().min(50).max(100).default(95), maxRedraws: z.number().int().min(0).max(3).default(1) }).prefault({}),
     /** STEP 02: when no idea is given, 3 concepts are proposed and the strongest is picked by a documented rubric */
     conceptTournament: z.boolean().default(true),
@@ -318,7 +321,7 @@ export async function updateSettings(patch: (s: Settings) => Settings, updatedBy
 }
 
 // ── Encrypted secrets (never sent to the browser) ──
-export type SecretName = 'OPENAI_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'GOOGLE_ARCHIVE_KEY' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
+export type SecretName = 'OPENAI_API_KEY' | 'FREEPIK_API_KEY' | 'FREELLM_API_KEY' | 'METRICOOL_API_TOKEN' | 'N8N_WEBHOOK_SECRET' | 'N8N_API_TOKEN' | 'GEMINI_API_KEY' | 'TELEGRAM_BOT_TOKEN' | 'GOOGLE_ARCHIVE_URL' | 'GOOGLE_ARCHIVE_KEY' | 'META_CATALOG_TOKEN' | 'META_COMMENTS_TOKEN' | 'WA_CLOUD_TOKEN' | 'WA_APP_SECRET' | 'WA_VERIFY_TOKEN';
 
 export async function setSecret(name: SecretName, value: string | null, updatedBy?: string) {
   const key = `secret:${name}`;
