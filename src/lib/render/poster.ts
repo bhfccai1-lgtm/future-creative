@@ -333,14 +333,21 @@ export async function buildAiPosterParts(poster: Buffer, height = 1920, featureR
   else {
     const side = Math.min(W, artH);
     const main = await sharp(poster).resize(side, side, { fit: 'cover' }).removeAlpha().sharpen({ sigma: 0.5 }).png().toBuffer();
-    art = await sharp(await soft(W, artH, 34, 0.7)).composite([{ input: main, left: Math.round((W - side) / 2), top: Math.round((artH - side) / 2) }]).png().toBuffer();
+    // the side margins continue the art: deepened only on dark art (0.7 made light designs grey at the edges)
+    const lum = (await sharp(poster).greyscale().stats()).channels[0].mean;
+    art = await sharp(await soft(W, artH, 34, lum > 150 ? 0.98 : 0.7)).composite([{ input: main, left: Math.round((W - side) / 2), top: Math.round((artH - side) / 2) }]).png().toBuffer();
   }
   // logo band: the whole design's colours, heavily blurred and deepened (no ghost of drawn text) — one continuous image
   // built from the TOP strip of the design (not the whole design squashed), so it continues the art above it and the
   // bright product never shows through as a blurred ghost — visible once the logo sits in a corner
   const pm = await sharp(poster).metadata();
   const strip = await sharp(poster).extract({ left: 0, top: 0, width: pm.width!, height: Math.max(8, Math.round(pm.height! * 0.14)) }).png().toBuffer();
-  const edge = await sharp(strip).resize(W, g.topBand + 60, { fit: 'fill' }).blur(48).modulate({ brightness: 0.55 }).removeAlpha().png().toBuffer();
+  // the logo band continues the top of the art: darkened only on DARK art — on a light design (cream, sky, white
+  // studio) a 0.55 brightness turned it into a muddy grey strip (design audit). stats() needs extracted pixels first.
+  const topLum = (await sharp(strip).greyscale().stats()).channels[0].mean;
+  const lightTop = topLum > 150;
+  // the band reaches past the art's 90 px feather — a shorter band let the navy base show through as a grey seam line
+  const edge = await sharp(strip).resize(W, g.topBand + 110, { fit: 'fill' }).blur(48).modulate({ brightness: lightTop ? 1 : 0.55 }).removeAlpha().png().toBuffer();
   const feather = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${artH}"><defs><linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${(90 / artH).toFixed(4)}" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="${W}" height="${artH}" fill="url(#f)"/></svg>`);
   const artFeathered = await sharp(art).ensureAlpha().composite([{ input: feather, blend: 'dest-in' }]).png().toBuffer();
   const base = await sharp({ create: { width: W, height: H, channels: 3, background: NAVY } })
@@ -367,7 +374,7 @@ export async function buildAiPosterParts(poster: Buffer, height = 1920, featureR
       <linearGradient id="unfade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY}" stop-opacity="0.6"/><stop offset="0.3" stop-color="${NAVY}" stop-opacity="0.12"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></linearGradient>
       <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${NAVY2}" stop-opacity="0.94"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0.96"/></linearGradient>
       <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset="0.5" stop-color="#e6c25a"/><stop offset="1" stop-color="#9c6f1c"/></linearGradient>
-      <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${NAVY}" stop-opacity="${g.topBand === 0 && !logoBottom ? 0.55 : 0.35}"/><stop offset="1" stop-color="${NAVY}" stop-opacity="0"/></radialGradient></defs>
+      <radialGradient id="lg" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${lightTop ? '#fffaf0' : NAVY}" stop-opacity="${lightTop ? 0.5 : g.topBand === 0 && !logoBottom ? 0.55 : 0.35}"/><stop offset="1" stop-color="${lightTop ? '#fffaf0' : NAVY}" stop-opacity="0"/></radialGradient></defs>
     <ellipse cx="${W / 2}" cy="${g.logo.y + g.logo.h / 2}" rx="${g.logo.w * 0.75}" ry="${g.logo.h * 0.8}" fill="url(#lg)"/>
     ${H === 1920
       // Reels / Stories: the shade sits only behind the order button and the phones, then fades out — below them (where
@@ -478,8 +485,14 @@ export async function composeAiPoster(input: ComposeInput): Promise<ComposeResul
   }
 
   // glossy gold order button with a cart and sparkle rays
-  const cw = g.cta.w, chh = g.cta.h, cy = g.cta.y, rays = 70, tw = cw + 2 * rays;
-  const t = await renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(chh * 0.6), minSize: 28, boxW: cw - 170, boxH: chh - 20, maxLines: 1 });
+  // the pill grows with its text (in 60 px steps, up to the frame minus the rays) instead of the CTA overflowing —
+  // Malayalam «ഇപ്പോൾ ഓർഡർ ചെയ്യൂ» and long Hindi CTAs did not fit the 500 px square-format pill (design audit)
+  const chh = g.cta.h, cy = g.cta.y, rays = 70, maxCw = W - 2 * rays - 40;
+  let cw = g.cta.w;
+  const ctaText = (w: number) => renderText({ text: input.cta, lang, weight: 'extrabold', color: NAVY, maxSize: Math.round(chh * 0.6), minSize: 28, boxW: w - 170, boxH: chh - 20, maxLines: 1 });
+  let t = await ctaText(cw);
+  while (!t.fits && cw < maxCw) { cw = Math.min(maxCw, cw + 60); t = await ctaText(cw); }
+  const tw = cw + 2 * rays;
   const cs = chh / 96;
   const cart = `<g transform="translate(${rays + (lang === 'ar' ? 50 * cs : cw - 120 * cs)} ${16 * cs}) scale(${0.66 * cs})" fill="none" stroke="${NAVY}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">${CART}</g>`;
   const ray = (x: number, dir: number) => [-22, 0, 22].map((dy) => `<line x1="${x}" y1="${chh / 2 + dy * 0.9}" x2="${x + dir * (dy === 0 ? 44 : 34)}" y2="${chh / 2 + dy * 1.7}" stroke="#f6d77a" stroke-width="5" stroke-linecap="round"/>`).join('');

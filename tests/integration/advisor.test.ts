@@ -61,7 +61,9 @@ describe('professional advisor', () => {
     const { accounts } = await seedBase({ settings: (s) => ({ ...s, ai: { ...s.ai, dryRun: false, monthlyBudgetUsd: 1 } }) });
     setAiProviderOverride(new FakeAiProvider());
     await generateAdvertisement({ accountId: accounts[0].id, createdBy: 't' });
-    await prisma.aiUsage.create({ data: { provider: 'x', model: 'x', kind: 'image', costUsd: '0.9' } });
+    // above the $1 budget: the projection (spend ÷ day × days in month) exceeds it on ANY day — with $0.90 the test
+    // passed early in the month and failed from about the 27th (0.9 × 30/28 < 1)
+    await prisma.aiUsage.create({ data: { provider: 'x', model: 'x', kind: 'image', costUsd: '1.2' } });
     const r = await runAdvisor();
     expect(r.kpis.designs7d).toBe(1);
     expect(r.kpis.publishSuccessRate).toBeNull(); // no publications yet → unknown, not 0 or 100
