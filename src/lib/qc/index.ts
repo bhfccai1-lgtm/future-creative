@@ -16,6 +16,8 @@ export interface QcInput {
   manifest: LayerManifest; background: Buffer; finalImage: Buffer; logoPng: Buffer;
   usedLogoSha: string; approvedLogoSha: string;
   approvedPhones: { key: string; phone: string }[];
+  /** numbers that may appear in the text but are not required on the design (the delivery line) */
+  allowedExtraPhones?: string[];
   productAllowed: boolean; duplicates: DupFinding[]; dryRun: boolean;
   video?: VideoProbe | null; videoError?: string | null;
   /** Full-AI posters: text drawn by the image model + (optional) vision transcription of it. */
@@ -56,7 +58,7 @@ export async function runQualityChecks(q: QcInput): Promise<QcReport> {
   checks.push({ id: 'phones', label: 'أرقام الهواتف الصحيحة (سار وسلماباد) موجودة', passed: q.approvedPhones.length > 0 && missingPhones.length === 0, severity: 'BLOCKER', detail: missingPhones.map((p) => `${p.key}: ${p.phone}`).join(', ') || undefined });
 
   const allCopy = [q.headline, q.badge ?? '', q.supportingCopy ?? '', q.cta, q.caption];
-  const wrong = allCopy.flatMap((t) => findWrongPhones(t, q.approvedPhones.map((p) => p.phone)));
+  const wrong = allCopy.flatMap((t) => findWrongPhones(t, [...q.approvedPhones.map((p) => p.phone), ...(q.allowedExtraPhones ?? [])]));
   checks.push({ id: 'no_wrong_numbers', label: 'لا توجد أرقام هواتف غير معتمدة في النص', passed: wrong.length === 0, severity: 'BLOCKER', detail: wrong.join(', ') || undefined });
 
   checks.push(checkLanguage([q.headline, q.badge ?? '', q.supportingCopy ?? '', q.cta], q.lang));

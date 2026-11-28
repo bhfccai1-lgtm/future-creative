@@ -19,6 +19,9 @@ export const SettingsSchema = z.object({
     minGapMinutes: z.number().int().min(0).max(720).default(30),
     /** Same-brand cross-promotion: a new feed/reel/carousel is shared as a branded story on the accounts chosen per account. */
     crossPromo: z.object({ enabled: z.boolean().default(false), maxPerTargetPerDay: z.number().int().min(1).max(6).default(2), delayMinutes: z.number().int().min(0).max(720).default(45) }).prefault({}),
+    /** delivery line (Creative Design Playbook V10.0 §8 — «التوصيل 33930900 عند الحاجة»): added to the caption's
+     *  verified contact line, never to the design panel; also an approved number for the «no wrong numbers» check */
+    delivery: z.object({ enabled: z.boolean().default(true), phone: z.string().regex(/^\+?\d{6,15}$/).default('33930900') }).prefault({}),
   }).prefault({}),
   killSwitchReason: z.string().nullable().default(null),
   /** Idea bank: weekly rated ideas per active account; approved ideas feed automatic generation. */

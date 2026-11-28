@@ -9,15 +9,20 @@ beforeEach(async () => { await resetDb(); captureQueues(); });
 type Qc = { checks: { id: string; passed: boolean; detail?: string }[]; requiresHuman?: boolean };
 type Opts = { adScore?: { total: number; history: number[]; passed: boolean }; direction?: { renderMode?: string } };
 
-/** the art director scores each version in turn (judged points: hook/clarity/format/value, 0–70; the system adds the measured 30) */
+/**
+ * the art director scores each version in turn. The sequences keep their old meaning (the FINAL total minus 30): the
+ * playbook rubric measures 10 points instead of 30, so the judged points are the old figure + 20, spread over the seven
+ * judged criteria within their caps (originality 20 · aesthetics 15 · attention 15 · composition · harmony · marketing · clarity 10).
+ */
 class Scored extends FakeAiProvider {
   scores: number[]; scoreCalls = 0;
   constructor(judgedSeq: number[]) { super(); this.scores = judgedSeq; }
   async scoreAd() {
-    const t = this.scores[Math.min(this.scoreCalls++, this.scores.length - 1)];
-    const judged = { hook: Math.min(20, Math.round(t * 0.29)), clarity: Math.min(20, Math.round(t * 0.29)), format: 0, value: 0 };
-    judged.format = Math.min(15, Math.round((t - judged.hook - judged.clarity) / 2)); judged.value = Math.max(0, Math.min(15, t - judged.hook - judged.clarity - judged.format));
-    return { judged, reasons: { hook: 'لقطة قوية' }, weakness: 'product too small', fix: 'make the mug larger and the light warmer', usage: { inputTokens: 900, outputTokens: 80 }, model: 'fake-vision' };
+    let left = this.scores[Math.min(this.scoreCalls++, this.scores.length - 1)] + 20;
+    const caps: [string, number][] = [['originality', 20], ['aesthetics', 15], ['attention', 15], ['composition', 10], ['harmony', 10], ['marketing', 10], ['clarity', 10]];
+    const judged: Record<string, number> = {};
+    for (const [k, cap] of caps) { judged[k] = Math.max(0, Math.min(cap, left)); left -= judged[k]; }
+    return { judged, reasons: { originality: 'لقطة قوية' }, weakness: 'product too small', fix: 'make the mug larger and the light warmer', usage: { inputTokens: 900, outputTokens: 80 }, model: 'fake-vision' };
   }
 }
 

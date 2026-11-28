@@ -246,7 +246,7 @@ export class OpenAiProvider implements AiProvider {
   }
 
   async scoreAd(jpeg: Buffer, model: string, ctx: { product: string; idea: string; platform: string }) {
-    const { scoreAdPrompt } = await import('../creative/ad-score');
+    const { scoreAdPrompt, JUDGED_KEYS } = await import('../creative/ad-score');
     let res;
     try {
       res = await callWithParamFallback({
@@ -260,7 +260,7 @@ export class OpenAiProvider implements AiProvider {
     } catch (e) { throw mapError(e); }
     let j: Record<string, unknown> = {};
     try { j = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
-    const judged = Object.fromEntries(['hook', 'clarity', 'format', 'value'].map((k) => [k, Number(j[k]) || 0]));
+    const judged = Object.fromEntries(JUDGED_KEYS.map((k) => [k, Number(j[k]) || 0]));
     const r = (j.reasons && typeof j.reasons === 'object' ? j.reasons : {}) as Record<string, unknown>;
     const reasons = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, String(v ?? '')]));
     return { judged, reasons, weakness: String(j.weakness ?? ''), fix: String(j.fix ?? ''), model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };

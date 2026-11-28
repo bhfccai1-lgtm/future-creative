@@ -759,6 +759,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       manifest: composed.manifest, background: composed.background, finalImage: jpeg, logoPng: composed.layers.find((l) => l.id === 'logo')!.png,
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
+      allowedExtraPhones: s.publishing.delivery.enabled ? [s.publishing.delivery.phone] : [],
       productAllowed: productAllowed(account, product), duplicates: dups, dryRun: provider.isDryRun,
       video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, voicePronunciation: (audioNote?.pronunciation as { accuracy: number | null; missed?: string[] } | undefined) ?? null, ...(hybridLayout ? { aiLayoutIssues: hybridLayout } : {}), ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,

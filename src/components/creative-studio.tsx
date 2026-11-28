@@ -138,8 +138,8 @@ export function CreativeStudio<T extends StudioValues>({ v, setV }: { v: T; setV
               <p className="mt-1 text-[11px] text-slate-500">كل صورة إضافية = تكلفة صورة.</p></div>
           </Section>
 
-          <Section icon={<Trophy size={18} />} title="مؤشر الجودة من 100" summary={score.enabled ? `المعيار ${score.threshold} · إعادة رسم ${score.maxRedraws}` : 'متوقف'}>
-            <Check checked={score.enabled} onChange={(b) => set({ adScore: { ...score, enabled: b } })}><b>🏆 المخرج الفني يقيّم الإعلان النهائي</b> — الافتتاحية 20، وضوح المنتج والفائدة 20، ملاءمة الصيغة 15، قيمة المحتوى 15، وتُقاس آليًا سهولة الإجراء 15 وجودة التنفيذ 15. أي رقم غير معتمد يمنع الاعتماد. تحت المعيار يُعاد الرسم، وإن لم يبلغه يُرسل لموافقتك. التكلفة ≈ $0.002 للفحص + صورة لكل إعادة. معيار جودة، لا ضمان للانتشار.</Check>
+          <Section icon={<Trophy size={18} />} title="مؤشر الجودة الإبداعية من 100" summary={score.enabled ? `المعيار ${score.threshold} · إعادة رسم ${score.maxRedraws}` : 'متوقف'}>
+            <Check checked={score.enabled} onChange={(b) => set({ adScore: { ...score, enabled: b } })}><b>🏆 مؤشر الجودة الإبداعية (دليل التصميم V10)</b> — يقيّم المخرج الفني: أصالة الفكرة 20، الجمال والإخراج 15، جذب الانتباه 15، التكوين 10، تناسق الألوان والخطوط 10، القيمة التسويقية 10، وضوح النص والمنتج 10؛ ويُقاس آليًا: الالتزام بالهوية 5 والملاءمة التقنية 5. 95+ مرشح للاعتماد · 90–94 ممتاز يحتاج مراجعة · 80–89 يحتاج تحسينًا · أقل من 80 إعادة تصميم. أي خطأ في الشعار أو النص أو الأرقام يمنع الاعتماد. تحت المعيار يُعاد الرسم، وإن لم يبلغه يُرسل لموافقتك. التكلفة ≈ $0.002 للفحص + صورة لكل إعادة. تقييم داخلي، لا ضمان للانتشار.</Check>
             {score.enabled && <div className="flex flex-wrap items-end gap-3 pr-6">
               <div><label className="label" htmlFor="studio-threshold">المعيار: <b className="text-navy-900">{score.threshold}</b></label>
                 <input id="studio-threshold" type="range" min={50} max={100} step={1} className="w-48 accent-gold-500" value={score.threshold} onChange={(e) => set({ adScore: { ...score, threshold: Number(e.target.value) } })} /></div>
