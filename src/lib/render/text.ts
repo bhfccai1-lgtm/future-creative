@@ -1,6 +1,16 @@
 import sharp from 'sharp';
 import { fontFor, missingGlyphs, type Lang, type Weight } from './fonts';
 
+/**
+ * What can be typeset: emoji, pictographs, their joiners / variation selectors and symbols the brand fonts do not
+ * carry (✓ ✨ 🎁 ☕) are removed — an AI headline or badge with an emoji used to render empty boxes and fail the glyph
+ * check. Letters, digits and normal punctuation of every script are kept as written.
+ */
+export function typesettable(text: string): string {
+  return text.replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\uFE0E\uFE0F\u200D\u20E3\u2713\u2714\u2705\u274C\u2716]/gu, '')
+    .replace(/[ \t]{2,}/g, ' ').replace(/ +([،,.!?؟])/g, '$1').trim();
+}
+
 export const escapeMarkup = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 export interface TextSpec {
@@ -29,7 +39,9 @@ async function pango(markup: string, desc: string, size: number, fontfile: strin
  * at most `maxLines` lines. `fits=false` means the text cannot be placed without clipping even at
  * the minimum size — callers MUST treat that as a QC failure.
  */
-export async function renderText(spec: TextSpec): Promise<RenderedText> {
+export async function renderText(input: TextSpec): Promise<RenderedText> {
+  const clean = typesettable(input.text);
+  const spec = clean === input.text || !clean ? input : { ...input, text: clean };
   const { fontfile, desc } = fontFor(spec.lang, spec.weight);
   const missing = missingGlyphs(spec.text, spec.lang, spec.weight);
   // LRI…PDI isolate so phone digits never reorder inside RTL context.
