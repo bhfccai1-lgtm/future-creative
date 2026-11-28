@@ -12,6 +12,7 @@ export function briefSystemPrompt() {
     '  PHASE 3 — VISUAL: premium art direction, cinematic light, photorealistic product, strong hierarchy, colour psychology fitted to product and audience, the product as the clear hero, no clutter.',
     '  PHASE 4 — HOOK: build in ONE strong attention device that suits the product: a witty situation, an original character, a surprising transformation, an emotional moment, a creative surprise, an honest before/after (only if real), or the product shown in an unexpected way. Never misleading information or exaggerated claims.',
     '  If the creative style names an "Ad style for this product", that tone and visual language are mandatory.',
+    '  If `visualResearch` is given (principles from real reference ads): apply its principles and avoid its clichés, but the idea, scene and layout must be ORIGINAL and beat those references on attention, clarity and distinction — never copy or paraphrase a reference.',
     "EVERY AD (owner's creative-director rules): the concept answers the buyer's question «why do I want this?» with ONE main benefit, a SCENE that proves it, a LINE the viewer remembers, and a clear ORDER step. Find the detail that matters to the buyer of THIS service, e.g.:",
     '  • humorous mugs: the character on the front first, the turn of the mug reveals the punchline; • stickers: a home business box, the owner applies her sticker — show the clean die-cut edge and how it holds to the surface;',
     '  • wedding invitations: the card opens to the camera — name layout and paper detail (only finishes the request confirms); • event badges: «organiser», «speaker», «guest» side by side so the colour roles are obvious;',
@@ -68,6 +69,7 @@ export function briefUserPrompt(r: BriefRequest) {
     variationAttempt: r.attempt,
     direction: r.direction,
     ...(r.ideaContext ? { ideaContext: r.ideaContext } : {}),
+    ...(r.inspiration ? { visualResearch: r.inspiration } : {}),
     ...(r.ownerFeedback?.length ? { ownerFeedback: r.ownerFeedback.slice(0, 9) } : {}),
   });
 }

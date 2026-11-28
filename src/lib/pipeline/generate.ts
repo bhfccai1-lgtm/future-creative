@@ -52,6 +52,7 @@ import { storage } from '../storage';
 import { autoApproveAndQueue } from '../publishing/jobs';
 import type { Lang } from '../render/fonts';
 import { combineScore, type AdScore } from '../creative/ad-score';
+import { fetchPreviews, inspirationBrief, inspirationQuery, nearestReference, parsePrinciples, pickDiverse, searchFreepik, type InspirationPrinciples, type InspirationRef } from '../creative/inspiration';
 import { adStyleFor, adStylePrompt } from '../creative/ad-styles';
 import { CONCEPTS, paletteFor, signaturePoster, DESIGN_STYLES, DESIGN_TYPES, LAYERED_COMPOSITIONS, LENSES, LIGHTING, POSTER_LAYOUTS, THEME_DECOR, type Art, designTypeOf, directionForPrompt, proSceneCount, styleOf, type Direction } from '../creative/options';
 import { recipeFor, recipePrompt } from '../creative/photo-recipes';
@@ -237,6 +238,26 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
         }
       } catch { /* proposal failed → the brief writer invents the concept itself, as before */ }
     }
+    // ── visual research (owner's rule): 5–10 diverse Freepik references → PRINCIPLES for the creative director.
+    // Never blocks a design: no key / switched off / any failure → the brief is written without it (and the owner is told). ──
+    let inspiration: { query: string; sources: InspirationRef[]; principles: InspirationPrinciples; hashes: { id: string; hash: string }[] } | null = null;
+    if (s.ai.inspiration.enabled && provider.analyzeReferences && !provider.isDryRun) {
+      try {
+        const key = await getSecret('FREEPIK_API_KEY');
+        if (key) {
+          const query = inspirationQuery({ titleEn: product.titleEn, occasion: p.direction?.occasion ?? null });
+          const refs = pickDiverse(await searchFreepik(key, query, { freeOnly: s.ai.inspiration.freeOnly }), s.ai.inspiration.count);
+          const previews = await fetchPreviews(refs);
+          if (previews.length >= 3) {
+            await assertBudget(s, estimateTextCost(s, 600 + previews.length * 90, 450));
+            const a = await provider.analyzeReferences(previews.map((x) => x.jpeg), s.ai.textModel, { product: product.titleEn, audience: (product.targetAudience ?? []).join(', ') || 'Bahrain customers' });
+            await recordUsage({ provider: provider.name, model: a.model, kind: 'text', inputTokens: a.usage.inputTokens, outputTokens: a.usage.outputTokens, costUsd: estimateTextCost(s, a.usage.inputTokens, a.usage.outputTokens) });
+            const principles = parsePrinciples(a.principles);
+            if (principles) inspiration = { query, sources: previews.map((x) => x.ref), principles, hashes: previews.map((x) => ({ id: x.ref.id, hash: x.hash })) };
+          }
+        }
+      } catch (e) { await notify('WARNING', 'INSPIRATION_FAILED', 'تعذّر البحث في Freepik', `صُمّم الإعلان بدون مراجع إلهام: ${(e as Error).message.slice(0, 200)}`, account.id).catch(() => undefined); }
+    }
     let brief: CreativeBriefOut | null = null;
     let ideaFp = '';
     const maxConceptTries = s.ai.maxRetries + 3;
@@ -248,6 +269,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
           accountName: account.name, businessCategory: account.businessCategory, creativeStyle,
           defaultCta: ctaFor(business, lang), avoidIdeas, avoidHeadlines, attempt,
           direction: directionForPrompt(p.direction), occasionKey: p.direction?.occasion, format, ownerFeedback: feedback,
+          ...(inspiration ? { inspiration: inspirationBrief(inspiration.principles, inspiration.sources.length) } : {}),
         }, s.ai.textModel));
         if (!provider.isDryRun) await recordUsage({ jobId, provider: provider.name, model: out.model, kind: 'text', inputTokens: out.usage.inputTokens, outputTokens: out.usage.outputTokens, costUsd: estimateTextCost(s, out.usage.inputTokens, out.usage.outputTokens) });
         return out;
@@ -528,7 +550,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
 
     if (artDirector || textCheck || refs.length || styleBrief || conceptSelection || textFallback || adScore || recipe || photoFinish) {
       const cur = (await prisma.advertisement.findUniqueOrThrow({ where: { id: ad.id }, select: { options: true } })).options as Record<string, unknown> | null;
-      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(recipe || photoFinish ? { photo: { recipe: recipe?.key ?? null, finish: photoFinish?.applied ?? [], ...(photoFinish?.skipped ? { finishSkipped: photoFinish.skipped } : {}) } } : {}), ...(adScore ? { adScore: { ...adScore, history: scoreHistory } } : {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...new Set([...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])])] } : {}) } as Prisma.InputJsonValue } });
+      await prisma.advertisement.update({ where: { id: ad.id }, data: { options: { ...(cur ?? {}), ...(recipe || photoFinish ? { photo: { recipe: recipe?.key ?? null, finish: photoFinish?.applied ?? [], ...(photoFinish?.skipped ? { finishSkipped: photoFinish.skipped } : {}) } } : {}), ...(adScore ? { adScore: { ...adScore, history: scoreHistory } } : {}), ...(inspiration ? { inspiration: { source: 'freepik', query: inspiration.query, at: new Date().toISOString(), principles: inspiration.principles, sources: inspiration.sources.map((r) => ({ id: r.id, title: r.title, url: r.url, author: r.author, license: r.license, type: r.type })) } } : {}), ...(artDirector ? { artDirector } : {}), ...(textCheck ? { aiTextCheck: textCheck } : {}), ...(conceptSelection ? { conceptSelection } : {}), ...(textFallback ? { verifiedTextFallback: true, renderModeUsed: 'layered' } : {}), ...(refs.length || styleBrief ? { references: [...new Set([...refs.map((r) => r.role), ...(styleBrief ? ['style'] : [])])] } : {}) } as Prisma.InputJsonValue } });
     }
 
     // ── Step 9: deterministic layered composition ──
@@ -702,6 +724,8 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
     for (let i = 0; i < extraScenes.length; i++) await put('SCENE', `scene-${i + 2}.png`, extraScenes[i].png, 'image/png', { width: 1024, height: 1536, meta: { model: extraScenes[i].model, shot: i + 2 } });
     // Perceptual fingerprint of the AI scene (the part that varies) — the template frame is identical across ads by design.
     const finalHash = await phash(scene.png);
+    // originality: the AI scene against every reference that inspired it (a near copy blocks approval)
+    const nearestRef = inspiration ? nearestReference(finalHash, inspiration.hashes) : null;
     await put('FINAL', 'final.jpg', jpeg, 'image/jpeg', { width: composed.width, height: composed.height, phash: finalHash });
     // lossless PNG master next to the published JPEG (STEP 08 export); not a media asset, so publishing is unchanged
     await storage().put(`${base}/final.png`, composed.png, 'image/png');
@@ -759,6 +783,7 @@ export async function generateAdvertisement(p: GenerateParams): Promise<Generate
       manifest: composed.manifest, background: composed.background, finalImage: jpeg, logoPng: composed.layers.find((l) => l.id === 'logo')!.png,
       usedLogoSha: logo.sha256, approvedLogoSha: (await loadApprovedLogo(business.id)).sha256,
       approvedPhones: locationsOf(business).map((l) => ({ key: l.key, phone: l.phone })),
+      inspirationNearest: nearestRef,
       productAllowed: productAllowed(account, product), duplicates: dups, dryRun: provider.isDryRun,
       video: video?.probe ?? null, videoError, aiText, aiTextNeedsHuman: s.ai.aiFullRequiresApproval, voicePronunciation: (audioNote?.pronunciation as { accuracy: number | null; missed?: string[] } | undefined) ?? null, ...(hybridLayout ? { aiLayoutIssues: hybridLayout } : {}), ...(aiFull && textCheck ? { aiLayoutIssues: (textCheck as { layoutIssues?: string[] }).layoutIssues ?? [] } : {}),
       carousel: carousel ? { images: carousel.slides.length + 1, problems: carousel.problems } : null,

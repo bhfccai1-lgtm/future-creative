@@ -76,6 +76,24 @@ export default async function AdPage({ params }: { params: Promise<{ id: string 
               </ul>
             ) : <p className="text-sm text-slate-500">لم يتم الفحص بعد.</p>}
           </Card>
+          {(() => {
+            // «مصادر الإلهام»: the Freepik references that were analysed for this design (principles only — never copied)
+            const ins = ((ad.options ?? {}) as { inspiration?: { query: string; at: string; principles: { composition?: string; colors?: string; lighting?: string; productPresentation?: string; takeaways?: string[]; avoid?: string[] }; sources: { id: string; title: string; url: string; author: string; license: string }[] } }).inspiration;
+            if (!ins?.sources?.length) return null;
+            const LIC: Record<string, string> = { freemium: 'مجاني بنسبة', premium: 'ترخيص مدفوع', unknown: 'غير محدد' };
+            return (
+              <Card title={`🔎 مصادر الإلهام (${ins.sources.length}) — Freepik`} collapsible>
+                <p className="mb-2 text-xs text-slate-500">حُلّلت للمبادئ فقط — لم تُنسخ ولم تُرسل لمولّد الصور. البحث: «{ins.query}»</p>
+                <ul className="mb-3 space-y-1 text-sm">{ins.sources.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-baseline gap-2"><a className="font-bold text-navy-800 underline" href={r.url} target="_blank" rel="noreferrer noopener" dir="ltr">{r.title || r.id}</a>
+                    <span className="text-xs text-slate-500">{r.author}</span><span className="rounded-full bg-slate-100 px-2 text-[11px]">{LIC[r.license] ?? r.license}</span></li>))}</ul>
+                <dl className="grid gap-2 text-xs md:grid-cols-2" dir="ltr">
+                  {(['composition', 'colors', 'lighting', 'productPresentation'] as const).map((k) => ins.principles[k] ? <div key={k}><dt className="font-bold text-slate-500">{k}</dt><dd>{ins.principles[k]}</dd></div> : null)}
+                  {ins.principles.takeaways?.length ? <div className="md:col-span-2"><dt className="font-bold text-slate-500">takeaways</dt><dd>{ins.principles.takeaways.join(' · ')}</dd></div> : null}
+                </dl>
+              </Card>
+            );
+          })()}
           {ad.brief && (
             <Card title="الموجز الإبداعي">
               <dl className="grid gap-2 text-sm md:grid-cols-2">

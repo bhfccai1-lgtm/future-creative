@@ -245,6 +245,24 @@ export class OpenAiProvider implements AiProvider {
     return { text: (res.choices[0]?.message?.content ?? '').trim().slice(0, 1200), model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
   }
 
+  async analyzeReferences(jpegs: Buffer[], model: string, ctx: { product: string; audience: string }) {
+    const { principlesPrompt } = await import('../creative/inspiration');
+    let res;
+    try {
+      res = await callWithParamFallback({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user' as const, content: [
+          { type: 'text' as const, text: principlesPrompt({ ...ctx, n: jpegs.length }) },
+          ...jpegs.slice(0, 10).map((j) => ({ type: 'image_url' as const, image_url: { url: `data:image/jpeg;base64,${j.toString('base64')}`, detail: 'low' as const } })),
+        ] }],
+      }, (p) => this.client.chat.completions.create(p as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming), warnDrop('analyze-references'));
+    } catch (e) { throw mapError(e); }
+    let principles: unknown = null;
+    try { principles = JSON.parse(res.choices[0]?.message?.content ?? '{}'); } catch { throw new AiProviderError('BAD_OUTPUT', 'استجابة JSON غير صالحة.', true); }
+    return { principles, model: res.model ?? model, usage: { inputTokens: res.usage?.prompt_tokens ?? 0, outputTokens: res.usage?.completion_tokens ?? 0 } };
+  }
+
   async scoreAd(jpeg: Buffer, model: string, ctx: { product: string; idea: string; platform: string }) {
     const { scoreAdPrompt } = await import('../creative/ad-score');
     let res;

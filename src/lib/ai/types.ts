@@ -60,6 +60,8 @@ export interface BriefRequest {
   ownerFeedback?: string[];
   /** Idea bank context: what worked on this account, upcoming occasions, angles to cover. */
   ideaContext?: { winners?: string[]; upcoming?: string[]; angles?: string[] };
+  /** visual research: principles extracted from 5–10 Freepik references (never the references themselves) */
+  inspiration?: string;
 }
 
 export interface IdeaSuggestion { title: string; idea: string; hook?: string; angle?: string; format?: string; score?: number; why?: string }
@@ -107,6 +109,8 @@ export interface AiProvider {
   /** Optional art-director: scores candidate images (JPEG) for the brief and returns the index of the best one. */
   judgeImages?(images: Buffer[], brief: string, model: string): Promise<{ best: number; scores: number[]; reason: string; usage: TextUsage; model: string }>;
   /** V10 rubric: the art director scores the FINISHED ad on the judged criteria (attention, creativity, image, clarity, share) */
+  /** visual research: principles extracted from reference ads (JPEG previews) — never a copy of any of them */
+  analyzeReferences?(jpegs: Buffer[], model: string, ctx: { product: string; audience: string }): Promise<{ principles: unknown; usage: TextUsage; model: string }>;
   scoreAd?(jpeg: Buffer, model: string, ctx: { product: string; idea: string; platform: string }): Promise<{ judged: Record<string, number>; reasons?: Record<string, string>; weakness: string; fix: string; usage: TextUsage; model: string }>;
   /** background 'transparent' asks the image model for an alpha channel (stickers, DTF, labels); dropped automatically if the model rejects it */
   generateScene(prompt: string, opts: { model: string; quality: 'low' | 'medium' | 'high'; size: '1024x1536' | '1024x1024' | '1536x1024'; seedHint: string; references?: Buffer[]; background?: 'transparent' | 'opaque' }): Promise<ImageResult>;
